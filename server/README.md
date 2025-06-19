@@ -1,0 +1,434 @@
+# Backend - Sistema Financeiro
+
+## Estrutura do Projeto
+
+```
+server/
+├── config/             # Configurações do projeto
+├── controllers/        # Controladores da aplicação
+├── middlewares/        # Middlewares (autenticação, etc)
+├── migrations/         # Migrações do banco de dados
+├── models/            # Modelos do Sequelize
+├── routes/            # Rotas da API
+└── .env              # Variáveis de ambiente
+```
+
+## Tecnologias Utilizadas
+
+- Node.js
+- Express
+- Sequelize (ORM)
+- MySQL
+- JWT (Autenticação)
+
+## Configuração do Ambiente
+
+1. Instale as dependências:
+```bash
+npm install
+```
+
+2. Configure o arquivo `.env`:
+```env
+DB_USER=seu_usuario
+DB_PASS=sua_senha
+DB_NAME=finance
+DB_HOST=localhost
+DB_PORT=3306
+JWT_SECRET=seu_secret_jwt
+```
+
+3. Execute as migrações:
+```bash
+npx sequelize-cli db:migrate
+```
+
+## Modelos
+
+### User
+- `id`: ID do usuário
+- `name`: Nome do usuário
+- `email`: Email do usuário
+- `password`: Senha (hash)
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Customer
+- `id`: ID do cliente
+- `user_id`: ID do usuário
+- `name`: Nome do cliente
+- `document_type`: Tipo de documento (CPF/CNPJ)
+- `document_number`: Número do documento
+- `email`: Email do cliente
+- `phone`: Telefone
+- `address`: Endereço
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### CustomerType
+- `id`: ID do tipo
+- `customer_id`: ID do cliente
+- `type`: Tipo (customer/supplier)
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Account
+- `id`: ID da conta
+- `user_id`: ID do usuário
+- `name`: Nome da conta
+- `type`: Tipo da conta
+- `balance`: Saldo
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Category
+- `id`: ID da categoria
+- `user_id`: ID do usuário
+- `name`: Nome da categoria
+- `type`: Tipo (income/expense)
+- `color`: Cor da categoria
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Transaction
+- `id`: ID da transação
+- `user_id`: ID do usuário
+- `account_id`: ID da conta
+- `category_id`: ID da categoria
+- `type`: Tipo (income/expense)
+- `amount`: Valor
+- `description`: Descrição
+- `date`: Data
+- `payment_id`: ID do pagamento (opcional)
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Receivable
+- `id`: ID da conta a receber
+- `user_id`: ID do usuário
+- `customer_id`: ID do cliente
+- `description`: Descrição
+- `amount`: Valor
+- `due_date`: Data de vencimento
+- `status`: Status (pending/paid/overdue/cancelled)
+- `payment_date`: Data do pagamento
+- `payment_method`: Método de pagamento
+- `notes`: Observações
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Payable
+- `id`: ID da conta a pagar
+- `user_id`: ID do usuário
+- `customer_id`: ID do cliente
+- `description`: Descrição
+- `amount`: Valor
+- `due_date`: Data de vencimento
+- `status`: Status (pending/paid/overdue/cancelled)
+- `payment_date`: Data do pagamento
+- `payment_method`: Método de pagamento
+- `notes`: Observações
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Payment
+- `id`: ID do pagamento
+- `receivable_id`: ID da conta a receber (opcional)
+- `payable_id`: ID da conta a pagar (opcional)
+- `amount`: Valor
+- `payment_date`: Data do pagamento
+- `payment_method`: Método de pagamento
+- `description`: Descrição
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+## Endpoints da API
+
+### Autenticação
+
+#### POST /auth/register
+Registra um novo usuário.
+```json
+{
+  "name": "Nome do Usuário",
+  "email": "email@exemplo.com",
+  "password": "senha123"
+}
+```
+
+#### POST /auth/login
+Autentica um usuário.
+```json
+{
+  "email": "email@exemplo.com",
+  "password": "senha123"
+}
+```
+
+### Usuários
+
+#### GET /users/profile
+Retorna o perfil do usuário logado.
+
+#### PUT /users/profile
+Atualiza o perfil do usuário.
+```json
+{
+  "name": "Novo Nome",
+  "email": "novo@email.com"
+}
+```
+
+### Clientes
+
+#### GET /customers
+Lista todos os clientes do usuário.
+
+#### POST /customers
+Cria um novo cliente.
+```json
+{
+  "name": "Nome do Cliente",
+  "document_type": "CPF",
+  "document_number": "123.456.789-00",
+  "email": "cliente@email.com",
+  "phone": "(11) 99999-9999",
+  "address": "Endereço do Cliente",
+  "types": ["customer", "supplier"]
+}
+```
+
+#### GET /customers/:id
+Retorna detalhes de um cliente específico.
+
+#### PUT /customers/:id
+Atualiza um cliente.
+```json
+{
+  "name": "Novo Nome",
+  "email": "novo@email.com"
+}
+```
+
+#### DELETE /customers/:id
+Remove um cliente.
+
+### Contas
+
+#### GET /accounts
+Lista todas as contas do usuário.
+
+#### POST /accounts
+Cria uma nova conta.
+```json
+{
+  "name": "Conta Principal",
+  "type": "checking",
+  "balance": 1000.00
+}
+```
+
+#### GET /accounts/:id
+Retorna detalhes de uma conta específica.
+
+#### PUT /accounts/:id
+Atualiza uma conta.
+```json
+{
+  "name": "Novo Nome",
+  "balance": 2000.00
+}
+```
+
+#### DELETE /accounts/:id
+Remove uma conta.
+
+### Categorias
+
+#### GET /categories
+Lista todas as categorias do usuário.
+
+#### POST /categories
+Cria uma nova categoria.
+```json
+{
+  "name": "Alimentação",
+  "type": "expense",
+  "color": "#FF0000"
+}
+```
+
+#### GET /categories/:id
+Retorna detalhes de uma categoria específica.
+
+#### PUT /categories/:id
+Atualiza uma categoria.
+```json
+{
+  "name": "Novo Nome",
+  "color": "#00FF00"
+}
+```
+
+#### DELETE /categories/:id
+Remove uma categoria.
+
+### Transações
+
+#### GET /transactions
+Lista todas as transações do usuário.
+
+#### POST /transactions
+Cria uma nova transação.
+```json
+{
+  "account_id": 1,
+  "category_id": 1,
+  "type": "expense",
+  "amount": 100.00,
+  "description": "Compra no supermercado",
+  "date": "2024-03-20"
+}
+```
+
+#### GET /transactions/:id
+Retorna detalhes de uma transação específica.
+
+#### PUT /transactions/:id
+Atualiza uma transação.
+```json
+{
+  "amount": 150.00,
+  "description": "Nova descrição"
+}
+```
+
+#### DELETE /transactions/:id
+Remove uma transação.
+
+### Contas a Receber
+
+#### GET /receivables
+Lista todas as contas a receber do usuário.
+
+#### POST /receivables
+Cria uma nova conta a receber.
+```json
+{
+  "customer_id": 1,
+  "description": "Venda de produto",
+  "amount": 1000.00,
+  "due_date": "2024-04-20",
+  "payment_terms": "À vista"
+}
+```
+
+#### GET /receivables/:id
+Retorna detalhes de uma conta a receber específica.
+
+#### PUT /receivables/:id
+Atualiza uma conta a receber.
+```json
+{
+  "amount": 1200.00,
+  "due_date": "2024-05-20"
+}
+```
+
+#### DELETE /receivables/:id
+Remove uma conta a receber.
+
+#### GET /receivables/:id/payments
+Lista todos os pagamentos de uma conta a receber.
+
+#### POST /receivables/:id/payments
+Registra um novo pagamento.
+```json
+{
+  "amount": 500.00,
+  "payment_date": "2024-03-20",
+  "payment_method": "pix",
+  "description": "Pagamento parcial",
+  "account_id": 1
+}
+```
+
+### Contas a Pagar
+
+#### GET /payables
+Lista todas as contas a pagar do usuário.
+
+#### POST /payables
+Cria uma nova conta a pagar.
+```json
+{
+  "customer_id": 1,
+  "description": "Compra de insumos",
+  "amount": 1000.00,
+  "due_date": "2024-04-20",
+  "payment_terms": "30 dias"
+}
+```
+
+#### GET /payables/:id
+Retorna detalhes de uma conta a pagar específica.
+
+#### PUT /payables/:id
+Atualiza uma conta a pagar.
+```json
+{
+  "amount": 1200.00,
+  "due_date": "2024-05-20"
+}
+```
+
+#### DELETE /payables/:id
+Remove uma conta a pagar.
+
+#### GET /payables/:id/payments
+Lista todos os pagamentos de uma conta a pagar.
+
+#### POST /payables/:id/payments
+Registra um novo pagamento.
+```json
+{
+  "amount": 500.00,
+  "payment_date": "2024-03-20",
+  "payment_method": "pix",
+  "description": "Pagamento parcial",
+  "account_id": 1
+}
+```
+
+## Middlewares
+
+### AuthMiddleware
+Verifica se o usuário está autenticado através do token JWT.
+
+### ErrorHandler
+Trata erros da aplicação e retorna respostas apropriadas.
+
+## Configurações
+
+### Database
+Configuração do banco de dados MySQL usando Sequelize.
+
+### JWT
+Configuração do JWT para autenticação.
+
+## Scripts Disponíveis
+
+- `npm start`: Inicia o servidor
+- `npm run dev`: Inicia o servidor em modo desenvolvimento
+- `npm run migrate`: Executa as migrações do banco de dados
+- `npm run seed`: Popula o banco com dados iniciais
+
+## Segurança
+
+- Autenticação via JWT
+- Senhas criptografadas com bcrypt
+- Validação de dados com Zod
+- Proteção contra SQL Injection (Sequelize)
+- CORS configurado
+- Rate limiting
+- Sanitização de inputs 

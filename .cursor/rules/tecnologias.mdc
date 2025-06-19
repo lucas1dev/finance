@@ -1,0 +1,202 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regras para o projeto finance (Backend e Frontend)
+
+## 1. Tecnologias do Projeto
+- **Backend**: Node.js, Express, Sequelize MySQL, JWT, Zod, Swagger-UI-Express, Jest, Supertest.
+- **Frontend**: ReactJS (com JSX), Vite, Shadcn/UI, TailwindCSS.
+- **Testes**: Jest para backend e frontend, Supertest para testes de API, React Testing Library para componentes React.
+- **Estilização**: TailwindCSS para estilização, Shadcn/UI para componentes reutilizáveis.
+
+## 2. Documentação Obrigatória
+### Backend (Node.js/Express)
+- Use **JSDoc** para documentar funções, middlewares, modelos Sequelize, e rotas.
+- Inclua:
+  - Descrição do propósito e funcionalidade.
+  - Parâmetros de entrada (tipos e descrição).
+  - Valor retornado (tipo e descrição).
+  - Exemplo de uso e erros lançados.
+- Exemplo de documentação para uma rota:
+  ```javascript
+  /**
+   * Obtém a lista de transações de um usuário.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.userId - ID do usuário autenticado (via JWT).
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Lista de transações em formato JSON.
+   * @throws {Error} Se o usuário não for encontrado ou houver erro no banco.
+   * @example
+   * // GET /transactions
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Retorno: [{ id: 1, amount: 100, type: "income" }, ...]
+   */
+  async function getTransactions(req, res) {
+    // Implementação
+  }
+  ```
+- Para modelos Sequelize, documente atributos e associações.
+- Para esquemas Zod, documente os campos esperados e restrições.
+
+### Frontend (ReactJS/Vite/Shadcn/TailwindCSS)
+- Use **JSDoc** para documentar componentes React, hooks, e funções utilitárias.
+- Inclua:
+  - Descrição do componente/hook e seu propósito.
+  - Props (tipos e descrição).
+  - Estado retornado (para hooks).
+  - Exemplo de uso.
+- Exemplo de documentação para um componente:
+  ```javascript
+  /**
+   * Componente de botão reutilizável estilizado com TailwindCSS e Shadcn/UI.
+   * @param {Object} props - Propriedades do componente.
+   * @param {string} props.label - Texto exibido no botão.
+   * @param {'primary' | 'secondary'} props.variant - Variante de estilo do botão.
+   * @param {function} props.onClick - Função chamada ao clicar no botão.
+   * @returns {JSX.Element} Botão estilizado.
+   * @example
+   * <Button label="Salvar" variant="primary" onClick={() => console.log('Clicado')} />
+   */
+  function Button({ label, variant, onClick }) {
+    return (
+      <button className={`btn ${variant === 'primary' ? 'bg-blue-500' : 'bg-gray-500'}`} onClick={onClick}>
+        {label}
+      </button>
+    );
+  }
+  ```
+- Documente estilos TailwindCSS inline com comentários explicando a intenção (ex.: `/* Botão principal com fundo azul */`).
+
+## 3. Criação de Testes
+### Backend
+- Crie testes unitários e de integração com **Jest** e **Supertest** no diretório `__tests__/`.
+- Estruture em subdiretórios: `__tests__/controllers/`, `__tests__/models/`, `__tests__/routes/`.
+- Testes devem:
+  - Cobrir casos comuns, de borda, e de erro (ex.: entradas inválidas, falhas de autenticação).
+  - Usar `jest.mock` para mockar dependências (ex.: Sequelize, serviços externos).
+  - Validar status HTTP e corpo das respostas para endpoints.
+- Exemplo de teste para uma rota:
+  ```javascript
+  const request = require('supertest');
+  const app = require('../server/app');
+  const { Transaction } = require('../server/models');
+
+  describe('GET /transactions', () => {
+    it('should return transactions for authenticated user', async () => {
+      const response = await request(app)
+        .get('/transactions')
+        .set('Authorization', 'Bearer valid-token');
+      expect(response.status).toBe(200);
+      expect(response.body).toBeInstanceOf(Array);
+    });
+
+    it('should return 401 for unauthenticated user', async () => {
+      const response = await request(app).get('/transactions');
+      expect(response.status).toBe(401);
+    });
+  });
+  ```
+
+### Frontend
+- Crie testes para componentes React e hooks com **Jest** e **React Testing Library**.
+- Estruture testes em `__tests__/components/` ou `__tests__/hooks/`.
+- Testes devem:
+  - Verificar renderização correta de componentes.
+  - Testar interações do usuário (ex.: cliques, mudanças de input).
+  - Cobrir estados diferentes (ex.: loading, erro, sucesso).
+- Exemplo de teste para um componente:
+  ```javascript
+  import { render, screen, fireEvent } from '@testing-library/react';
+  import Button from '../src/components/Button';
+
+  describe('Button Component', () => {
+    it('renders with correct label', () => {
+      render(<Button label="Salvar" variant="primary" />);
+      expect(screen.getByText('Salvar')).toBeInTheDocument();
+    });
+
+    it('calls onClick when clicked', () => {
+      const handleClick = jest.fn();
+      render(<Button label="Salvar" variant="primary" onClick={handleClick} />);
+      fireEvent.click(screen.getByText('Salvar'));
+      expect(handleClick).toHaveBeenCalledTimes(1);
+    });
+  });
+  ```
+
+## 4. Execução de Testes
+- **Backend**: Execute `npm test` (equivalente a `jest`) após criar testes.
+- **Frontend**: Execute `npm test` em um projeto Vite configurado com Jest.
+- Forneça relatório com:
+  - Número de testes executados.
+  - Quantidade de testes que passaram/falharam.
+  - Cobertura de código (usando `npm run test:coverage`).
+- Se testes falharem, sugira correções e reexecute.
+- Comandos:
+  ```bash
+  npm test
+  npm run test:coverage
+  ```
+
+## 5. Boas Práticas
+### Backend
+- Siga o padrão MVC: `server/controllers/`, `server/models/`, `server/routes/`, `server/middlewares/`.
+- Use `async/await` para chamadas assíncronas.
+- Valide entradas com **Zod** em middlewares ou controllers.
+- Aplique **helmet** e **express-rate-limit** para segurança.
+- Use variáveis de ambiente com **dotenv** para configurações sensíveis.
+
+### Frontend
+- Estruture componentes em `src/components/` e hooks em `src/hooks/`.
+- Use **Shadcn/UI** para componentes reutilizáveis (ex.: Button, Input, Table).
+- Aplique **TailwindCSS** para estilização, preferindo classes utilitárias a CSS customizado.
+- Evite `<form>` com `onSubmit` devido a restrições de sandbox; use `onClick` ou eventos alternativos.
+- Use JSX com `className` (não `class`) para atributos.
+- Prefira componentes funcionais e hooks sobre classes.
+- Estruture o projeto Vite:
+  - `src/components/`: Componentes React.
+  - `src/pages/`: Páginas ou rotas.
+  - `src/lib/`: Funções utilitárias e hooks.
+  - `src/styles/`: Configurações globais de TailwindCSS (se necessário).
+
+## 6. Estrutura de Arquivos
+- **Backend**:
+  - `server/controllers/`: Lógica de negócio.
+  - `server/models/`: Modelos Sequelize.
+  - `server/routes/`: Definições de rotas.
+  - `server/middlewares/`: Middlewares (ex.: autenticação, validação).
+  - `__tests__/`: Testes (ex.: `userController.test.js`).
+- **Frontend**:
+  - `src/components/`: Componentes reutilizáveis.
+  - `src/pages/`: Páginas React.
+  - `src/hooks/`: Hooks customizados.
+  - `__tests__/`: Testes (ex.: `Button.test.jsx`).
+- Nomeie arquivos de teste como `<nome>.test.js` ou `<nome>.test.jsx`.
+
+## 7. Integração com Dependências
+- **Backend**:
+  - Atualize documentação Swagger em `server/docs/` para novas rotas.
+  - Use Sequelize com `sequelize-cli` para migrations e seeds.
+  - Implemente autenticação JWT em rotas protegidas.
+- **Frontend**:
+  - Configure Vite para build rápido e HMR (Hot Module Replacement).
+  - Instale e configure Shadcn/UI via CLI (`npx shadcn-ui@latest add <componente>`).
+  - Configure TailwindCSS no arquivo `tailwind.config.js` e `src/index.css`.
+  - Use CDN para React e dependências apenas em protótipos; prefira dependências locais via `npm` para produção.
+
+## 8. Relatórios
+- Após gerar código e testes, forneça:
+  - Descrição do que foi implementado.
+  - Caminho dos arquivos criados (ex.: `src/components/Button.jsx`, `__tests__/Button.test.jsx`).
+  - Resultados dos testes (ex.: "10 testes passaram, 0 falharam").
+  - Instruções para rodar testes:
+    ```bash
+    npm test
+    npm run test:coverage
+    ```
+  - Para frontend, instruções para iniciar o Vite:
+    ```bash
+    npm run dev
+    ```

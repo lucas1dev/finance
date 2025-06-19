@@ -1,0 +1,55 @@
+{
+  "tags": {
+    "allowUnknownTags": true,
+    "dictionaries": ["jsdoc", "closure"]
+  },
+  "source": {
+    "include": [
+      "controllers",
+      "models", 
+      "middlewares",
+      "routes",
+      "utils",
+      "app.js",
+      "server.js"
+    ],
+    "includePattern": ".+\\.js$",
+    "excludePattern": "(node_modules/|__tests__/|coverage/)"
+  },
+  "plugins": [],
+  "templates": {
+    "cleverLinks": false,
+    "monospaceLinks": false,
+    "default": {
+      "outputSourceFiles": true,
+      "includeDate": false
+    },
+    "path": "node_modules/clean-jsdoc-theme",
+    "theme_opts": {
+      "title": "Documentação da API Finance",
+      "menu": [
+        {
+          "title": "GitHub",
+          "link": "https://github.com/seu-usuario/finance"
+        }
+      ],
+      "search": true,
+      "nav_links": [
+        {
+          "label": "Controllers",
+          "href": "https://github.com/seu-usuario/finance/tree/main/server/controllers"
+        },
+        {
+          "label": "Models", 
+          "href": "https://github.com/seu-usuario/finance/tree/main/server/models"
+        }
+      ]
+    }
+  },
+  "opts": {
+    "destination": "./docs/jsdoc",
+    "recurse": true,
+    "readme": "./README.md",
+    "template": "node_modules/clean-jsdoc-theme"
+  }
+} 

@@ -1,0 +1,124 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Regras para o Cursor no projeto finance 
+
+## 1. Documentação Obrigatória
+- Todo código gerado deve incluir documentação clara usando **JSDoc** para funções, classes, middlewares e rotas.
+- Para cada função, middleware ou endpoint, inclua:
+  - Descrição do propósito e funcionalidade.
+  - Parâmetros de entrada (tipos e descrição).
+  - Valor retornado (tipo e descrição).
+  - Exemplo de uso, quando aplicável.
+  - Erros lançados (se houver).
+- Exemplo para uma rota Express:
+  ```javascript
+  /**
+   * Cria um novo usuário no sistema.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.body - Dados do usuário.
+   * @param {string} req.body.name - Nome do usuário.
+   * @param {string} req.body.email - Email do usuário.
+   * @param {string} req.body.password - Senha do usuário.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com o usuário criado.
+   * @throws {Error} Se os dados forem inválidos ou o email já estiver registrado.
+   * @example
+   * // POST /users
+   * // Body: { "name": "João", "email": "joao@example.com", "password": "123456" }
+   * // Retorno: { "id": 1, "name": "João", "email": "joao@example.com" }
+   */
+  async function createUser(req, res) {
+    // Implementação
+  }
+  ```
+- Para modelos Sequelize, inclua JSDoc descrevendo os atributos e associações.
+- Para validações com Zod, documente os esquemas com JSDoc, explicando os campos esperados e restrições.
+
+## 2. Criação de Testes
+- Crie testes unitários e de integração para cada função, middleware, modelo ou rota usando **Jest** e **Supertest** (para endpoints HTTP).
+- Estruture os testes no diretório `__tests__/` com subdiretórios correspondentes (ex.: `__tests__/controllers/`, `__tests__/models/`).
+- Os testes devem:
+  - Cobrir casos comuns, casos de borda e casos de erro (ex.: entradas inválidas, falhas de autenticação, erros de banco).
+  - Usar mocks para dependências externas (ex.: Sequelize, serviços de terceiros) com `jest.mock`.
+  - Validar respostas HTTP (status, body) para endpoints.
+- Exemplo de teste para uma rota com Supertest:
+  ```javascript
+  const request = require('supertest');
+  const app = require('../server/app');
+  const { User } = require('../server/models');
+
+  describe('POST /users', () => {
+    it('should create a new user with valid data', async () => {
+      const response = await request(app)
+        .post('/users')
+        .send({ name: 'João', email: 'joao@example.com', password: '123456' });
+      expect(response.status).toBe(201);
+      expect(response.body).toHaveProperty('id');
+      expect(response.body.email).toBe('joao@example.com');
+    });
+
+    it('should return 400 for invalid email', async () => {
+      const response = await request(app)
+        .post('/users')
+        .send({ name: 'João', email: 'invalid', password: '123456' });
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('error');
+    });
+  });
+  ```
+
+## 3. Execução de Testes
+- Após criar o código e os testes, execute automaticamente os testes com o comando `npm test` (equivalente a `jest`).
+- Forneça um relatório resumido com:
+  - Número de testes executados.
+  - Quantidade de testes que passaram/falharam.
+  - Cobertura de código (se possível, usando `npm run test:coverage`).
+- Se algum teste falhar, sugira correções no código e reexecute os testes.
+- Exemplo de comando para executar testes:
+  ```bash
+  npm test
+  ```
+- Para cobertura:
+  ```bash
+  npm run test:coverage
+  ```
+
+## 4. Boas Práticas
+- Siga o estilo de código Airbnb para JavaScript (usando ESLint, se configurado).
+- Use `async/await` para chamadas assíncronas e evite callbacks.
+- Para rotas, implemente validação com **Zod** antes de processar os dados.
+- Para segurança, use **helmet** em middlewares globais e **express-rate-limit** em endpoints sensíveis.
+- Use variáveis de ambiente com **dotenv** para configurações sensíveis (ex.: chaves JWT, credenciais do banco).
+- Estruture o projeto seguindo o padrão MVC:
+  - `server/controllers/`: Lógica de negócio das rotas.
+  - `server/models/`: Definições de modelos Sequelize.
+  - `server/middlewares/`: Middlewares para autenticação, validação, etc.
+  - `server/routes/`: Definição de rotas Express.
+  - `__tests__/`: Testes unitários e de integração.
+
+## 5. Estrutura de Arquivos
+- Mantenha a estrutura do projeto:
+  - Código fonte: `server/`
+  - Testes: `__tests__/`
+- Nomeie arquivos de teste como `<nome>.test.js` (ex.: `userController.test.js`).
+- Crie arquivos separados para cada recurso (ex.: `userController.js`, `userRoutes.js`, `userModel.js`).
+
+## 6. Relatórios
+- Após gerar código e testes, forneça:
+  - Descrição do que foi implementado.
+  - Caminho dos arquivos criados (ex.: `server/controllers/userController.js`, `__tests__/userController.test.js`).
+  - Resultados da execução dos testes (ex.: "5 testes passaram, 0 falharam").
+  - Instruções para rodar os testes manualmente:
+    ```bash
+    npm test
+    npm run test:coverage
+    ```
+
+## 7. Integração com Dependências
+- Para Sequelize, siga as convenções do `sequelize-cli` para modelos e migrations.
+- Para autenticação com JWT, documente os endpoints protegidos e inclua testes para cenários autenticados e não autenticados.
+- Para Swagger, atualize a documentação em `server/docs/` (ou onde o `swagger-ui-express` estiver configurado) com as novas rotas.
+- Para validações, use esquemas Zod claros e reutilizáveis em `server/database/`.
