@@ -20,6 +20,8 @@ server/
 - Sequelize (ORM)
 - MySQL
 - JWT (Autenticação)
+- Zod (Validação)
+- Jest (Testes)
 
 ## Configuração do Ambiente
 
@@ -139,6 +141,51 @@ npx sequelize-cli db:migrate
 - `payment_date`: Data do pagamento
 - `payment_method`: Método de pagamento
 - `description`: Descrição
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Investment
+- `id`: ID do investimento
+- `user_id`: ID do usuário
+- `account_id`: ID da conta
+- `category_id`: ID da categoria
+- `investment_type`: Tipo de investimento (acoes, fiis, renda_fixa, etc.)
+- `asset_name`: Nome do ativo
+- `ticker`: Código do ativo (opcional)
+- `invested_amount`: Valor total investido
+- `quantity`: Quantidade de ativos
+- `unit_price`: Preço unitário
+- `operation_date`: Data da operação
+- `operation_type`: Tipo de operação (compra/venda)
+- `broker`: Corretora
+- `observations`: Observações
+- `status`: Status (ativo/inativo)
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### InvestmentGoal
+- `id`: ID da meta
+- `user_id`: ID do usuário
+- `investment_id`: ID do investimento
+- `name`: Nome da meta
+- `target_amount`: Valor alvo
+- `target_date`: Data alvo
+- `current_amount`: Valor atual
+- `description`: Descrição
+- `status`: Status (ativa/concluida/cancelada)
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### InvestmentContribution
+- `id`: ID do aporte
+- `user_id`: ID do usuário
+- `investment_id`: ID do investimento
+- `contribution_date`: Data do aporte
+- `amount`: Valor total do aporte
+- `quantity`: Quantidade de ativos
+- `unit_price`: Preço unitário
+- `broker`: Corretora (opcional)
+- `observations`: Observações (opcional)
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
@@ -400,6 +447,122 @@ Registra um novo pagamento.
 }
 ```
 
+### Investimentos
+
+#### GET /investments
+Lista todos os investimentos do usuário com filtros e estatísticas.
+
+#### POST /investments
+Cria um novo investimento.
+```json
+{
+  "investment_type": "acoes",
+  "asset_name": "Petrobras",
+  "ticker": "PETR4",
+  "invested_amount": 1000.00,
+  "quantity": 100,
+  "unit_price": 10.00,
+  "operation_date": "2024-03-20",
+  "operation_type": "compra",
+  "broker": "xp_investimentos",
+  "account_id": 1,
+  "category_id": 1,
+  "observations": "Primeira compra"
+}
+```
+
+#### GET /investments/:id
+Retorna detalhes de um investimento específico.
+
+#### PUT /investments/:id
+Atualiza um investimento.
+```json
+{
+  "invested_amount": 1500.00,
+  "quantity": 150,
+  "observations": "Atualização"
+}
+```
+
+#### DELETE /investments/:id
+Remove um investimento.
+
+#### GET /investments/statistics
+Retorna estatísticas gerais dos investimentos.
+
+### Metas de Investimento
+
+#### GET /investment-goals
+Lista todas as metas de investimento do usuário.
+
+#### POST /investment-goals
+Cria uma nova meta de investimento.
+```json
+{
+  "investment_id": 1,
+  "name": "Meta Petrobras",
+  "target_amount": 5000.00,
+  "target_date": "2024-12-31",
+  "description": "Acumular 5000 reais em Petrobras"
+}
+```
+
+#### GET /investment-goals/:id
+Retorna detalhes de uma meta específica.
+
+#### PUT /investment-goals/:id
+Atualiza uma meta.
+```json
+{
+  "target_amount": 6000.00,
+  "target_date": "2024-11-30"
+}
+```
+
+#### DELETE /investment-goals/:id
+Remove uma meta.
+
+### Aportes de Investimento
+
+#### GET /investment-contributions
+Lista todos os aportes do usuário com filtros e paginação.
+
+#### POST /investment-contributions
+Cria um novo aporte.
+```json
+{
+  "investment_id": 1,
+  "contribution_date": "2024-03-20",
+  "amount": 500.00,
+  "quantity": 50,
+  "unit_price": 10.00,
+  "broker": "xp_investimentos",
+  "observations": "Aporte mensal"
+}
+```
+
+#### GET /investment-contributions/:id
+Retorna detalhes de um aporte específico.
+
+#### PUT /investment-contributions/:id
+Atualiza um aporte.
+```json
+{
+  "amount": 600.00,
+  "quantity": 60,
+  "observations": "Aporte atualizado"
+}
+```
+
+#### DELETE /investment-contributions/:id
+Remove um aporte.
+
+#### GET /investment-contributions/investment/:investmentId
+Lista todos os aportes de um investimento específico.
+
+#### GET /investment-contributions/statistics
+Retorna estatísticas gerais dos aportes.
+
 ## Middlewares
 
 ### AuthMiddleware
@@ -422,6 +585,31 @@ Configuração do JWT para autenticação.
 - `npm run dev`: Inicia o servidor em modo desenvolvimento
 - `npm run migrate`: Executa as migrações do banco de dados
 - `npm run seed`: Popula o banco com dados iniciais
+- `npm test`: Executa os testes
+- `npm run test:coverage`: Executa os testes com cobertura
+
+## Testes
+
+O projeto inclui testes unitários e de integração para todas as funcionalidades:
+
+```bash
+# Executar todos os testes
+npm test
+
+# Executar testes com cobertura
+npm run test:coverage
+
+# Executar testes específicos
+npm test -- __tests__/integration/investmentContribution.test.js
+```
+
+## Documentação da API
+
+A documentação completa da API está disponível via Swagger UI:
+
+```
+http://localhost:3001/api-docs
+```
 
 ## Segurança
 
