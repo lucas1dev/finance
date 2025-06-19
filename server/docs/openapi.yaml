@@ -176,6 +176,8 @@ components:
           type: integer
         category_id:
           type: integer
+        investment_id:
+          type: integer
         type:
           type: string
           enum: [income, expense]
@@ -249,6 +251,123 @@ components:
         invoice_number:
           type: string
         payment_terms:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Investment:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        account_id:
+          type: integer
+        category_id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [stock, bond, fund, crypto, real_estate, other]
+        amount:
+          type: number
+          format: float
+        quantity:
+          type: number
+          format: float
+        unit_price:
+          type: number
+          format: float
+        current_price:
+          type: number
+          format: float
+        total_invested:
+          type: number
+          format: float
+        total_quantity:
+          type: number
+          format: float
+        average_price:
+          type: number
+          format: float
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, sold, inactive]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        contributions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvestmentContribution'
+
+    InvestmentGoal:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        name:
+          type: string
+        target_amount:
+          type: number
+          format: float
+        current_amount:
+          type: number
+          format: float
+        target_date:
+          type: string
+          format: date
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high]
+        status:
+          type: string
+          enum: [active, completed, cancelled]
+        progress_percentage:
+          type: number
+          format: float
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InvestmentContribution:
+      type: object
+      properties:
+        id:
+          type: integer
+        investment_id:
+          type: integer
+        amount:
+          type: number
+          format: float
+        quantity:
+          type: number
+          format: float
+        unit_price:
+          type: number
+          format: float
+        contribution_date:
+          type: string
+          format: date
+        description:
           type: string
         created_at:
           type: string
@@ -2081,5 +2200,647 @@ paths:
           description: 2FA desabilitado com sucesso
         '401':
           description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+
+# --- INVESTMENTS ---
+  /investments:
+    get:
+      tags: [Investimentos]
+      summary: Lista todos os investimentos do usuário
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, sold, inactive]
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [stock, bond, fund, crypto, real_estate, other]
+      responses:
+        '200':
+          description: Lista de investimentos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Investment'
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+    post:
+      tags: [Investimentos]
+      summary: Cria um novo investimento
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - account_id
+                - category_id
+                - name
+                - type
+                - amount
+                - quantity
+                - unit_price
+              properties:
+                account_id:
+                  type: integer
+                category_id:
+                  type: integer
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [stock, bond, fund, crypto, real_estate, other]
+                amount:
+                  type: number
+                  format: float
+                quantity:
+                  type: number
+                  format: float
+                unit_price:
+                  type: number
+                  format: float
+                current_price:
+                  type: number
+                  format: float
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [active, sold, inactive]
+      responses:
+        '201':
+          description: Investimento criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Investment'
+        '400':
+          description: Dados inválidos
+        '401':
+          description: Não autorizado
+        '404':
+          description: Conta ou categoria não encontrada
+        '500':
+          description: Erro interno do servidor
+
+  /investments/{id}:
+    get:
+      tags: [Investimentos]
+      summary: Obtém um investimento específico
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Investimento encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Investment'
+        '401':
+          description: Não autorizado
+        '404':
+          description: Investimento não encontrado
+        '500':
+          description: Erro interno do servidor
+    put:
+      tags: [Investimentos]
+      summary: Atualiza um investimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_id:
+                  type: integer
+                category_id:
+                  type: integer
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [stock, bond, fund, crypto, real_estate, other]
+                amount:
+                  type: number
+                  format: float
+                quantity:
+                  type: number
+                  format: float
+                unit_price:
+                  type: number
+                  format: float
+                current_price:
+                  type: number
+                  format: float
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [active, sold, inactive]
+      responses:
+        '200':
+          description: Investimento atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Investment'
+        '400':
+          description: Dados inválidos
+        '401':
+          description: Não autorizado
+        '404':
+          description: Investimento não encontrado
+        '500':
+          description: Erro interno do servidor
+    delete:
+      tags: [Investimentos]
+      summary: Remove um investimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Investimento removido com sucesso
+        '401':
+          description: Não autorizado
+        '404':
+          description: Investimento não encontrado
+        '500':
+          description: Erro interno do servidor
+
+# --- INVESTMENT GOALS ---
+  /investment-goals:
+    get:
+      tags: [Metas de Investimento]
+      summary: Lista todas as metas de investimento do usuário
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, completed, cancelled]
+        - in: query
+          name: priority
+          schema:
+            type: string
+            enum: [low, medium, high]
+      responses:
+        '200':
+          description: Lista de metas de investimento
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvestmentGoal'
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+    post:
+      tags: [Metas de Investimento]
+      summary: Cria uma nova meta de investimento
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - target_amount
+                - target_date
+              properties:
+                name:
+                  type: string
+                target_amount:
+                  type: number
+                  format: float
+                current_amount:
+                  type: number
+                  format: float
+                target_date:
+                  type: string
+                  format: date
+                description:
+                  type: string
+                priority:
+                  type: string
+                  enum: [low, medium, high]
+                status:
+                  type: string
+                  enum: [active, completed, cancelled]
+      responses:
+        '201':
+          description: Meta de investimento criada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentGoal'
+        '400':
+          description: Dados inválidos
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+
+  /investment-goals/{id}:
+    get:
+      tags: [Metas de Investimento]
+      summary: Obtém uma meta de investimento específica
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Meta de investimento encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentGoal'
+        '401':
+          description: Não autorizado
+        '404':
+          description: Meta de investimento não encontrada
+        '500':
+          description: Erro interno do servidor
+    put:
+      tags: [Metas de Investimento]
+      summary: Atualiza uma meta de investimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                target_amount:
+                  type: number
+                  format: float
+                current_amount:
+                  type: number
+                  format: float
+                target_date:
+                  type: string
+                  format: date
+                description:
+                  type: string
+                priority:
+                  type: string
+                  enum: [low, medium, high]
+                status:
+                  type: string
+                  enum: [active, completed, cancelled]
+      responses:
+        '200':
+          description: Meta de investimento atualizada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentGoal'
+        '400':
+          description: Dados inválidos
+        '401':
+          description: Não autorizado
+        '404':
+          description: Meta de investimento não encontrada
+        '500':
+          description: Erro interno do servidor
+    delete:
+      tags: [Metas de Investimento]
+      summary: Remove uma meta de investimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Meta de investimento removida com sucesso
+        '401':
+          description: Não autorizado
+        '404':
+          description: Meta de investimento não encontrada
+        '500':
+          description: Erro interno do servidor
+
+# --- INVESTMENT CONTRIBUTIONS ---
+  /investments/{investmentId}/contributions:
+    get:
+      tags: [Aportes de Investimento]
+      summary: Lista todos os aportes de um investimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: investmentId
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Lista de aportes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvestmentContribution'
+        '401':
+          description: Não autorizado
+        '404':
+          description: Investimento não encontrado
+        '500':
+          description: Erro interno do servidor
+    post:
+      tags: [Aportes de Investimento]
+      summary: Cria um novo aporte para um investimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: investmentId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - quantity
+                - unit_price
+                - contribution_date
+              properties:
+                amount:
+                  type: number
+                  format: float
+                quantity:
+                  type: number
+                  format: float
+                unit_price:
+                  type: number
+                  format: float
+                contribution_date:
+                  type: string
+                  format: date
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Aporte criado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentContribution'
+        '400':
+          description: Dados inválidos
+        '401':
+          description: Não autorizado
+        '404':
+          description: Investimento não encontrado
+        '500':
+          description: Erro interno do servidor
+
+  /investments/{investmentId}/contributions/{id}:
+    get:
+      tags: [Aportes de Investimento]
+      summary: Obtém um aporte específico
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: investmentId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Aporte encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentContribution'
+        '401':
+          description: Não autorizado
+        '404':
+          description: Aporte não encontrado
+        '500':
+          description: Erro interno do servidor
+    put:
+      tags: [Aportes de Investimento]
+      summary: Atualiza um aporte
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: investmentId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  format: float
+                quantity:
+                  type: number
+                  format: float
+                unit_price:
+                  type: number
+                  format: float
+                contribution_date:
+                  type: string
+                  format: date
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Aporte atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestmentContribution'
+        '400':
+          description: Dados inválidos
+        '401':
+          description: Não autorizado
+        '404':
+          description: Aporte não encontrado
+        '500':
+          description: Erro interno do servidor
+    delete:
+      tags: [Aportes de Investimento]
+      summary: Remove um aporte
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: investmentId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Aporte removido com sucesso
+        '401':
+          description: Não autorizado
+        '404':
+          description: Aporte não encontrado
+        '500':
+          description: Erro interno do servidor
+
+  /investments/{investmentId}/contributions/stats:
+    get:
+      tags: [Aportes de Investimento]
+      summary: Obtém estatísticas dos aportes de um investimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: investmentId
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: start_date
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: end_date
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Estatísticas dos aportes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_contributions:
+                    type: integer
+                  total_amount:
+                    type: number
+                    format: float
+                  total_quantity:
+                    type: number
+                    format: float
+                  average_unit_price:
+                    type: number
+                    format: float
+                  first_contribution_date:
+                    type: string
+                    format: date
+                  last_contribution_date:
+                    type: string
+                    format: date
+                  monthly_contributions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month:
+                          type: string
+                        total_amount:
+                          type: number
+                          format: float
+                        total_quantity:
+                          type: number
+                          format: float
+        '401':
+          description: Não autorizado
+        '404':
+          description: Investimento não encontrado
         '500':
           description: Erro interno do servidor 

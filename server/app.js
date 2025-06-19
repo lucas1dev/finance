@@ -147,6 +147,9 @@ app.use('/api/suppliers', require('./routes/supplierRoutes'));
 app.use('/api/payables', require('./routes/payableRoutes'));
 app.use('/api', require('./routes/payments'));
 app.use('/api/fixed-accounts', require('./routes/fixedAccounts'));
+app.use('/api/investments', require('./routes/investments'));
+app.use('/api/investment-goals', require('./routes/investmentGoals'));
+app.use('/api/investment-contributions', require('./routes/investmentContributions'));
 
 // Middleware para rotas não encontradas
 app.use('*', (req, res) => {

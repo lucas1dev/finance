@@ -52,6 +52,14 @@ module.exports = (sequelize) => {
           key: 'id',
         },
       },
+      investment_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'investments',
+          key: 'id',
+        },
+      },
       type: {
         type: DataTypes.ENUM('income', 'expense'),
         allowNull: false,
@@ -148,6 +156,10 @@ module.exports = (sequelize) => {
     Transaction.belongsTo(models.FixedAccount, {
       foreignKey: 'fixed_account_id',
       as: 'fixedAccount'
+    });
+    Transaction.belongsTo(models.Investment, {
+      foreignKey: 'investment_id',
+      as: 'investment'
     });
   };
 
