@@ -380,5 +380,122 @@ module.exports = (sequelize) => {
     return contributions;
   };
 
+  /**
+   * Método estático para calcular a posição atual de um ativo para um usuário.
+   * @param {number} userId - ID do usuário.
+   * @param {string} assetName - Nome do ativo.
+   * @param {string} ticker - Ticker do ativo (opcional).
+   * @returns {Promise<Object>} Posição do ativo com quantidade e valor total.
+   */
+  Investment.getPosition = async function(userId, assetName, ticker = null) {
+    const where = {
+      user_id: userId,
+      asset_name: assetName,
+      status: 'ativo'
+    };
+
+    if (ticker) {
+      where.ticker = ticker;
+    }
+
+    const investments = await Investment.findAll({ where });
+
+    let totalQuantity = 0;
+    let totalInvested = 0;
+    let averagePrice = 0;
+
+    for (const investment of investments) {
+      if (investment.operation_type === 'compra') {
+        totalQuantity += parseFloat(investment.quantity);
+        totalInvested += parseFloat(investment.invested_amount);
+      } else if (investment.operation_type === 'venda') {
+        totalQuantity -= parseFloat(investment.quantity);
+        totalInvested -= parseFloat(investment.invested_amount);
+      }
+    }
+
+    if (totalQuantity > 0) {
+      averagePrice = totalInvested / totalQuantity;
+    }
+
+    return {
+      assetName,
+      ticker,
+      totalQuantity,
+      totalInvested,
+      averagePrice,
+      hasPosition: totalQuantity > 0
+    };
+  };
+
+  /**
+   * Método estático para listar todas as posições ativas de um usuário.
+   * @param {number} userId - ID do usuário.
+   * @returns {Promise<Array>} Lista de posições ativas.
+   */
+  Investment.getActivePositions = async function(userId) {
+    // Busca todos os investimentos ativos do usuário
+    const investments = await Investment.findAll({
+      where: {
+        user_id: userId,
+        status: 'ativo'
+      }
+    });
+
+    // Agrupa por asset_name e ticker
+    const assetGroups = {};
+    
+    for (const investment of investments) {
+      const key = `${investment.asset_name}_${investment.ticker || 'no_ticker'}`;
+      
+      if (!assetGroups[key]) {
+        assetGroups[key] = {
+          asset_name: investment.asset_name,
+          ticker: investment.ticker,
+          investment_type: investment.investment_type,
+          broker: investment.broker,
+          investments: []
+        };
+      }
+      
+      assetGroups[key].investments.push(investment);
+    }
+
+    // Calcula posições para cada grupo
+    const positions = [];
+
+    for (const key in assetGroups) {
+      const group = assetGroups[key];
+      const position = await Investment.getPosition(
+        userId, 
+        group.asset_name, 
+        group.ticker
+      );
+
+      if (position.hasPosition) {
+        positions.push({
+          ...position,
+          investment_type: group.investment_type,
+          broker: group.broker
+        });
+      }
+    }
+
+    return positions;
+  };
+
+  /**
+   * Método estático para verificar se há quantidade suficiente para venda.
+   * @param {number} userId - ID do usuário.
+   * @param {string} assetName - Nome do ativo.
+   * @param {number} quantityToSell - Quantidade a ser vendida.
+   * @param {string} ticker - Ticker do ativo (opcional).
+   * @returns {Promise<boolean>} True se há quantidade suficiente.
+   */
+  Investment.hasEnoughQuantity = async function(userId, assetName, quantityToSell, ticker = null) {
+    const position = await Investment.getPosition(userId, assetName, ticker);
+    return position.totalQuantity >= quantityToSell;
+  };
+
   return Investment;
 }; 

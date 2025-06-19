@@ -1,5 +1,5 @@
 const { Investment, Account, Category, Transaction } = require('../models');
-const { createInvestmentSchema, updateInvestmentSchema } = require('../utils/investmentValidators');
+const { createInvestmentSchema, updateInvestmentSchema, sellAssetSchema, listPositionsSchema } = require('../utils/investmentValidators');
 const { ValidationError, NotFoundError } = require('../utils/errors');
 const { Op } = require('sequelize');
 
@@ -419,6 +419,238 @@ class InvestmentController {
       byBroker,
       recentInvestments
     });
+  }
+
+  /**
+   * Lista todas as posições ativas disponíveis para venda.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.query - Parâmetros de consulta.
+   * @param {string} req.query.investment_type - Filtrar por tipo de investimento.
+   * @param {string} req.query.broker - Filtrar por corretora.
+   * @param {string} req.query.asset_name - Buscar por nome do ativo.
+   * @param {string} req.query.ticker - Buscar por ticker.
+   * @param {number} req.query.page - Página para paginação.
+   * @param {number} req.query.limit - Limite por página.
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Lista de posições ativas.
+   * @example
+   * // GET /investments/positions?investment_type=acoes&page=1&limit=10
+   * // Retorno: { "positions": [...], "pagination": {...} }
+   */
+  async getActivePositions(req, res) {
+    try {
+      const validatedFilters = listPositionsSchema.parse(req.query);
+      
+      // Obtém todas as posições ativas
+      let positions = await Investment.getActivePositions(req.userId);
+
+      // Aplica filtros
+      if (validatedFilters.investment_type) {
+        positions = positions.filter(pos => pos.investment_type === validatedFilters.investment_type);
+      }
+
+      if (validatedFilters.broker) {
+        positions = positions.filter(pos => pos.broker === validatedFilters.broker);
+      }
+
+      if (validatedFilters.asset_name) {
+        const searchTerm = validatedFilters.asset_name.toLowerCase();
+        positions = positions.filter(pos => 
+          pos.assetName.toLowerCase().includes(searchTerm)
+        );
+      }
+
+      if (validatedFilters.ticker) {
+        const searchTerm = validatedFilters.ticker.toLowerCase();
+        positions = positions.filter(pos => 
+          pos.ticker && pos.ticker.toLowerCase().includes(searchTerm)
+        );
+      }
+
+      // Aplica paginação
+      const total = positions.length;
+      const page = validatedFilters.page;
+      const limit = validatedFilters.limit;
+      const offset = (page - 1) * limit;
+      const paginatedPositions = positions.slice(offset, offset + limit);
+
+      res.json({
+        positions: paginatedPositions,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      if (error.name === 'ZodError') {
+        throw new ValidationError('Filtros inválidos', error.errors);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Obtém a posição detalhada de um ativo específico.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.params - Parâmetros da URL.
+   * @param {string} req.params.assetName - Nome do ativo.
+   * @param {string} req.params.ticker - Ticker do ativo (opcional).
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Posição detalhada do ativo.
+   * @throws {NotFoundError} Se o ativo não for encontrado.
+   * @example
+   * // GET /investments/positions/Petrobras
+   * // Retorno: { "assetName": "Petrobras", "totalQuantity": 100, ... }
+   */
+  async getAssetPosition(req, res) {
+    const { assetName, ticker } = req.params;
+
+    const position = await Investment.getPosition(req.userId, assetName, ticker);
+
+    if (!position.hasPosition) {
+      throw new NotFoundError('Posição não encontrada para este ativo');
+    }
+
+    // Busca histórico de operações para este ativo
+    const operations = await Investment.findAll({
+      where: {
+        user_id: req.userId,
+        asset_name: assetName,
+        ticker: ticker || null,
+        status: 'ativo'
+      },
+      include: [
+        { model: Account, as: 'account' },
+        { model: Category, as: 'category' }
+      ],
+      order: [['operation_date', 'ASC']]
+    });
+
+    res.json({
+      position,
+      operations
+    });
+  }
+
+  /**
+   * Realiza a venda de ativos de investimento, gerando uma transação de entrada na conta selecionada.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.params - Parâmetros da rota.
+   * @param {string} req.params.assetName - Nome do ativo a ser vendido.
+   * @param {string} [req.params.ticker] - Ticker do ativo (opcional).
+   * @param {Object} req.body - Dados da venda.
+   * @param {number} req.body.quantity - Quantidade de ativos a vender.
+   * @param {number} req.body.unit_price - Preço unitário de venda.
+   * @param {string} req.body.operation_date - Data da operação de venda.
+   * @param {number} req.body.account_id - ID da conta que receberá o valor.
+   * @param {string} req.body.broker - Corretora da operação.
+   * @param {string} [req.body.observations] - Observações (opcional).
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com os dados da venda, investimento e transação gerada.
+   * @throws {ValidationError} Se não houver posição suficiente ou dados inválidos.
+   * @throws {NotFoundError} Se o ativo ou conta não for encontrado.
+   * @example
+   * // POST /api/investments/positions/PETR4/sell
+   * // Body: { quantity: 10, unit_price: 30, operation_date: '2024-03-25', account_id: 1, broker: 'xp_investimentos' }
+   * // Retorno: { message: 'Venda registrada com sucesso', investment: { ... }, transaction: { ... } }
+   */
+  async sellAsset(req, res) {
+    try {
+      const { assetName, ticker } = req.params;
+      const validatedData = sellAssetSchema.parse(req.body);
+      const position = await Investment.getPosition(req.userId, assetName, ticker);
+      if (!position.hasPosition) {
+        throw new NotFoundError('Posição não encontrada para este ativo');
+      }
+      if (position.totalQuantity < validatedData.quantity) {
+        throw new ValidationError(
+          `Quantidade insuficiente. Posição atual: ${position.totalQuantity}, Quantidade solicitada: ${validatedData.quantity}`
+        );
+      }
+      const account = await Account.findOne({
+        where: { id: validatedData.account_id, user_id: req.userId }
+      });
+      if (!account) {
+        throw new NotFoundError('Conta não encontrada');
+      }
+      const totalAmount = validatedData.quantity * validatedData.unit_price;
+      const originalInvestment = await Investment.findOne({
+        where: {
+          user_id: req.userId,
+          asset_name: assetName,
+          ticker: ticker || null,
+          operation_type: 'compra',
+          status: 'ativo'
+        },
+        order: [['operation_date', 'ASC']]
+      });
+      const userCategory = await Category.findOne({
+        where: { user_id: req.userId },
+        order: [['id', 'ASC']]
+      });
+      const categoryId = originalInvestment?.category_id || userCategory?.id || 1;
+      const investment = await Investment.create({
+        investment_type: 'acoes',
+        asset_name: assetName,
+        ticker: ticker,
+        invested_amount: totalAmount,
+        quantity: validatedData.quantity,
+        unit_price: validatedData.unit_price,
+        operation_date: validatedData.operation_date,
+        operation_type: 'venda',
+        broker: validatedData.broker,
+        observations: validatedData.observations,
+        status: 'ativo',
+        user_id: req.userId,
+        account_id: validatedData.account_id,
+        category_id: categoryId
+      });
+      await account.update({
+        balance: parseFloat(account.balance) + totalAmount
+      });
+      const transaction = await Transaction.create({
+        type: 'income',
+        amount: totalAmount,
+        description: `Venda de ${validatedData.quantity} ${assetName}${ticker ? ` (${ticker})` : ''}`,
+        date: validatedData.operation_date,
+        account_id: validatedData.account_id,
+        category_id: categoryId,
+        user_id: req.userId,
+        investment_id: investment.id
+      });
+      const transactionWithAssociations = await Transaction.findByPk(transaction.id, {
+        include: [
+          { model: Account, as: 'account' }
+        ]
+      });
+      const investmentWithAssociations = await Investment.findByPk(investment.id, {
+        include: [
+          { model: Account, as: 'account' },
+          { model: Category, as: 'category' }
+        ]
+      });
+      res.status(201).json({
+        message: 'Venda registrada com sucesso',
+        investment: investmentWithAssociations,
+        transaction: transactionWithAssociations
+      });
+    } catch (error) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: error.errors.map(e => e.message).join(', ') });
+      }
+      if (error instanceof ValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
+      if (error instanceof NotFoundError) {
+        return res.status(404).json({ message: error.message });
+      }
+      console.error(error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
   }
 }
 

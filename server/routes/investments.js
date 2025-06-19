@@ -54,12 +54,70 @@ router.post('/', asyncHandler(investmentController.createInvestment));
 router.get('/', asyncHandler(investmentController.getInvestments));
 
 /**
- * @route GET /investments/statistics
- * @desc Obtém estatísticas dos investimentos
- * @access Private
- * @returns {Object} Estatísticas dos investimentos
+ * GET /investments/statistics
+ * Obtém estatísticas dos investimentos.
+ * @returns {Object} Estatísticas gerais, por tipo e por corretora
  */
 router.get('/statistics', asyncHandler(investmentController.getInvestmentStatistics));
+
+/**
+ * GET /investments/positions
+ * Lista todas as posições ativas disponíveis para venda.
+ * @query {string} investment_type - Filtrar por tipo de investimento (opcional)
+ * @query {string} broker - Filtrar por corretora (opcional)
+ * @query {string} asset_name - Buscar por nome do ativo (opcional)
+ * @query {string} ticker - Buscar por ticker (opcional)
+ * @query {number} page - Página (padrão: 1)
+ * @query {number} limit - Limite por página (padrão: 10)
+ * @returns {Object} Lista de posições ativas com paginação
+ */
+router.get('/positions', asyncHandler(investmentController.getActivePositions));
+
+/**
+ * POST /investments/positions/:assetName/sell
+ * Vende um ativo existente.
+ * @param {string} assetName - Nome do ativo
+ * @body {number} quantity - Quantidade a ser vendida
+ * @body {number} unit_price - Preço unitário de venda
+ * @body {string} operation_date - Data da operação (YYYY-MM-DD)
+ * @body {number} account_id - ID da conta que receberá o valor
+ * @body {string} broker - Corretora
+ * @body {string} observations - Observações (opcional)
+ * @returns {Object} Venda registrada com transação
+ */
+router.post('/positions/:assetName/sell', asyncHandler(investmentController.sellAsset));
+
+/**
+ * POST /investments/positions/:assetName/:ticker/sell
+ * Vende um ativo existente com ticker específico.
+ * @param {string} assetName - Nome do ativo
+ * @param {string} ticker - Ticker do ativo
+ * @body {number} quantity - Quantidade a ser vendida
+ * @body {number} unit_price - Preço unitário de venda
+ * @body {string} operation_date - Data da operação (YYYY-MM-DD)
+ * @body {number} account_id - ID da conta que receberá o valor
+ * @body {string} broker - Corretora
+ * @body {string} observations - Observações (opcional)
+ * @returns {Object} Venda registrada com transação
+ */
+router.post('/positions/:assetName/:ticker/sell', asyncHandler(investmentController.sellAsset));
+
+/**
+ * GET /investments/positions/:assetName
+ * Obtém a posição detalhada de um ativo específico.
+ * @param {string} assetName - Nome do ativo
+ * @returns {Object} Posição detalhada do ativo com histórico de operações
+ */
+router.get('/positions/:assetName', asyncHandler(investmentController.getAssetPosition));
+
+/**
+ * GET /investments/positions/:assetName/:ticker
+ * Obtém a posição detalhada de um ativo específico com ticker.
+ * @param {string} assetName - Nome do ativo
+ * @param {string} ticker - Ticker do ativo
+ * @returns {Object} Posição detalhada do ativo com histórico de operações
+ */
+router.get('/positions/:assetName/:ticker', asyncHandler(investmentController.getAssetPosition));
 
 /**
  * @route GET /investments/:id

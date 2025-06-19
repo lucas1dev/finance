@@ -7,31 +7,46 @@ describe('Investment Routes', () => {
   let token, user, account, category;
 
   beforeAll(async () => {
-    // Criar usuário de teste
-    user = await User.create({
-      name: 'Test User',
-      email: 'test@example.com',
-      password: 'password123'
-    });
+    try {
+      console.log('Starting investment test setup...');
+      
+      // Criar usuário de teste com email único
+      user = await User.create({
+        name: 'Test User Investment',
+        email: `test.investment.${Date.now()}@example.com`,
+        password: 'password123'
+      });
+      
+      console.log('User created:', user.id);
 
-    // Criar conta de teste
-    account = await Account.create({
-      name: 'Conta Principal',
-      bank_name: 'Banco Teste',
-      account_type: 'checking',
-      balance: 10000,
-      user_id: user.id
-    });
+      // Criar conta de teste
+      account = await Account.create({
+        name: 'Conta Principal',
+        bank_name: 'Banco Teste',
+        account_type: 'checking',
+        balance: 10000,
+        user_id: user.id
+      });
+      
+      console.log('Account created:', account.id);
 
-    // Criar categoria de teste
-    category = await Category.create({
-      name: 'Ações',
-      type: 'expense',
-      user_id: user.id
-    });
+      // Criar categoria de teste
+      category = await Category.create({
+        name: 'Ações',
+        type: 'expense',
+        user_id: user.id
+      });
+      
+      console.log('Category created:', category.id);
 
-    // Gerar token JWT
-    token = generateToken(user.id);
+      // Gerar token JWT
+      token = generateToken(user.id);
+      console.log('Token generated');
+      
+    } catch (error) {
+      console.error('Error in beforeAll:', error);
+      throw error;
+    }
   });
 
   afterAll(async () => {
@@ -403,6 +418,178 @@ describe('Investment Routes', () => {
       expect(response.body.general.totalInvested).toBe(3000);
       expect(response.body.general.totalSold).toBe(0);
       expect(response.body.general.netInvestment).toBe(3000);
+    });
+
+    it('should list active positions', async () => {
+      // Primeiro criar um investimento
+      const investmentData = {
+        investment_type: 'acoes',
+        asset_name: 'Petrobras',
+        ticker: 'PETR4',
+        invested_amount: 1000,
+        quantity: 100,
+        unit_price: 10,
+        operation_date: '2024-03-20',
+        operation_type: 'compra',
+        broker: 'xp_investimentos',
+        account_id: account.id,
+        category_id: category.id
+      };
+
+      await request(app)
+        .post('/api/investments')
+        .set('Authorization', `Bearer ${token}`)
+        .send(investmentData);
+
+      // Agora testar listagem de posições
+      const response = await request(app)
+        .get('/api/investments/positions')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('positions');
+      expect(response.body).toHaveProperty('pagination');
+      expect(Array.isArray(response.body.positions)).toBe(true);
+    });
+
+    it('should get specific asset position', async () => {
+      // Primeiro criar um investimento
+      const investmentData = {
+        investment_type: 'acoes',
+        asset_name: 'Vale',
+        ticker: 'VALE3',
+        invested_amount: 500,
+        quantity: 50,
+        unit_price: 10,
+        operation_date: '2024-03-20',
+        operation_type: 'compra',
+        broker: 'xp_investimentos',
+        account_id: account.id,
+        category_id: category.id
+      };
+
+      await request(app)
+        .post('/api/investments')
+        .set('Authorization', `Bearer ${token}`)
+        .send(investmentData);
+
+      // Agora testar obtenção da posição específica
+      const response = await request(app)
+        .get('/api/investments/positions/Vale')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('position');
+      expect(response.body).toHaveProperty('operations');
+      expect(response.body.position.assetName).toBe('Vale');
+      expect(response.body.position.totalQuantity).toBe(50);
+    });
+
+    it('should sell an existing asset', async () => {
+      // Primeiro criar um investimento para ter posição
+      const investmentData = {
+        investment_type: 'acoes',
+        asset_name: 'Bradesco',
+        ticker: 'BBDC4',
+        invested_amount: 1200,
+        quantity: 60,
+        unit_price: 20,
+        operation_date: '2024-03-20',
+        operation_type: 'compra',
+        broker: 'xp_investimentos',
+        account_id: account.id,
+        category_id: category.id
+      };
+
+      await request(app)
+        .post('/api/investments')
+        .set('Authorization', `Bearer ${token}`)
+        .send(investmentData);
+
+      // Agora vender parte da posição
+      const sellData = {
+        quantity: 30,
+        unit_price: 22,
+        operation_date: '2024-03-25',
+        account_id: account.id,
+        broker: 'xp_investimentos',
+        observations: 'Venda parcial'
+      };
+
+      const response = await request(app)
+        .post('/api/investments/positions/Bradesco/sell')
+        .set('Authorization', `Bearer ${token}`)
+        .send(sellData);
+
+      console.log('Response status:', response.status);
+      console.log('Response body:', JSON.stringify(response.body, null, 2));
+
+      expect(response.status).toBe(201);
+      expect(response.body).toHaveProperty('message', 'Venda registrada com sucesso');
+      expect(response.body).toHaveProperty('investment');
+      expect(response.body).toHaveProperty('transaction');
+      expect(response.body.investment.operation_type).toBe('venda');
+      expect(response.body.investment.asset_name).toBe('Bradesco');
+      expect(response.body.transaction.type).toBe('income');
+    });
+
+    it('should return error when trying to sell more than available', async () => {
+      // Primeiro criar um investimento (compra)
+      const investmentData = {
+        investment_type: 'acoes',
+        asset_name: 'Itau',
+        ticker: 'ITUB4',
+        invested_amount: 600,
+        quantity: 60,
+        unit_price: 10,
+        operation_date: '2024-03-20',
+        operation_type: 'compra',
+        broker: 'xp_investimentos',
+        account_id: account.id,
+        category_id: category.id
+      };
+
+      await request(app)
+        .post('/api/investments')
+        .set('Authorization', `Bearer ${token}`)
+        .send(investmentData);
+
+      // Tentar vender mais do que tem
+      const sellData = {
+        quantity: 100, // Mais do que os 60 comprados
+        unit_price: 12,
+        operation_date: '2024-03-25',
+        account_id: account.id,
+        broker: 'xp_investimentos'
+      };
+
+      const response = await request(app)
+        .post('/api/investments/positions/Itau/sell')
+        .set('Authorization', `Bearer ${token}`)
+        .send(sellData);
+
+      expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('message');
+      expect(response.body.message).toContain('Quantidade insuficiente');
+    });
+
+    it('should return error when trying to sell non-existent asset', async () => {
+      const sellData = {
+        quantity: 10,
+        unit_price: 12,
+        operation_date: '2024-03-25',
+        account_id: account.id,
+        broker: 'xp_investimentos'
+      };
+
+      const response = await request(app)
+        .post('/api/investments/positions/AtivoInexistente/sell')
+        .set('Authorization', `Bearer ${token}`)
+        .send(sellData);
+
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('message');
+      expect(response.body.message).toContain('Posição não encontrada');
     });
   });
 }); 
