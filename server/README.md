@@ -163,6 +163,14 @@ npx sequelize-cli db:migrate
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
+#### Funcionalidades Avançadas
+- **Venda de ativos de investimentos**: Permite registrar a venda de ativos já adquiridos, gerando automaticamente uma transação de entrada na conta selecionada.
+- **Seleção de carteira**: Ao comprar, selecione a conta de onde sai o valor; ao vender, selecione a conta que recebe o valor.
+- **Transação automática**: Toda venda gera uma transação do tipo `income` vinculada ao investimento e à conta.
+- **Validação de posição**: Não é possível vender mais do que a quantidade disponível.
+- **Garantia de category_id**: Sempre é usada uma categoria válida do usuário para a transação.
+- **Documentação JSDoc**: Todos os controllers de investimento possuem documentação detalhada.
+
 ### InvestmentGoal
 - `id`: ID da meta
 - `user_id`: ID do usuário
@@ -489,6 +497,91 @@ Remove um investimento.
 
 #### GET /investments/statistics
 Retorna estatísticas gerais dos investimentos.
+
+#### GET /investments/positions
+Lista as posições atuais de todos os ativos do usuário.
+
+**Response:**
+```json
+[
+  {
+    "asset_name": "Petrobras",
+    "ticker": "PETR4",
+    "total_quantity": 150,
+    "average_price": 12.50,
+    "total_invested": 1875.00,
+    "current_value": 2250.00,
+    "profit_loss": 375.00,
+    "profit_loss_percentage": 20.00
+  }
+]
+```
+
+#### POST /investments/positions/{assetName}/sell
+Registra a venda de um ativo de investimento.
+
+**Parâmetros da URL:**
+- `assetName`: Nome do ativo a ser vendido (ex: "Petrobras")
+
+**Request:**
+```json
+{
+  "quantity": 10,
+  "unit_price": 30.00,
+  "operation_date": "2024-03-25",
+  "account_id": 1,
+  "broker": "xp_investimentos",
+  "observations": "Venda parcial para realização de lucro"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Venda registrada com sucesso",
+  "investment": {
+    "id": 2,
+    "user_id": 1,
+    "account_id": 1,
+    "category_id": 1,
+    "investment_type": "acoes",
+    "asset_name": "Petrobras",
+    "ticker": "PETR4",
+    "invested_amount": 300.00,
+    "quantity": 10,
+    "unit_price": 30.00,
+    "operation_date": "2024-03-25",
+    "operation_type": "venda",
+    "broker": "xp_investimentos",
+    "observations": "Venda parcial para realização de lucro",
+    "status": "ativo"
+  },
+  "transaction": {
+    "id": 15,
+    "user_id": 1,
+    "account_id": 1,
+    "category_id": 1,
+    "type": "income",
+    "amount": 300.00,
+    "description": "Venda de 10 PETR4 a R$ 30,00",
+    "date": "2024-03-25"
+  }
+}
+```
+
+**Funcionalidades da Venda de Ativos:**
+- **Validação de Posição**: Verifica se há quantidade suficiente do ativo para venda
+- **Seleção de Carteira**: Permite escolher a conta que receberá o valor da venda
+- **Transação Automática**: Gera automaticamente uma transação de entrada (`income`) na conta selecionada
+- **Categoria Automática**: Utiliza uma categoria válida do usuário para a transação
+- **Cálculo de Lucro/Prejuízo**: Calcula automaticamente o resultado da operação
+- **Histórico Completo**: Mantém registro de todas as operações de compra e venda
+
+**Validações:**
+- Quantidade disponível para venda
+- Conta válida do usuário
+- Preço unitário positivo
+- Data de operação válida
 
 ### Metas de Investimento
 

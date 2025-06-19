@@ -2843,4 +2843,379 @@ paths:
         '404':
           description: Investimento não encontrado
         '500':
+          description: Erro interno do servidor
+
+  /investments/positions:
+    get:
+      tags: [Investimentos]
+      summary: Lista todas as posições ativas disponíveis para venda
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: investment_type
+          schema:
+            type: string
+            enum: [acoes, fundos, titulos, criptomoedas, outros]
+        - in: query
+          name: broker
+          schema:
+            type: string
+            enum: [xp_investimentos, rico, clear, modalmais, inter, nubank, itau, bradesco, santander, caixa, outros]
+        - in: query
+          name: asset_name
+          schema:
+            type: string
+        - in: query
+          name: ticker
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Lista de posições ativas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  positions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        assetName:
+                          type: string
+                        ticker:
+                          type: string
+                        totalQuantity:
+                          type: number
+                          format: float
+                        totalInvested:
+                          type: number
+                          format: float
+                        averagePrice:
+                          type: number
+                          format: float
+                        investment_type:
+                          type: string
+                        broker:
+                          type: string
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
+
+  /investments/positions/{assetName}:
+    get:
+      tags: [Investimentos]
+      summary: Obtém a posição detalhada de um ativo específico
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: assetName
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Posição detalhada do ativo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  position:
+                    type: object
+                    properties:
+                      assetName:
+                        type: string
+                      ticker:
+                        type: string
+                      totalQuantity:
+                        type: number
+                        format: float
+                      totalInvested:
+                        type: number
+                        format: float
+                      averagePrice:
+                        type: number
+                        format: float
+                      hasPosition:
+                        type: boolean
+                  operations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Investment'
+        '401':
+          description: Não autorizado
+        '404':
+          description: Posição não encontrada
+        '500':
+          description: Erro interno do servidor
+
+  /investments/positions/{assetName}/sell:
+    post:
+      tags: [Investimentos]
+      summary: Venda de ativo de investimento (gera transação automática)
+      description: |
+        Realiza a venda de um ativo de investimento já adquirido. Gera automaticamente uma transação de entrada (income) na conta selecionada.
+        - Só é permitido vender se houver posição suficiente do ativo.
+        - A conta informada receberá o valor da venda.
+        - O campo `category_id` é preenchido automaticamente com uma categoria válida do usuário.
+        - Toda a lógica está documentada via JSDoc no controller.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: assetName
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - quantity
+                - unit_price
+                - operation_date
+                - account_id
+                - broker
+              properties:
+                quantity:
+                  type: number
+                  format: float
+                unit_price:
+                  type: number
+                  format: float
+                operation_date:
+                  type: string
+                  format: date
+                account_id:
+                  type: integer
+                broker:
+                  type: string
+                  enum: [xp_investimentos, rico, clear, modalmais, inter, nubank, itau, bradesco, santander, caixa, outros]
+                observations:
+                  type: string
+            example:
+              quantity: 10
+              unit_price: 30
+              operation_date: '2024-03-25'
+              account_id: 1
+              broker: xp_investimentos
+      responses:
+        '201':
+          description: Venda registrada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  investment:
+                    $ref: '#/components/schemas/Investment'
+                  transaction:
+                    $ref: '#/components/schemas/Transaction'
+              example:
+                message: Venda registrada com sucesso
+                investment:
+                  id: 123
+                  investment_type: acoes
+                  asset_name: PETR4
+                  ticker: PETR4
+                  invested_amount: '300.00'
+                  quantity: '10.000000'
+                  unit_price: '30.000000'
+                  operation_date: '2024-03-25'
+                  operation_type: venda
+                  broker: xp_investimentos
+                  status: ativo
+                  user_id: 1
+                  account_id: 1
+                  category_id: 2
+                  created_at: '2024-03-25T10:00:00.000Z'
+                  updated_at: '2024-03-25T10:00:00.000Z'
+                transaction:
+                  id: 456
+                  user_id: 1
+                  account_id: 1
+                  category_id: 2
+                  investment_id: 123
+                  type: income
+                  amount: '300.00'
+                  description: Venda de 10 PETR4
+                  date: '2024-03-25'
+                  created_at: '2024-03-25T10:00:00.000Z'
+                  updated_at: '2024-03-25T10:00:00.000Z'
+        '400':
+          description: Dados inválidos ou quantidade insuficiente
+        '401':
+          description: Não autorizado
+        '404':
+          description: Posição ou conta não encontrada
+        '500':
+          description: Erro interno do servidor
+
+  /investments/positions/{assetName}/{ticker}:
+    get:
+      tags: [Investimentos]
+      summary: Obtém a posição detalhada de um ativo específico com ticker
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: assetName
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: ticker
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Posição detalhada do ativo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  position:
+                    type: object
+                    properties:
+                      assetName:
+                        type: string
+                      ticker:
+                        type: string
+                      totalQuantity:
+                        type: number
+                        format: float
+                      totalInvested:
+                        type: number
+                        format: float
+                      averagePrice:
+                        type: number
+                        format: float
+                      hasPosition:
+                        type: boolean
+                  operations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Investment'
+        '401':
+          description: Não autorizado
+        '404':
+          description: Posição não encontrada
+        '500':
+          description: Erro interno do servidor
+
+  /investments/positions/{assetName}/{ticker}/sell:
+    post:
+      tags: [Investimentos]
+      summary: Vende um ativo existente com ticker específico
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: assetName
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: ticker
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - quantity
+                - unit_price
+                - operation_date
+                - account_id
+                - broker
+              properties:
+                quantity:
+                  type: number
+                  format: float
+                unit_price:
+                  type: number
+                  format: float
+                operation_date:
+                  type: string
+                  format: date
+                account_id:
+                  type: integer
+                broker:
+                  type: string
+                  enum: [xp_investimentos, rico, clear, modalmais, inter, nubank, itau, bradesco, santander, caixa, outros]
+                observations:
+                  type: string
+      responses:
+        '201':
+          description: Venda registrada com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  investment:
+                    $ref: '#/components/schemas/Investment'
+                  transaction:
+                    $ref: '#/components/schemas/Transaction'
+                  position:
+                    type: object
+                    properties:
+                      previousQuantity:
+                        type: number
+                        format: float
+                      newQuantity:
+                        type: number
+                        format: float
+                      soldQuantity:
+                        type: number
+                        format: float
+                      totalAmount:
+                        type: number
+                        format: float
+        '400':
+          description: Dados inválidos ou quantidade insuficiente
+        '401':
+          description: Não autorizado
+        '404':
+          description: Posição ou conta não encontrada
+        '500':
           description: Erro interno do servidor 

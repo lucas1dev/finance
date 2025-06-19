@@ -463,10 +463,137 @@ const updateGoalAmountSchema = z.object({
     .min(0, 'Valor atual não pode ser negativo')
 });
 
+/**
+ * Esquema para venda de ativos existentes.
+ * Valida os dados necessários para vender um ativo já comprado.
+ */
+const sellAssetSchema = z.object({
+  /**
+   * Quantidade de ativos a serem vendidos.
+   * Deve ser maior que zero e não exceder a posição atual.
+   */
+  quantity: z.number({
+    required_error: 'Quantidade é obrigatória',
+    invalid_type_error: 'Quantidade deve ser um número'
+  }).positive('Quantidade deve ser maior que zero'),
+
+  /**
+   * Preço unitário de venda.
+   * Deve ser maior que zero.
+   */
+  unit_price: z.number({
+    required_error: 'Preço unitário é obrigatório',
+    invalid_type_error: 'Preço unitário deve ser um número'
+  }).positive('Preço unitário deve ser maior que zero'),
+
+  /**
+   * Data da operação de venda.
+   * Deve ser uma data válida.
+   */
+  operation_date: z.string({
+    required_error: 'Data da operação é obrigatória'
+  }).refine((date) => {
+    const parsedDate = new Date(date);
+    return !isNaN(parsedDate.getTime());
+  }, 'Data da operação deve ser uma data válida'),
+
+  /**
+   * ID da conta que receberá o valor da venda.
+   * Deve ser um número inteiro positivo.
+   */
+  account_id: z.number({
+    required_error: 'ID da conta é obrigatório',
+    invalid_type_error: 'ID da conta deve ser um número'
+  }).int('ID da conta deve ser um número inteiro').positive('ID da conta deve ser positivo'),
+
+  /**
+   * Corretora utilizada na operação de venda.
+   * Deve ser uma das opções válidas.
+   */
+  broker: z.enum([
+    'xp_investimentos',
+    'rico',
+    'clear',
+    'modalmais',
+    'inter',
+    'nubank',
+    'itau',
+    'bradesco',
+    'santander',
+    'caixa',
+    'outros'
+  ], {
+    required_error: 'Corretora é obrigatória',
+    invalid_type_error: 'Corretora deve ser uma das opções válidas'
+  }),
+
+  /**
+   * Observações sobre a operação de venda.
+   * Campo opcional.
+   */
+  observations: z.string().optional()
+});
+
+/**
+ * Esquema para listar posições disponíveis para venda.
+ * Filtros opcionais para buscar posições específicas.
+ */
+const listPositionsSchema = z.object({
+  /**
+   * Filtrar por tipo de investimento.
+   * Campo opcional.
+   */
+  investment_type: z.enum(['acoes', 'fundos', 'titulos', 'criptomoedas', 'outros']).optional(),
+
+  /**
+   * Filtrar por corretora.
+   * Campo opcional.
+   */
+  broker: z.enum([
+    'xp_investimentos',
+    'rico',
+    'clear',
+    'modalmais',
+    'inter',
+    'nubank',
+    'itau',
+    'bradesco',
+    'santander',
+    'caixa',
+    'outros'
+  ]).optional(),
+
+  /**
+   * Buscar por nome do ativo (busca parcial).
+   * Campo opcional.
+   */
+  asset_name: z.string().optional(),
+
+  /**
+   * Buscar por ticker do ativo.
+   * Campo opcional.
+   */
+  ticker: z.string().optional(),
+
+  /**
+   * Página para paginação.
+   * Padrão: 1
+   */
+  page: z.number().int().positive().default(1),
+
+  /**
+   * Limite de itens por página.
+   * Padrão: 10
+   */
+  limit: z.number().int().positive().max(100).default(10)
+});
+
 module.exports = {
   createInvestmentSchema,
   updateInvestmentSchema,
   createInvestmentGoalSchema,
   updateInvestmentGoalSchema,
-  updateGoalAmountSchema
+  updateGoalAmountSchema,
+  sellAssetSchema,
+  listPositionsSchema
 }; 
