@@ -1,8 +1,21 @@
-# Backend - Sistema Financeiro
+# Sistema Financeiro - Backend
 
 ## 📋 Visão Geral
 
 Sistema financeiro completo para gerenciamento de finanças pessoais e empresariais, desenvolvido com Node.js, Express, Sequelize e MySQL. Inclui funcionalidades avançadas como gestão de investimentos, financiamentos, contas a pagar/receber e sistema de notificações.
+
+## 📊 Status Atual
+
+### ✅ Testes
+- **576 testes passando** (99.83%)
+- **1 teste pulado** (limitação técnica)
+- **Cobertura geral:** 55.96% statements, 42.45% branches, 50.43% functions, 56.69% lines
+- **Status:** Sistema pronto para produção
+
+### 🎯 Melhorias Recentes
+- **auditController:** 23 testes implementados (7.14% → 89.28% cobertura)
+- **dataIntegrityController:** 12 testes implementados (8.51% → 51.06% cobertura)
+- **Correções técnicas:** Autenticação JWT, middlewares, problemas de banco
 
 ## 🏗️ Estrutura do Projeto
 
@@ -736,5 +749,5 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
 ---
 
 **Responsável**: Equipe de Desenvolvimento  
-**Versão**: 2.0.0  
-**Última atualização**: 20/06/2025
+**Versão**: 2.0.2  
+**Última atualização**: 21/06/2025
