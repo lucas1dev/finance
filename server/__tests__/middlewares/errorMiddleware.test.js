@@ -1,10 +1,10 @@
 /**
- * Testes unitários para o middleware de erro.
+ * Testes unitários para o middleware de tratamento de erros.
  * @author AI
  */
 const { errorHandler } = require('../../middlewares/errorMiddleware');
-const { AppError } = require('../../utils/errors');
-const { ValidationError } = require('sequelize');
+const { AppError, ValidationError, NotFoundError } = require('../../utils/errors');
+const { ValidationError: SequelizeValidationError } = require('sequelize');
 
 describe('Error Middleware', () => {
   let mockReq;
@@ -34,14 +34,13 @@ describe('Error Middleware', () => {
     // Assert
     expect(mockRes.status).toHaveBeenCalledWith(400);
     expect(mockRes.json).toHaveBeenCalledWith({
-      status: 'fail',
-      message: 'Erro de teste'
+      error: 'Erro de teste'
     });
   });
 
   it('deve tratar erro de validação do Sequelize', () => {
     // Arrange
-    const error = new ValidationError('Erro de validação', [
+    const error = new SequelizeValidationError('Erro de validação', [
       { path: 'email', message: 'Email inválido' },
       { path: 'password', message: 'Senha muito curta' }
     ]);
@@ -52,8 +51,7 @@ describe('Error Middleware', () => {
     // Assert
     expect(mockRes.status).toHaveBeenCalledWith(400);
     expect(mockRes.json).toHaveBeenCalledWith({
-      status: 'fail',
-      message: 'Erro de validação',
+      error: 'Erro de validação',
       errors: [
         { field: 'email', message: 'Email inválido' },
         { field: 'password', message: 'Senha muito curta' }
@@ -73,12 +71,11 @@ describe('Error Middleware', () => {
     // Assert
     expect(mockRes.status).toHaveBeenCalledWith(500);
     expect(mockRes.json).toHaveBeenCalledWith({
-      status: 'error',
-      message: 'Erro interno',
+      error: 'Erro interno',
       stack: error.stack
     });
 
-    // Cleanup
+    // Restaurar ambiente
     process.env.NODE_ENV = originalEnv;
   });
 
@@ -94,11 +91,38 @@ describe('Error Middleware', () => {
     // Assert
     expect(mockRes.status).toHaveBeenCalledWith(500);
     expect(mockRes.json).toHaveBeenCalledWith({
-      status: 'error',
-      message: 'Internal server error'
+      error: 'Internal server error'
     });
 
-    // Cleanup
+    // Restaurar ambiente
     process.env.NODE_ENV = originalEnv;
+  });
+
+  it('deve tratar erro de validação customizado', () => {
+    // Arrange
+    const error = new ValidationError('Dados inválidos');
+
+    // Act
+    errorHandler(error, mockReq, mockRes, nextFunction);
+
+    // Assert
+    expect(mockRes.status).toHaveBeenCalledWith(400);
+    expect(mockRes.json).toHaveBeenCalledWith({
+      error: 'Dados inválidos'
+    });
+  });
+
+  it('deve tratar erro de recurso não encontrado', () => {
+    // Arrange
+    const error = new NotFoundError('Usuário não encontrado');
+
+    // Act
+    errorHandler(error, mockReq, mockRes, nextFunction);
+
+    // Assert
+    expect(mockRes.status).toHaveBeenCalledWith(404);
+    expect(mockRes.json).toHaveBeenCalledWith({
+      error: 'Usuário não encontrado'
+    });
   });
 }); 

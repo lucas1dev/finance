@@ -1,4 +1,4 @@
-const { Payable, Customer, CustomerType, Payment, Category, Account, Transaction } = require('../models');
+const { Payable, Supplier, Payment, Category, Account, Transaction } = require('../models');
 const { Op } = require('sequelize');
 
 /**
@@ -32,16 +32,8 @@ class PayableController {
         where,
         include: [
           {
-            model: Customer,
-            as: 'customer',
-            include: [
-              {
-                model: CustomerType,
-                as: 'types',
-                where: { type: 'supplier' },
-                attributes: ['type']
-              }
-            ]
+            model: Supplier,
+            as: 'supplier'
           },
           {
             model: Category,
@@ -91,16 +83,8 @@ class PayableController {
         where: { id: req.params.id },
         include: [
           {
-            model: Customer,
-            as: 'customer',
-            include: [
-              {
-                model: CustomerType,
-                as: 'types',
-                where: { type: 'supplier' },
-                attributes: ['type']
-              }
-            ]
+            model: Supplier,
+            as: 'supplier'
           },
           {
             model: Category,
@@ -140,7 +124,7 @@ class PayableController {
    * Cria uma nova conta a pagar para o usuário autenticado.
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.body - Dados da conta a pagar.
-   * @param {number} req.body.customer_id - ID do fornecedor.
+   * @param {number} req.body.supplier_id - ID do fornecedor.
    * @param {number} [req.body.category_id] - ID da categoria (opcional).
    * @param {string} req.body.description - Descrição da conta a pagar.
    * @param {number} req.body.amount - Valor da conta a pagar.
@@ -152,32 +136,28 @@ class PayableController {
    * @throws {Error} Se os dados forem inválidos ou o fornecedor não for encontrado.
    * @example
    * // POST /api/payables
-   * // Body: { "customer_id": 1, "category_id": 2, "description": "Conta 1", "amount": 1000, "due_date": "2024-04-01" }
+   * // Body: { "supplier_id": 1, "category_id": 2, "description": "Conta 1", "amount": 1000, "due_date": "2024-04-01" }
    * // Retorno: { id: 1, description: 'Conta 1', amount: 1000, status: 'pending', ... }
    */
   async create(req, res) {
     try {
-      const { customer_id, category_id, description, amount, due_date, notes } = req.body;
+      const { supplier_id, category_id, description, amount, due_date, notes } = req.body;
 
       // Validação dos campos obrigatórios
-      if (!customer_id || !description || !amount || !due_date) {
+      if (!supplier_id || !description || !amount || !due_date) {
         return res.status(400).json({ error: 'Fornecedor, descrição, valor e data de vencimento são obrigatórios' });
       }
 
-      // Verificar se o fornecedor existe e é do tipo 'supplier'
-      const supplier = await Customer.findOne({
-        where: { id: customer_id },
-        include: [
-          {
-            model: CustomerType,
-            as: 'types',
-            where: { type: 'supplier' }
-          }
-        ]
+      // Verificar se o fornecedor existe
+      const supplier = await Supplier.findOne({
+        where: { 
+          id: supplier_id,
+          user_id: req.user.id
+        }
       });
 
       if (!supplier) {
-        return res.status(400).json({ error: 'Fornecedor não encontrado ou não é um fornecedor válido' });
+        return res.status(400).json({ error: 'Fornecedor não encontrado' });
       }
 
       // Verificar se a categoria existe (se fornecida)
@@ -196,7 +176,7 @@ class PayableController {
 
       const payable = await Payable.create({
         user_id: req.user.id,
-        customer_id,
+        supplier_id,
         category_id: category_id || null,
         description,
         amount,
@@ -237,6 +217,15 @@ class PayableController {
       // Validação dos campos obrigatórios
       if (!description || !amount || !due_date) {
         return res.status(400).json({ error: 'Descrição, valor e data de vencimento são obrigatórios' });
+      }
+
+      // Validação adicional dos dados
+      if (amount <= 0) {
+        return res.status(400).json({ error: 'Valor deve ser maior que zero' });
+      }
+
+      if (description.trim() === '') {
+        return res.status(400).json({ error: 'Descrição não pode estar vazia' });
       }
 
       const payable = await Payable.findOne({
@@ -287,11 +276,11 @@ class PayableController {
    * @param {string} req.params.id - ID da conta a pagar.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<void>} Resposta vazia com status 204.
-   * @throws {Error} Se a conta a pagar não for encontrada ou não pertencer ao usuário.
+   * @throws {Error} Se a conta a pagar não for encontrada, não pertencer ao usuário ou tiver pagamentos.
    * @example
    * // DELETE /api/payables/1
    * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: Status 204 (No Content)
+   * // Retorno: Status 204 (No Content) ou 400 se houver pagamentos
    */
   async delete(req, res) {
     try {
@@ -305,6 +294,17 @@ class PayableController {
 
       if (payable.user_id !== req.user.id) {
         return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      // Verificar se há pagamentos associados
+      const paymentCount = await Payment.count({
+        where: { payable_id: req.params.id }
+      });
+
+      if (paymentCount > 0) {
+        return res.status(400).json({ 
+          error: 'Não é possível excluir uma conta a pagar que possui pagamentos registrados' 
+        });
       }
 
       await payable.destroy();
@@ -505,16 +505,8 @@ class PayableController {
         },
         include: [
           {
-            model: Customer,
-            as: 'customer',
-            include: [
-              {
-                model: CustomerType,
-                as: 'types',
-                where: { type: 'supplier' },
-                attributes: ['type']
-              }
-            ]
+            model: Supplier,
+            as: 'supplier'
           },
           {
             model: Category,
@@ -558,16 +550,8 @@ class PayableController {
         },
         include: [
           {
-            model: Customer,
-            as: 'customer',
-            include: [
-              {
-                model: CustomerType,
-                as: 'types',
-                where: { type: 'supplier' },
-                attributes: ['type']
-              }
-            ]
+            model: Supplier,
+            as: 'supplier'
           },
           {
             model: Category,

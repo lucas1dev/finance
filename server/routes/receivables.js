@@ -22,7 +22,7 @@ router.get('/:id', ReceivableController.show);
 router.post('/', ReceivableController.store);
 
 // Atualizar uma conta a receber
-router.patch('/:id', ReceivableController.update);
+router.put('/:id', ReceivableController.update);
 
 // Excluir uma conta a receber
 router.delete('/:id', ReceivableController.destroy);

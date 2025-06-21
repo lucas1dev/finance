@@ -104,7 +104,13 @@ module.exports = (sequelize) => {
       timestamps: true,
       underscored: true,
       hooks: {
-        afterCreate: async (transaction) => {
+        afterCreate: async (transaction, options) => {
+          // Se já estamos dentro de uma transação, não atualizar o saldo aqui
+          // para evitar conflito de locks. O controller fará isso manualmente.
+          if (options && options.transaction) {
+            return;
+          }
+          
           const account = await transaction.getAccount();
           const amount = transaction.type === 'income' ? transaction.amount : -transaction.amount;
           await account.update({

@@ -1,4 +1,4 @@
-const { Investment, Account, Category, Transaction } = require('../models');
+const { Investment, Account, Category, Transaction, InvestmentContribution } = require('../models');
 const { createInvestmentSchema, updateInvestmentSchema, sellAssetSchema, listPositionsSchema } = require('../utils/investmentValidators');
 const { ValidationError, NotFoundError } = require('../utils/errors');
 const { Op } = require('sequelize');
@@ -217,7 +217,7 @@ class InvestmentController {
       include: [
         { model: Account, as: 'account' },
         { model: Category, as: 'category' },
-        { model: require('../models').InvestmentContribution, as: 'contributions' }
+        { model: InvestmentContribution, as: 'contributions' }
       ]
     });
 
@@ -506,34 +506,38 @@ class InvestmentController {
    * // GET /investments/positions/Petrobras
    * // Retorno: { "assetName": "Petrobras", "totalQuantity": 100, ... }
    */
-  async getAssetPosition(req, res) {
-    const { assetName, ticker } = req.params;
+  async getAssetPosition(req, res, next) {
+    try {
+      const { assetName, ticker } = req.params;
 
-    const position = await Investment.getPosition(req.userId, assetName, ticker);
+      const position = await Investment.getPosition(req.userId, assetName, ticker);
 
-    if (!position.hasPosition) {
-      throw new NotFoundError('Posição não encontrada para este ativo');
+      if (!position.hasPosition) {
+        return next(new NotFoundError('Posição não encontrada para este ativo'));
+      }
+
+      // Busca histórico de operações para este ativo
+      const operations = await Investment.findAll({
+        where: {
+          user_id: req.userId,
+          asset_name: assetName,
+          ticker: ticker || null,
+          status: 'ativo'
+        },
+        include: [
+          { model: Account, as: 'account' },
+          { model: Category, as: 'category' }
+        ],
+        order: [['operation_date', 'ASC']]
+      });
+
+      res.json({
+        position,
+        operations
+      });
+    } catch (error) {
+      return next(error);
     }
-
-    // Busca histórico de operações para este ativo
-    const operations = await Investment.findAll({
-      where: {
-        user_id: req.userId,
-        asset_name: assetName,
-        ticker: ticker || null,
-        status: 'ativo'
-      },
-      include: [
-        { model: Account, as: 'account' },
-        { model: Category, as: 'category' }
-      ],
-      order: [['operation_date', 'ASC']]
-    });
-
-    res.json({
-      position,
-      operations
-    });
   }
 
   /**
@@ -558,24 +562,24 @@ class InvestmentController {
    * // Body: { quantity: 10, unit_price: 30, operation_date: '2024-03-25', account_id: 1, broker: 'xp_investimentos' }
    * // Retorno: { message: 'Venda registrada com sucesso', investment: { ... }, transaction: { ... } }
    */
-  async sellAsset(req, res) {
+  async sellAsset(req, res, next) {
     try {
       const { assetName, ticker } = req.params;
       const validatedData = sellAssetSchema.parse(req.body);
       const position = await Investment.getPosition(req.userId, assetName, ticker);
       if (!position.hasPosition) {
-        throw new NotFoundError('Posição não encontrada para este ativo');
+        return next(new NotFoundError('Posição não encontrada para este ativo'));
       }
       if (position.totalQuantity < validatedData.quantity) {
-        throw new ValidationError(
+        return next(new ValidationError(
           `Quantidade insuficiente. Posição atual: ${position.totalQuantity}, Quantidade solicitada: ${validatedData.quantity}`
-        );
+        ));
       }
       const account = await Account.findOne({
         where: { id: validatedData.account_id, user_id: req.userId }
       });
       if (!account) {
-        throw new NotFoundError('Conta não encontrada');
+        return next(new NotFoundError('Conta não encontrada'));
       }
       const totalAmount = validatedData.quantity * validatedData.unit_price;
       const originalInvestment = await Investment.findOne({
@@ -639,17 +643,7 @@ class InvestmentController {
         transaction: transactionWithAssociations
       });
     } catch (error) {
-      if (error.name === 'ZodError') {
-        return res.status(400).json({ message: error.errors.map(e => e.message).join(', ') });
-      }
-      if (error instanceof ValidationError) {
-        return res.status(400).json({ message: error.message });
-      }
-      if (error instanceof NotFoundError) {
-        return res.status(404).json({ message: error.message });
-      }
-      console.error(error);
-      res.status(500).json({ message: 'Internal server error' });
+      return next(error);
     }
   }
 }

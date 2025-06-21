@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const { Category, User } = require('../../models');
+const { createTestUser, cleanAllTestData } = require('./setup');
 
 describe('Category Integration Tests', () => {
   let authToken;
@@ -8,29 +9,20 @@ describe('Category Integration Tests', () => {
   let testCategory;
 
   beforeAll(async () => {
-    // Criar usuário de teste
-    testUser = await User.create({
-      name: 'Test User Category',
-      email: 'testcategory@example.com',
-      password: 'password123',
-      two_factor_secret: 'test-secret'
-    });
-
-    // Fazer login para obter token
-    const loginResponse = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: 'testcategory@example.com',
-        password: 'password123'
-      });
-
-    authToken = loginResponse.body.token;
+    await cleanAllTestData();
   });
 
   afterAll(async () => {
-    // Limpar dados de teste
-    await Category.destroy({ where: { user_id: testUser.id } });
-    await User.destroy({ where: { id: testUser.id } });
+    await cleanAllTestData();
+  });
+
+  beforeEach(async () => {
+    await Category.destroy({ where: {} });
+    await User.destroy({ where: { email: 'testcategory@example.com' } });
+    // Criar usuário de teste via API e obter token
+    authToken = await createTestUser(app, 'testcategory@example.com', 'Test User Category');
+    testUser = await User.findOne({ where: { email: 'testcategory@example.com' } });
+    // Não criar categoria padrão aqui!
   });
 
   describe('POST /api/categories', () => {
@@ -80,6 +72,13 @@ describe('Category Integration Tests', () => {
         type: 'expense'
       };
 
+      // Criar categoria previamente
+      await request(app)
+        .post('/api/categories')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(categoryData);
+
+      // Tentativa de duplicidade
       const response = await request(app)
         .post('/api/categories')
         .set('Authorization', `Bearer ${authToken}`)
@@ -106,6 +105,14 @@ describe('Category Integration Tests', () => {
   });
 
   describe('GET /api/categories', () => {
+    beforeEach(async () => {
+      testCategory = await Category.create({
+        name: 'Test Category',
+        type: 'expense',
+        user_id: testUser.id
+      });
+    });
+
     it('should list all categories for the user', async () => {
       const response = await request(app)
         .get('/api/categories')
@@ -140,6 +147,14 @@ describe('Category Integration Tests', () => {
   });
 
   describe('PUT /api/categories/:id', () => {
+    beforeEach(async () => {
+      testCategory = await Category.create({
+        name: 'Test Category',
+        type: 'expense',
+        user_id: testUser.id
+      });
+    });
+
     it('should update a category', async () => {
       const updateData = {
         name: 'Updated Test Category',
@@ -202,23 +217,24 @@ describe('Category Integration Tests', () => {
   });
 
   describe('DELETE /api/categories/:id', () => {
-    it('should delete a category', async () => {
-      // Criar uma categoria para deletar
-      const categoryToDelete = await Category.create({
-        name: 'Category to Delete',
+    beforeEach(async () => {
+      testCategory = await Category.create({
+        name: 'Test Category',
         type: 'expense',
         user_id: testUser.id
       });
+    });
 
+    it('should delete a category', async () => {
       const response = await request(app)
-        .delete(`/api/categories/${categoryToDelete.id}`)
+        .delete(`/api/categories/${testCategory.id}`)
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message', 'Categoria excluída com sucesso');
 
       // Verificar se foi realmente deletada
-      const deletedCategory = await Category.findByPk(categoryToDelete.id);
+      const deletedCategory = await Category.findByPk(testCategory.id);
       expect(deletedCategory).toBeNull();
     });
 

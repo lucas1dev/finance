@@ -1,8 +1,8 @@
 const app = require('../../app');
-const { createTestUser } = require('./setup');
+const { createTestUser, cleanAllTestData } = require('./setup');
 const request = require('supertest');
 const { sequelize } = require('../../models');
-const { Payable, User, Customer, CustomerType, Category, Account, Payment } = require('../../models');
+const { Payable, User, Customer, CustomerType, Category, Account, Payment, Supplier } = require('../../models');
 const { Op } = require('sequelize');
 
 describe('Payable Integration Tests', () => {
@@ -13,35 +13,41 @@ describe('Payable Integration Tests', () => {
   let authToken;
 
   beforeAll(async () => {
-    // Criar usuário de teste
-    testUser = await User.create({
-      name: 'Test User Payable',
-      email: `testpayable+${Date.now()}@example.com`,
-      password: 'password123',
-      two_factor_secret: 'test-secret'
-    });
+    await cleanAllTestData();
+  });
+
+  afterAll(async () => {
+    await cleanAllTestData();
+  });
+
+  beforeEach(async () => {
+    // Limpar dados relevantes
+    await Payable.destroy({ where: {} });
+    await Payment.destroy({ where: {} });
+    await Supplier.destroy({ where: {} });
+    await Category.destroy({ where: {} });
+    await Account.destroy({ where: {} });
+    await User.destroy({ where: { email: 'testpayable@example.com' } });
+
+    // Criar usuário de teste via API e obter token
+    authToken = await createTestUser(app, 'testpayable@example.com', 'Test User Payable');
+    testUser = await User.findOne({ where: { email: 'testpayable@example.com' } });
 
     // Criar fornecedor de teste
-    testSupplier = await Customer.create({
-      name: 'Fornecedor Payable',
+    testSupplier = await Supplier.create({
+      name: 'Fornecedor Teste',
       document_type: 'CNPJ',
-      document_number: '12345678000195',
-      email: 'fornecedor.payable@teste.com',
+      document_number: '12345678901234',
+      email: 'fornecedor@teste.com',
+      phone: '11999999999',
       user_id: testUser.id
-    });
-
-    // Associar tipo ao fornecedor
-    await CustomerType.create({
-      customer_id: testSupplier.id,
-      type: 'supplier'
     });
 
     // Criar categoria de teste
     testCategory = await Category.create({
-      user_id: testUser.id,
-      name: 'Fornecedores',
+      name: 'Categoria Teste',
       type: 'expense',
-      color: '#F44336'
+      user_id: testUser.id
     });
 
     // Criar conta de teste
@@ -52,26 +58,12 @@ describe('Payable Integration Tests', () => {
       balance: 2000.00,
       description: 'Test account for payables'
     });
-
-    // Fazer login para obter token
-    const loginResponse = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: testUser.email,
-        password: 'password123'
-      });
-
-    authToken = loginResponse.body.token;
-  });
-
-  afterAll(async () => {
-    // A limpeza será feita pelo setup global
   });
 
   describe('POST /api/payables', () => {
     it('deve criar uma nova conta a pagar com sucesso', async () => {
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         category_id: testCategory.id,
         description: 'Compra de produtos',
         amount: 800.00,
@@ -88,14 +80,14 @@ describe('Payable Integration Tests', () => {
       expect(response.body).toHaveProperty('id');
       expect(response.body.description).toBe('Compra de produtos');
       expect(Number(response.body.amount)).toBeCloseTo(800.00, 1);
-      expect(response.body.customer_id).toBe(testSupplier.id);
+      expect(response.body.supplier_id).toBe(testSupplier.id);
       expect(response.body.category_id).toBe(testCategory.id);
       expect(response.body.status).toBe('pending');
     });
 
     it('deve criar uma conta a pagar sem categoria', async () => {
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         description: 'Compra sem categoria',
         amount: 400.00,
         due_date: '2024-04-15'
@@ -113,7 +105,7 @@ describe('Payable Integration Tests', () => {
 
     it('deve retornar erro ao tentar criar conta a pagar sem autenticação', async () => {
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         description: 'Compra sem auth',
         amount: 800.00,
         due_date: '2024-04-01'
@@ -128,7 +120,7 @@ describe('Payable Integration Tests', () => {
 
     it('deve retornar erro para categoria inexistente', async () => {
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         category_id: 99999, // Categoria inexistente
         description: 'Compra com categoria inválida',
         amount: 800.00,
@@ -147,6 +139,20 @@ describe('Payable Integration Tests', () => {
 
   describe('GET /api/payables', () => {
     it('deve listar todas as contas a pagar', async () => {
+      // Primeiro criar uma conta a pagar para ter dados para listar
+      const payableData = {
+        supplier_id: testSupplier.id,
+        category_id: testCategory.id,
+        description: 'Compra para listar',
+        amount: 800.00,
+        due_date: '2024-04-01'
+      };
+
+      await request(app)
+        .post('/api/payables')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(payableData);
+
       const response = await request(app)
         .get('/api/payables')
         .set('Authorization', `Bearer ${authToken}`);
@@ -162,6 +168,20 @@ describe('Payable Integration Tests', () => {
     });
 
     it('deve filtrar contas a pagar por status', async () => {
+      // Primeiro criar uma conta a pagar para ter dados para filtrar
+      const payableData = {
+        supplier_id: testSupplier.id,
+        category_id: testCategory.id,
+        description: 'Compra para filtrar',
+        amount: 600.00,
+        due_date: '2024-04-01'
+      };
+
+      await request(app)
+        .post('/api/payables')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(payableData);
+
       const response = await request(app)
         .get('/api/payables?status=pending')
         .set('Authorization', `Bearer ${authToken}`);
@@ -180,7 +200,7 @@ describe('Payable Integration Tests', () => {
     it('deve retornar uma conta a pagar específica', async () => {
       // Primeiro criar uma conta a pagar
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         category_id: testCategory.id,
         description: 'Compra específica',
         amount: 600.00,
@@ -218,7 +238,7 @@ describe('Payable Integration Tests', () => {
     it('deve atualizar uma conta a pagar', async () => {
       // Primeiro criar uma conta a pagar
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         description: 'Compra para atualizar',
         amount: 500.00,
         due_date: '2024-04-20'
@@ -271,7 +291,7 @@ describe('Payable Integration Tests', () => {
     it('deve excluir uma conta a pagar', async () => {
       // Primeiro criar uma conta a pagar
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         description: 'Compra para excluir',
         amount: 200.00,
         due_date: '2024-04-30'
@@ -303,7 +323,7 @@ describe('Payable Integration Tests', () => {
     it('deve adicionar um pagamento a uma conta a pagar', async () => {
       // Primeiro criar uma conta a pagar
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         category_id: testCategory.id,
         description: 'Compra para pagar',
         amount: 1000.00,
@@ -341,7 +361,7 @@ describe('Payable Integration Tests', () => {
     it('deve retornar erro para pagamento maior que o valor restante', async () => {
       // Primeiro criar uma conta a pagar
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         description: 'Compra para pagar',
         amount: 300.00,
         due_date: '2024-04-01'
@@ -375,7 +395,7 @@ describe('Payable Integration Tests', () => {
     it('deve listar pagamentos de uma conta a pagar', async () => {
       // Primeiro criar uma conta a pagar e adicionar um pagamento
       const payableData = {
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         description: 'Compra para listar pagamentos',
         amount: 400.00,
         due_date: '2024-04-01'

@@ -1,42 +1,34 @@
 const app = require('../../app');
-const { createTestUser } = require('./setup');
+const { createTestUser, cleanAllTestData } = require('./setup');
 const request = require('supertest');
 const { sequelize } = require('../../models');
 const { Receivable, User, Customer, CustomerType, Category } = require('../../models');
 
 describe('Receivable Integration Tests', () => {
   let authToken;
-  let customerId;
   let testUser;
   let testCustomer;
   let testCategory;
 
   beforeAll(async () => {
-    await sequelize.sync({ force: true });
-    authToken = await createTestUser(app);
+    await cleanAllTestData();
+  });
 
-    // Criar um cliente para os testes
-    const customerResponse = await request(app)
-      .post('/api/customers')
-      .set('Authorization', `Bearer ${authToken}`)
-      .send({
-        name: 'Cliente Teste',
-        documentType: 'CPF',
-        documentNumber: '12345678909',
-        email: 'cliente@teste.com',
-        phone: '11999999999',
-        types: ['customer']
-      });
+  afterAll(async () => {
+    await cleanAllTestData();
+  });
 
-    customerId = customerResponse.body.id;
+  beforeEach(async () => {
+    // Limpar dados relevantes
+    await Receivable.destroy({ where: {} });
+    await Category.destroy({ where: {} });
+    await Customer.destroy({ where: {} });
+    await CustomerType.destroy({ where: {} });
+    await User.destroy({ where: { email: 'testreceivable@example.com' } });
 
-    // Criar usuário de teste
-    testUser = await User.create({
-      name: 'Test User Receivable',
-      email: `testreceivable+${Date.now()}@example.com`,
-      password: 'password123',
-      two_factor_secret: 'test-secret'
-    });
+    // Criar usuário de teste via API e obter token
+    authToken = await createTestUser(app, 'testreceivable@example.com', 'Test User Receivable');
+    testUser = await User.findOne({ where: { email: 'testreceivable@example.com' } });
 
     // Criar cliente de teste
     testCustomer = await Customer.create({
@@ -60,25 +52,6 @@ describe('Receivable Integration Tests', () => {
       type: 'income',
       color: '#4CAF50'
     });
-
-    // Fazer login para obter token
-    const loginResponse = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: testUser.email,
-        password: 'password123'
-      });
-
-    authToken = loginResponse.body.token;
-  });
-
-  afterAll(async () => {
-    // Limpar dados de teste
-    await Receivable.destroy({ where: { user_id: testUser.id } });
-    await CustomerType.destroy({ where: { customer_id: testCustomer.id } });
-    await Customer.destroy({ where: { id: testCustomer.id } });
-    await Category.destroy({ where: { id: testCategory.id } });
-    await User.destroy({ where: { id: testUser.id } });
   });
 
   describe('POST /api/receivables', () => {
@@ -165,7 +138,7 @@ describe('Receivable Integration Tests', () => {
         .post('/api/receivables')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          customer_id: customerId,
+          customer_id: testCustomer.id,
           description: 'Conta 1',
           amount: 1500.00,
           due_date: '2024-04-01'
@@ -175,7 +148,7 @@ describe('Receivable Integration Tests', () => {
         .post('/api/receivables')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          customer_id: customerId,
+          customer_id: testCustomer.id,
           description: 'Conta 2',
           amount: 2500.00,
           due_date: '2024-04-15'
@@ -220,7 +193,7 @@ describe('Receivable Integration Tests', () => {
         .post('/api/receivables')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
-          customer_id: customerId,
+          customer_id: testCustomer.id,
           description: 'Conta Teste',
           amount: 1500.00,
           due_date: '2024-04-01'
@@ -274,7 +247,7 @@ describe('Receivable Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/receivables/${receivableId}`)
+        .put(`/api/receivables/${receivableId}`)
         .set('Authorization', `Bearer ${authToken}`)
         .send(updateData);
 
@@ -304,7 +277,7 @@ describe('Receivable Integration Tests', () => {
     it('deve excluir uma conta a receber', async () => {
       // Primeiro criar uma conta a receber
       const receivableData = {
-        customer_id: customerId,
+        customer_id: testCustomer.id,
         description: 'Venda para excluir',
         amount: 300.00,
         due_date: '2024-04-30'

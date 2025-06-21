@@ -259,7 +259,23 @@ const transactionController = {
         group: ['type', 'category.name']
       });
 
-      res.json(summary);
+      // Se não há dados, retornar objeto padrão
+      if (!summary || summary.length === 0) {
+        return res.json({ income: 0, expense: 0 });
+      }
+
+      // Calcular totais por tipo
+      const totals = summary.reduce((acc, item) => {
+        const type = item.dataValues.type;
+        const total = parseFloat(item.dataValues.total) || 0;
+        acc[type] = (acc[type] || 0) + total;
+        return acc;
+      }, {});
+
+      res.json({
+        income: totals.income || 0,
+        expense: totals.expense || 0
+      });
     } catch (error) {
       res.status(500).json({ error: 'Erro ao buscar resumo' });
     }
@@ -291,7 +307,17 @@ const transactionController = {
         order: [[sequelize.fn('DATE', sequelize.col('date')), 'ASC']]
       });
 
-      res.json(balance);
+      // Se não há dados, retornar objeto padrão
+      if (!balance || balance.length === 0) {
+        return res.json({ balance: 0 });
+      }
+
+      // Calcular saldo total do período
+      const totalBalance = balance.reduce((acc, item) => {
+        return acc + (parseFloat(item.dataValues.daily_balance) || 0);
+      }, 0);
+
+      res.json({ balance: totalBalance });
     } catch (error) {
       res.status(500).json({ error: 'Erro ao buscar saldo por período' });
     }

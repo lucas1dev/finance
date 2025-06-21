@@ -73,6 +73,11 @@ module.exports = {
         allowNull: false,
         defaultValue: true
       },
+      is_paid: {
+        type: Sequelize.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
       reminder_days: {
         type: Sequelize.INTEGER,
         allowNull: false,

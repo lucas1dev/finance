@@ -1,26 +1,30 @@
 const app = require('../../app');
-const { createTestUser } = require('./setup');
+const { createTestUser, cleanAllTestData } = require('./setup');
 const request = require('supertest');
-const { sequelize } = require('../../models');
+
+// Não é necessário token global para estes testes
 
 describe('Auth Integration Tests', () => {
-  let token;
-
   beforeAll(async () => {
-    token = await createTestUser(app);
+    await cleanAllTestData();
+  });
+
+  afterAll(async () => {
+    await cleanAllTestData();
   });
 
   beforeEach(async () => {
-    await sequelize.sync({ force: true });
+    await cleanAllTestData();
   });
 
   describe('POST /api/auth/register', () => {
     it('deve registrar um novo usuário com sucesso', async () => {
+      const uniqueEmail = `test${Date.now()}@example.com`;
       const response = await request(app)
         .post('/api/auth/register')
         .send({
           name: 'Test User',
-          email: 'test@example.com',
+          email: uniqueEmail,
           password: 'password123',
           companyName: 'Test Company',
           document: '12345678901234'
@@ -29,7 +33,7 @@ describe('Auth Integration Tests', () => {
       expect(response.status).toBe(201);
       expect(response.body).toHaveProperty('token');
       expect(response.body.user).toHaveProperty('id');
-      expect(response.body.user.email).toBe('test@example.com');
+      expect(response.body.user.email).toBe(uniqueEmail);
     });
 
     it('deve retornar erro ao tentar registrar com email já existente', async () => {
@@ -62,7 +66,8 @@ describe('Auth Integration Tests', () => {
 
   describe('POST /api/auth/login', () => {
     beforeEach(async () => {
-      // Criar usuário para teste de login
+      // Limpar e criar usuário para teste de login
+      await cleanAllTestData();
       await request(app)
         .post('/api/auth/register')
         .send({

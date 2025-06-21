@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
-const { Payment, Receivable, Payable, User, Customer, CustomerType, Account, Transaction, Category } = require('../../models');
+const { Payment, Receivable, Payable, User, Customer, CustomerType, Account, Transaction, Category, Supplier } = require('../../models');
+const { createTestUser, cleanAllTestData } = require('./setup');
 
 describe('Payment Integration Tests', () => {
   let authToken;
@@ -10,19 +11,29 @@ describe('Payment Integration Tests', () => {
   let testPayment;
   let testCustomer;
   let testSupplier;
-  let uniqueEmail;
   let testAccount;
 
   beforeAll(async () => {
-    // Gerar e-mail único para evitar duplicidade
-    uniqueEmail = `testpayment+${Date.now()}@example.com`;
-    // Criar usuário de teste
-    testUser = await User.create({
-      name: 'Test User Payment',
-      email: uniqueEmail,
-      password: 'password123',
-      two_factor_secret: 'test-secret'
-    });
+    await cleanAllTestData();
+  });
+
+  afterAll(async () => {
+    await cleanAllTestData();
+  });
+
+  beforeEach(async () => {
+    // Limpar dados relevantes
+    await Payment.destroy({ where: {} });
+    await Receivable.destroy({ where: {} });
+    await Payable.destroy({ where: {} });
+    await Account.destroy({ where: {} });
+    await Customer.destroy({ where: {} });
+    await Supplier.destroy({ where: {} });
+    // await User.destroy({ where: { email: 'testpayment@example.com' } }); // COMENTADO: Causava problemas de conexão
+
+    // Criar usuário de teste via API e obter token
+    authToken = await createTestUser(app, 'testpayment@example.com', 'Test User Payment');
+    testUser = await User.findOne({ where: { email: 'testpayment@example.com' } });
 
     // Criar cliente de teste
     testCustomer = await Customer.create({
@@ -34,7 +45,7 @@ describe('Payment Integration Tests', () => {
     });
 
     // Criar fornecedor de teste
-    testSupplier = await Customer.create({
+    testSupplier = await Supplier.create({
       name: 'Fornecedor Pagamento',
       document_type: 'CNPJ',
       document_number: '12345678000195',
@@ -42,71 +53,32 @@ describe('Payment Integration Tests', () => {
       user_id: testUser.id
     });
 
-    // Associar tipos aos customers
-    await CustomerType.create({
-      customer_id: testCustomer.id,
-      type: 'customer'
-    });
-
-    await CustomerType.create({
-      customer_id: testSupplier.id,
-      type: 'supplier'
-    });
-
     // Criar conta de teste
     testAccount = await Account.create({
-      user_id: testUser.id,
-      bank_name: 'Test Bank',
+      name: 'Conta Principal',
+      bank_name: 'Banco Teste',
       account_type: 'checking',
-      balance: 1000.00,
-      description: 'Test account for payments'
+      balance: 10000,
+      user_id: testUser.id
     });
 
     // Criar conta a receber de teste
     testReceivable = await Receivable.create({
-      user_id: testUser.id,
       customer_id: testCustomer.id,
-      amount: 1000.00,
-      due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 dias
-      description: 'Test receivable for payment',
-      status: 'pending'
+      description: 'Conta a receber teste',
+      amount: 1000,
+      due_date: '2024-04-01',
+      user_id: testUser.id
     });
 
     // Criar conta a pagar de teste
     testPayable = await Payable.create({
-      user_id: testUser.id,
-      customer_id: testSupplier.id,
-      amount: 500.00,
-      due_date: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), // 15 dias
-      description: 'Test payable for payment',
-      status: 'pending'
+      supplier_id: testSupplier.id,
+      description: 'Conta a pagar teste',
+      amount: 1000,
+      due_date: '2024-04-01',
+      user_id: testUser.id
     });
-
-    // Fazer login para obter token
-    const loginResponse = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: uniqueEmail,
-        password: 'password123'
-      });
-
-    authToken = loginResponse.body.token;
-  });
-
-  afterAll(async () => {
-    // Limpar dados de teste na ordem correta (dependências primeiro)
-    await Payment.destroy({ where: { receivable_id: testReceivable.id } });
-    await Payment.destroy({ where: { payable_id: testPayable.id } });
-    await Transaction.destroy({ where: { user_id: testUser.id } });
-    await Category.destroy({ where: { user_id: testUser.id } });
-    await Receivable.destroy({ where: { id: testReceivable.id } });
-    await Payable.destroy({ where: { id: testPayable.id } });
-    await CustomerType.destroy({ where: { customer_id: testCustomer.id } });
-    await CustomerType.destroy({ where: { customer_id: testSupplier.id } });
-    await Customer.destroy({ where: { id: testCustomer.id } });
-    await Customer.destroy({ where: { id: testSupplier.id } });
-    await Account.destroy({ where: { id: testAccount.id } });
-    await User.destroy({ where: { id: testUser.id } });
   });
 
   describe('POST /api/receivables/:receivable_id/payments', () => {
@@ -154,10 +126,12 @@ describe('Payment Integration Tests', () => {
         .send(paymentData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(Number(response.body.amount)).toBeCloseTo(250.00, 1);
-      expect(Number(response.body.payable_id)).toBe(testPayable.id);
-      expect(response.body.payment_method).toBe('transfer');
+      expect(response.body).toHaveProperty('payment');
+      expect(response.body).toHaveProperty('newBalance');
+      expect(response.body.payment).toHaveProperty('id');
+      expect(Number(response.body.payment.amount)).toBeCloseTo(250.00, 1);
+      expect(Number(response.body.payment.payable_id)).toBe(testPayable.id);
+      expect(response.body.payment.payment_method).toBe('transfer');
     });
 
     it('should return 400 for missing required fields', async () => {
@@ -194,6 +168,20 @@ describe('Payment Integration Tests', () => {
 
   describe('GET /api/receivables/:receivable_id/payments', () => {
     it('should list payments for a receivable', async () => {
+      // Criar um pagamento para o testReceivable
+      const paymentData = {
+        amount: 200.00,
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'pix',
+        description: 'Pagamento para listagem',
+        account_id: testAccount.id
+      };
+
+      await request(app)
+        .post(`/api/receivables/${testReceivable.id}/payments`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(paymentData);
+
       const response = await request(app)
         .get(`/api/receivables/${testReceivable.id}/payments`)
         .set('Authorization', `Bearer ${authToken}`);
@@ -208,7 +196,7 @@ describe('Payment Integration Tests', () => {
       // Criar uma nova conta a receber sem pagamentos
       const newReceivable = await Receivable.create({
         user_id: testUser.id,
-        customer_id: 1,
+        customer_id: testCustomer.id,
         amount: 200.00,
         due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         description: 'Receivable without payments',
@@ -229,10 +217,19 @@ describe('Payment Integration Tests', () => {
   });
 
   describe('DELETE /api/payments/:id', () => {
+    it('should return 401 for unauthenticated delete request', async () => {
+      const response = await request(app)
+        .delete('/api/payments/1');
+
+      expect(response.status).toBe(401);
+    });
+
     it('should delete a payment', async () => {
       // Criar um pagamento para deletar
       const paymentToDelete = await Payment.create({
         receivable_id: testReceivable.id,
+        user_id: testUser.id,
+        account_id: testAccount.id,
         amount: 100.00,
         payment_date: new Date().toISOString().split('T')[0],
         payment_method: 'cash',

@@ -1,6 +1,7 @@
 const request = require('supertest');
 const app = require('../../app');
 const { Account, User } = require('../../models');
+const { createTestUser, cleanAllTestData } = require('./setup');
 
 describe('Account Integration Tests', () => {
   let authToken;
@@ -8,38 +9,40 @@ describe('Account Integration Tests', () => {
   let testAccount;
 
   beforeAll(async () => {
-    // Criar usuário de teste
-    testUser = await User.create({
-      name: 'Test User Account',
-      email: 'testaccount@example.com',
-      password: 'password123',
-      two_factor_secret: 'test-secret'
-    });
-
-    // Fazer login para obter token
-    const loginResponse = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: 'testaccount@example.com',
-        password: 'password123'
-      });
-
-    authToken = loginResponse.body.token;
+    await cleanAllTestData();
   });
 
   afterAll(async () => {
-    // Limpar dados de teste
-    await Account.destroy({ where: { user_id: testUser.id } });
-    await User.destroy({ where: { id: testUser.id } });
+    await cleanAllTestData();
+  });
+
+  beforeEach(async () => {
+    // Limpar dados relevantes
+    await Account.destroy({ where: {} });
+    await User.destroy({ where: { email: 'testaccount@example.com' } });
+
+    // Criar usuário de teste via API e obter token
+    authToken = await createTestUser(app, 'testaccount@example.com', 'Test User Account');
+    // Buscar o usuário criado
+    testUser = await User.findOne({ where: { email: 'testaccount@example.com' } });
+
+    // Criar uma conta de teste para os testes que precisam dela
+    testAccount = await Account.create({
+      user_id: testUser.id,
+      bank_name: 'Test Bank',
+      account_type: 'checking',
+      balance: 1000.00,
+      description: 'Test account'
+    });
   });
 
   describe('POST /api/accounts', () => {
     it('should create a new account', async () => {
       const accountData = {
-        bank_name: 'Test Bank',
+        bank_name: 'New Test Bank',
         account_type: 'checking',
         balance: 1000.00,
-        description: 'Test account'
+        description: 'New test account'
       };
 
       const response = await request(app)
@@ -52,11 +55,11 @@ describe('Account Integration Tests', () => {
       expect(response.body).toHaveProperty('accountId');
       expect(typeof response.body.accountId).toBe('number');
 
-      testAccount = await Account.findByPk(response.body.accountId);
-      expect(testAccount.bank_name).toBe('Test Bank');
-      expect(testAccount.account_type).toBe('checking');
-      expect(Number(testAccount.balance)).toBeCloseTo(1000.00, 1);
-      expect(testAccount.user_id).toBe(testUser.id);
+      const newAccount = await Account.findByPk(response.body.accountId);
+      expect(newAccount.bank_name).toBe('New Test Bank');
+      expect(newAccount.account_type).toBe('checking');
+      expect(Number(newAccount.balance)).toBeCloseTo(1000.00, 1);
+      expect(newAccount.user_id).toBe(testUser.id);
     });
 
     it('should create a savings account', async () => {

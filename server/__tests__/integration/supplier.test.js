@@ -1,38 +1,34 @@
 const request = require('supertest');
 const app = require('../../app');
-const { Customer, CustomerType, Payable, User } = require('../../models');
-const { sequelize } = require('../../models');
-const { createTestUser } = require('./setup');
-
-let authToken;
-let testUser;
-let testSupplier;
-
-beforeAll(async () => {
-  // Criar usuário de teste e buscar no banco
-  authToken = await createTestUser(app);
-  testUser = await User.findOne({ where: { email: 'test@example.com' } });
-});
-
-beforeEach(async () => {
-  // Limpar dados de teste antes de cada teste
-  await CustomerType.destroy({ where: {} });
-  await Payable.destroy({ where: {} });
-  await Customer.destroy({ where: {} });
-});
-
-afterAll(async () => {
-  // O setup global já cuida do cleanup da conexão
-  // Não precisamos fazer cleanup manual aqui
-});
+const { User, Supplier, Payable } = require('../../models');
+const { createTestUser, cleanAllTestData } = require('./setup');
 
 describe('Supplier Integration Tests', () => {
+  let authToken;
+  let testUser;
+  let testSupplier;
+
+  beforeAll(async () => {
+    await cleanAllTestData();
+  });
+
+  afterAll(async () => {
+    await cleanAllTestData();
+  });
+
+  beforeEach(async () => {
+    await cleanAllTestData();
+    // Criar usuário de teste via API e obter token
+    authToken = await createTestUser(app, 'testsupplier@example.com', 'Test User Supplier');
+    testUser = await User.findOne({ where: { email: 'testsupplier@example.com' } });
+  });
+
   describe('POST /api/suppliers', () => {
     it('deve criar um novo fornecedor com sucesso', async () => {
       const supplierData = {
         name: 'Fornecedor Teste',
-        documentType: 'CNPJ',
-        documentNumber: '12345678000195',
+        document_type: 'CNPJ',
+        document_number: '12345678000195',
         email: 'fornecedor@teste.com',
         phone: '11988888888',
         address: 'Endereço do Fornecedor'
@@ -47,21 +43,19 @@ describe('Supplier Integration Tests', () => {
       expect(response.body).toHaveProperty('id');
       expect(response.body.message).toBe('Fornecedor criado com sucesso');
 
-      const createdSupplier = await Customer.findOne({
-        where: { id: response.body.id },
-        include: [{ model: CustomerType, as: 'types' }]
+      const createdSupplier = await Supplier.findOne({
+        where: { id: response.body.id }
       });
 
       expect(createdSupplier).toBeTruthy();
       expect(createdSupplier.name).toBe(supplierData.name);
-      expect(createdSupplier.types[0].type).toBe('supplier');
     });
 
     it('deve retornar erro ao tentar criar fornecedor com documento inválido', async () => {
       const supplierData = {
         name: 'Fornecedor Teste',
-        documentType: 'CNPJ',
-        documentNumber: '12345678901234', // CNPJ inválido
+        document_type: 'CNPJ',
+        document_number: '12345678901234',
         email: 'fornecedor@teste.com'
       };
 
@@ -93,17 +87,12 @@ describe('Supplier Integration Tests', () => {
   describe('GET /api/suppliers', () => {
     beforeEach(async () => {
       // Criar fornecedores de teste
-      testSupplier = await Customer.create({
+      testSupplier = await Supplier.create({
         name: 'Fornecedor Teste',
         document_type: 'CNPJ',
         document_number: '12345678000195',
         email: 'fornecedor@teste.com',
         user_id: testUser.id
-      });
-
-      await CustomerType.create({
-        customer_id: testSupplier.id,
-        type: 'supplier'
       });
     });
 
@@ -128,17 +117,12 @@ describe('Supplier Integration Tests', () => {
 
   describe('GET /api/suppliers/:id', () => {
     beforeEach(async () => {
-      testSupplier = await Customer.create({
+      testSupplier = await Supplier.create({
         name: 'Fornecedor Teste',
         document_type: 'CNPJ',
         document_number: '12345678000195',
         email: 'fornecedor@teste.com',
         user_id: testUser.id
-      });
-
-      await CustomerType.create({
-        customer_id: testSupplier.id,
-        type: 'supplier'
       });
     });
 
@@ -149,7 +133,6 @@ describe('Supplier Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.name).toBe('Fornecedor Teste');
-      expect(response.body.types[0].type).toBe('supplier');
     });
 
     it('deve retornar erro ao tentar acessar fornecedor inexistente', async () => {
@@ -164,25 +147,20 @@ describe('Supplier Integration Tests', () => {
 
   describe('PUT /api/suppliers/:id', () => {
     beforeEach(async () => {
-      testSupplier = await Customer.create({
+      testSupplier = await Supplier.create({
         name: 'Fornecedor Teste',
         document_type: 'CNPJ',
         document_number: '12345678000195',
         email: 'fornecedor@teste.com',
         user_id: testUser.id
       });
-
-      await CustomerType.create({
-        customer_id: testSupplier.id,
-        type: 'supplier'
-      });
     });
 
     it('deve atualizar fornecedor com sucesso', async () => {
       const updateData = {
         name: 'Fornecedor Atualizado',
-        documentType: 'CNPJ',
-        documentNumber: '12345678000195',
+        document_type: 'CNPJ',
+        document_number: '12345678000195',
         email: 'novo@email.com'
       };
 
@@ -194,7 +172,7 @@ describe('Supplier Integration Tests', () => {
       expect(response.status).toBe(200);
       expect(response.body.message).toBe('Fornecedor atualizado com sucesso');
 
-      const updatedSupplier = await Customer.findOne({
+      const updatedSupplier = await Supplier.findOne({
         where: { id: testSupplier.id }
       });
 
@@ -205,8 +183,8 @@ describe('Supplier Integration Tests', () => {
     it('deve retornar erro ao tentar atualizar com documento inválido', async () => {
       const updateData = {
         name: 'Fornecedor Atualizado',
-        documentType: 'CNPJ',
-        documentNumber: '12345678901234', // CNPJ inválido
+        document_type: 'CNPJ',
+        document_number: '12345678901234',
         email: 'novo@email.com'
       };
 
@@ -222,17 +200,12 @@ describe('Supplier Integration Tests', () => {
 
   describe('DELETE /api/suppliers/:id', () => {
     beforeEach(async () => {
-      testSupplier = await Customer.create({
+      testSupplier = await Supplier.create({
         name: 'Fornecedor Teste',
         document_type: 'CNPJ',
         document_number: '12345678000195',
         email: 'fornecedor@teste.com',
         user_id: testUser.id
-      });
-
-      await CustomerType.create({
-        customer_id: testSupplier.id,
-        type: 'supplier'
       });
     });
 
@@ -244,9 +217,8 @@ describe('Supplier Integration Tests', () => {
       expect(response.status).toBe(200);
       expect(response.body.message).toBe('Fornecedor removido com sucesso');
 
-      const deletedSupplier = await Customer.findOne({
-        where: { id: testSupplier.id },
-        include: [{ model: CustomerType, as: 'types' }]
+      const deletedSupplier = await Supplier.findOne({
+        where: { id: testSupplier.id }
       });
 
       expect(deletedSupplier).toBeNull();
@@ -256,7 +228,7 @@ describe('Supplier Integration Tests', () => {
       // Criar uma conta a pagar associada ao fornecedor
       await Payable.create({
         user_id: testUser.id,
-        customer_id: testSupplier.id,
+        supplier_id: testSupplier.id,
         description: 'Conta de teste',
         amount: 1000,
         due_date: new Date(),

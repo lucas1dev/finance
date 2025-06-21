@@ -10,9 +10,9 @@ module.exports = (sequelize, DataTypes) => {
         as: 'user'
       });
 
-      Payable.belongsTo(models.Customer, {
-        foreignKey: 'customer_id',
-        as: 'customer'
+      Payable.belongsTo(models.Supplier, {
+        foreignKey: 'supplier_id',
+        as: 'supplier'
       });
 
       Payable.belongsTo(models.Category, {
@@ -49,11 +49,11 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id'
       }
     },
-    customer_id: {
+    supplier_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: 'customers',
+        model: 'suppliers',
         key: 'id'
       }
     },

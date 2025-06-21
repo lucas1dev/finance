@@ -19,6 +19,6 @@ router.post('/payables/:payable_id/payments', PaymentController.create);
 router.get('/payables/:payable_id/payments', PaymentController.listByPayable);
 
 // Excluir um pagamento
-router.delete('/payments/:id', PaymentController.delete);
+router.delete('/:id', PaymentController.delete);
 
 module.exports = router; 

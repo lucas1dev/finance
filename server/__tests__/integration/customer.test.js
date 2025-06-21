@@ -1,13 +1,23 @@
 const app = require('../../app');
-const { createTestUser } = require('./setup');
+const { createTestUser, cleanAllTestData } = require('./setup');
 const request = require('supertest');
-const { sequelize } = require('../../models');
+const { sequelize, User, Customer } = require('../../models');
 
 describe('Customer Integration Tests', () => {
   let authToken;
 
   beforeAll(async () => {
-    authToken = await createTestUser(app);
+    await cleanAllTestData();
+  });
+
+  afterAll(async () => {
+    await cleanAllTestData();
+  });
+
+  beforeEach(async () => {
+    await Customer.destroy({ where: {} });
+    await User.destroy({ where: { email: 'testcustomer@example.com' } });
+    authToken = await createTestUser(app, 'testcustomer@example.com', 'Test User Customer');
   });
 
   describe('POST /api/customers', () => {
@@ -46,7 +56,7 @@ describe('Customer Integration Tests', () => {
 
   describe('GET /api/customers', () => {
     beforeEach(async () => {
-      // Criar alguns clientes para teste
+      await Customer.destroy({ where: {} });
       await request(app)
         .post('/api/customers')
         .set('Authorization', `Bearer ${authToken}`)
@@ -98,6 +108,7 @@ describe('Customer Integration Tests', () => {
     let customerId;
 
     beforeEach(async () => {
+      await Customer.destroy({ where: {} });
       const response = await request(app)
         .post('/api/customers')
         .set('Authorization', `Bearer ${authToken}`)

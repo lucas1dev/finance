@@ -225,11 +225,6 @@ class ReceivableController {
     try {
       const { description, amount, due_date, category_id, notes } = req.body;
 
-      // Validação dos campos obrigatórios
-      if (!description || !amount || !due_date) {
-        return res.status(400).json({ error: 'Descrição, valor e data de vencimento são obrigatórios' });
-      }
-
       const receivable = await Receivable.findOne({
         where: { id: req.params.id }
       });
@@ -240,6 +235,11 @@ class ReceivableController {
 
       if (receivable.user_id !== req.user.id) {
         return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      // Validação dos campos obrigatórios
+      if (!description || !amount || !due_date) {
+        return res.status(400).json({ error: 'Descrição, valor e data de vencimento são obrigatórios' });
       }
 
       // Verificar se a categoria existe (se fornecida)
@@ -367,6 +367,11 @@ class ReceivableController {
 
       if (!amount || !payment_date || !payment_method || !account_id) {
         return res.status(400).json({ error: 'Valor, data do pagamento, método de pagamento e conta são obrigatórios' });
+      }
+
+      // Validação de valores negativos
+      if (parseFloat(amount) <= 0) {
+        return res.status(400).json({ error: 'Valor do pagamento deve ser maior que zero' });
       }
 
       const receivable = await Receivable.findByPk(req.params.id);

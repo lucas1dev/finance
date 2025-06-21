@@ -81,23 +81,23 @@ router.get('/:id', asyncHandler(investmentGoalController.getInvestmentGoal));
 router.put('/:id', asyncHandler(investmentGoalController.updateInvestmentGoal));
 
 /**
- * @route PATCH /investment-goals/:id/amount
+ * @route PUT /investment-goals/:id/amount
  * @desc Atualiza o valor atual de uma meta
  * @access Private
  * @param {number} id - ID da meta
  * @body {number} current_amount - Valor atual
  * @returns {Object} Meta atualizada
  */
-router.patch('/:id/amount', asyncHandler(investmentGoalController.updateGoalAmount));
+router.put('/:id/amount', asyncHandler(investmentGoalController.updateGoalAmount));
 
 /**
- * @route POST /investment-goals/:id/calculate
+ * @route PUT /investment-goals/:id/calculate
  * @desc Calcula automaticamente o valor atual da meta baseado nos investimentos
  * @access Private
  * @param {number} id - ID da meta
  * @returns {Object} Meta atualizada com valor calculado
  */
-router.post('/:id/calculate', asyncHandler(investmentGoalController.calculateGoalAmount));
+router.put('/:id/calculate', asyncHandler(investmentGoalController.calculateGoalAmount));
 
 /**
  * @route DELETE /investment-goals/:id

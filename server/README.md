@@ -1,76 +1,183 @@
 # Backend - Sistema Financeiro
 
-## Estrutura do Projeto
+## 📋 Visão Geral
+
+Sistema financeiro completo para gerenciamento de finanças pessoais e empresariais, desenvolvido com Node.js, Express, Sequelize e MySQL. Inclui funcionalidades avançadas como gestão de investimentos, financiamentos, contas a pagar/receber e sistema de notificações.
+
+## 🏗️ Estrutura do Projeto
 
 ```
 server/
-├── config/             # Configurações do projeto
-├── controllers/        # Controladores da aplicação
-├── middlewares/        # Middlewares (autenticação, etc)
-├── migrations/         # Migrações do banco de dados
-├── models/            # Modelos do Sequelize
-├── routes/            # Rotas da API
-└── .env              # Variáveis de ambiente
+├── config/                 # Configurações do projeto
+├── controllers/            # Controladores da aplicação
+├── middlewares/            # Middlewares (autenticação, etc)
+├── migrations/             # Migrações do banco de dados
+├── models/                 # Modelos do Sequelize
+├── routes/                 # Rotas da API
+├── services/               # Serviços de negócio
+├── utils/                  # Utilitários e helpers
+├── __tests__/              # Testes unitários e de integração
+│   ├── controllers/        # Testes unitários
+│   └── integration/        # Testes de integração
+├── docs/                   # Documentação
+│   ├── jsdoc/             # Documentação JSDoc
+│   └── openapi.yaml       # Especificação OpenAPI
+├── database/               # Scripts de banco de dados
+├── jest.config.js          # Configuração Jest
+├── jest.integration.config.js # Configuração Jest integração
+├── jest.unit.config.js     # Configuração Jest unitários
+├── run-integration-tests.js # Script de execução sequencial
+└── .env                    # Variáveis de ambiente
 ```
 
-## Tecnologias Utilizadas
+## 🛠️ Tecnologias Utilizadas
 
-- Node.js
-- Express
-- Sequelize (ORM)
-- MySQL
-- JWT (Autenticação)
-- Zod (Validação)
-- Jest (Testes)
+### Backend
+- **Node.js** - Runtime JavaScript
+- **Express** - Framework web
+- **Sequelize** - ORM para MySQL
+- **MySQL** - Banco de dados
+- **JWT** - Autenticação
+- **Zod** - Validação de dados
+- **Jest** - Framework de testes
+- **Supertest** - Testes de API
 
-## Configuração do Ambiente
+### Documentação
+- **JSDoc** - Documentação de código
+- **OpenAPI/Swagger** - Documentação da API
+- **Clean JSDoc Theme** - Tema para documentação
 
-1. Instale as dependências:
+### Qualidade de Código
+- **ESLint** - Linting
+- **Prettier** - Formatação
+- **Jest** - Testes unitários e de integração
+
+## 🚀 Configuração do Ambiente
+
+### 1. Instalação das Dependências
 ```bash
 npm install
 ```
 
-2. Configure o arquivo `.env`:
+### 2. Configuração do Ambiente
+Crie o arquivo `.env` baseado no `.env.example`:
 ```env
+# Banco de Dados
 DB_USER=seu_usuario
 DB_PASS=sua_senha
 DB_NAME=finance
 DB_HOST=localhost
 DB_PORT=3306
-JWT_SECRET=seu_secret_jwt
+
+# JWT
+JWT_SECRET=seu_secret_jwt_super_seguro
+
+# Servidor
+PORT=3001
+NODE_ENV=development
+
+# Logs
+LOG_LEVEL=info
 ```
 
-3. Execute as migrações:
+### 3. Configuração do Banco de Dados
 ```bash
+# Executar schema SQL (cria todas as tabelas)
+node setup-database.js
+
+# Ou usar migrations
 npx sequelize-cli db:migrate
 ```
 
-## Modelos
+### 4. Executar o Servidor
+```bash
+# Desenvolvimento
+npm run dev
+
+# Produção
+npm start
+```
+
+## 🧪 Testes
+
+### Status dos Testes
+- **13/17 suítes de integração** funcionando 100%
+- **142/215 testes** passando (66%)
+- **Execução sequencial** implementada para evitar conflitos
+- **Cobertura de código** configurada
+
+### Comandos de Teste
+
+```bash
+# Testes unitários
+npm run test:unit                    # Executar testes unitários
+npm run test:unit:watch              # Executar em modo watch
+npm run test:unit:coverage           # Executar com cobertura
+
+# Testes de integração
+npm run test:integration             # Executar todos os testes de integração
+npm run test:integration:watch       # Executar em modo watch
+npm run test:integration:coverage    # Executar com cobertura
+
+# Execução sequencial (recomendado)
+npm run test:integration:sequential  # Executar suítes sequencialmente
+npm run test:integration:sequential:list  # Listar suítes disponíveis
+npm run test:integration:sequential:specific auth.test.js category.test.js  # Executar suítes específicas
+
+# Todos os testes
+npm run test:all                     # Unitários + Integração
+npm run test:all:coverage            # Com cobertura
+npm run test:all:sequential          # Unitários + Integração sequencial
+```
+
+### Script de Execução Sequencial
+```bash
+# Executar todas as suítes em ordem
+node run-integration-tests.js
+
+# Listar suítes disponíveis
+node run-integration-tests.js --list
+
+# Executar suítes específicas
+node run-integration-tests.js --specific auth.test.js category.test.js
+```
+
+## 📚 Documentação
+
+### Documentação da API
+- **JSDoc**: `npm run docs` - Documentação detalhada do código
+- **OpenAPI/Swagger**: `docs/openapi.yaml` - Especificação da API
+- **Visualização**: `npm run docs:serve` - Servir documentação localmente
+
+### Guias e Relatórios
+- **[Guia de Testes](./TESTING_GUIDE.md)** - Padrões e boas práticas para testes
+- **[Status dos Testes](./TEST_STATUS_REPORT.md)** - Relatório detalhado do status dos testes
+- **[Padrões de Teste](./TESTING_PATTERNS.md)** - Padrões estabelecidos para testes
+- **[Lista de Melhorias](./TASKS_MELHORIAS.md)** - Tarefas e melhorias do projeto
+- **[Visão Geral da Documentação](./DOCUMENTATION.md)** - Centralização da documentação
+
+### Comandos de Documentação
+```bash
+# Gerar documentação JSDoc
+npm run docs
+
+# Servir documentação localmente
+npm run docs:serve
+
+# Gerar documentação em modo watch
+npm run docs:watch
+```
+
+## 🗄️ Modelos do Banco de Dados
 
 ### User
 - `id`: ID do usuário
 - `name`: Nome do usuário
-- `email`: Email do usuário
-- `password`: Senha (hash)
-- `created_at`: Data de criação
-- `updated_at`: Data de atualização
-
-### Customer
-- `id`: ID do cliente
-- `user_id`: ID do usuário
-- `name`: Nome do cliente
-- `document_type`: Tipo de documento (CPF/CNPJ)
-- `document_number`: Número do documento
-- `email`: Email do cliente
-- `phone`: Telefone
-- `address`: Endereço
-- `created_at`: Data de criação
-- `updated_at`: Data de atualização
-
-### CustomerType
-- `id`: ID do tipo
-- `customer_id`: ID do cliente
-- `type`: Tipo (customer/supplier)
+- `email`: Email do usuário (único)
+- `password`: Senha (hash bcrypt)
+- `role`: Papel (admin/user)
+- `two_factor_secret`: Secret para 2FA
+- `two_factor_enabled`: Se 2FA está ativo
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
@@ -78,8 +185,9 @@ npx sequelize-cli db:migrate
 - `id`: ID da conta
 - `user_id`: ID do usuário
 - `name`: Nome da conta
-- `type`: Tipo da conta
-- `balance`: Saldo
+- `type`: Tipo (checking/savings/investment/credit_card/other)
+- `balance`: Saldo atual
+- `description`: Descrição adicional
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
@@ -88,7 +196,7 @@ npx sequelize-cli db:migrate
 - `user_id`: ID do usuário
 - `name`: Nome da categoria
 - `type`: Tipo (income/expense)
-- `color`: Cor da categoria
+- `color`: Cor em hexadecimal
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
@@ -97,49 +205,78 @@ npx sequelize-cli db:migrate
 - `user_id`: ID do usuário
 - `account_id`: ID da conta
 - `category_id`: ID da categoria
+- `investment_id`: ID do investimento (opcional)
+- `fixed_account_id`: ID da conta fixa (opcional)
 - `type`: Tipo (income/expense)
 - `amount`: Valor
 - `description`: Descrição
-- `date`: Data
-- `payment_id`: ID do pagamento (opcional)
+- `date`: Data da transação
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Customer
+- `id`: ID do cliente
+- `user_id`: ID do usuário
+- `name`: Nome do cliente
+- `document_type`: Tipo (CPF/CNPJ)
+- `document_number`: Número do documento
+- `email`: Email do cliente
+- `phone`: Telefone
+- `address`: Endereço
+- `contact_person`: Pessoa de contato
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Supplier
+- `id`: ID do fornecedor
+- `user_id`: ID do usuário
+- `name`: Nome do fornecedor
+- `document_type`: Tipo (CPF/CNPJ)
+- `document_number`: Número do documento
+- `email`: Email do fornecedor
+- `phone`: Telefone
+- `address`: Endereço
+- `contact_person`: Pessoa de contato
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
 ### Receivable
-- `id`: ID da conta a receber
+- `id`: ID do recebível
 - `user_id`: ID do usuário
 - `customer_id`: ID do cliente
-- `description`: Descrição
-- `amount`: Valor
+- `category_id`: ID da categoria
+- `amount`: Valor total
+- `remaining_amount`: Valor restante
 - `due_date`: Data de vencimento
-- `status`: Status (pending/paid/overdue/cancelled)
-- `payment_date`: Data do pagamento
-- `payment_method`: Método de pagamento
-- `notes`: Observações
+- `description`: Descrição
+- `status`: Status (pending/partially_paid/paid)
+- `invoice_number`: Número da nota fiscal
+- `payment_terms`: Condições de pagamento
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
 ### Payable
-- `id`: ID da conta a pagar
+- `id`: ID do pagável
 - `user_id`: ID do usuário
-- `customer_id`: ID do cliente
+- `supplier_id`: ID do fornecedor
+- `category_id`: ID da categoria
 - `description`: Descrição
 - `amount`: Valor
 - `due_date`: Data de vencimento
-- `status`: Status (pending/paid/overdue/cancelled)
 - `payment_date`: Data do pagamento
-- `payment_method`: Método de pagamento
+- `status`: Status (pending/paid/overdue)
+- `payment_method`: Método (boleto/transfer/card)
+- `invoice_number`: Número da nota fiscal
 - `notes`: Observações
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
 ### Payment
 - `id`: ID do pagamento
-- `receivable_id`: ID da conta a receber (opcional)
-- `payable_id`: ID da conta a pagar (opcional)
+- `receivable_id`: ID do recebível
 - `amount`: Valor
 - `payment_date`: Data do pagamento
-- `payment_method`: Método de pagamento
+- `payment_method`: Método (cash/pix/credit_card/debit_card/bank_transfer)
 - `description`: Descrição
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
@@ -147,569 +284,457 @@ npx sequelize-cli db:migrate
 ### Investment
 - `id`: ID do investimento
 - `user_id`: ID do usuário
-- `account_id`: ID da conta
-- `category_id`: ID da categoria
-- `investment_type`: Tipo de investimento (acoes, fiis, renda_fixa, etc.)
+- `investment_type`: Tipo (acoes/fundos/tesouro/cdb/criptomoedas/outros)
 - `asset_name`: Nome do ativo
-- `ticker`: Código do ativo (opcional)
-- `invested_amount`: Valor total investido
-- `quantity`: Quantidade de ativos
+- `invested_amount`: Valor investido
+- `current_value`: Valor atual
+- `purchase_date`: Data de compra
+- `sale_date`: Data de venda (opcional)
+- `quantity`: Quantidade
 - `unit_price`: Preço unitário
-- `operation_date`: Data da operação
-- `operation_type`: Tipo de operação (compra/venda)
+- `current_unit_price`: Preço unitário atual
 - `broker`: Corretora
-- `observations`: Observações
-- `status`: Status (ativo/inativo)
+- `notes`: Observações
+- `is_active`: Se está ativo
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
-
-#### Funcionalidades Avançadas
-- **Venda de ativos de investimentos**: Permite registrar a venda de ativos já adquiridos, gerando automaticamente uma transação de entrada na conta selecionada.
-- **Seleção de carteira**: Ao comprar, selecione a conta de onde sai o valor; ao vender, selecione a conta que recebe o valor.
-- **Transação automática**: Toda venda gera uma transação do tipo `income` vinculada ao investimento e à conta.
-- **Validação de posição**: Não é possível vender mais do que a quantidade disponível.
-- **Garantia de category_id**: Sempre é usada uma categoria válida do usuário para a transação.
-- **Documentação JSDoc**: Todos os controllers de investimento possuem documentação detalhada.
 
 ### InvestmentGoal
 - `id`: ID da meta
 - `user_id`: ID do usuário
-- `investment_id`: ID do investimento
 - `name`: Nome da meta
 - `target_amount`: Valor alvo
-- `target_date`: Data alvo
 - `current_amount`: Valor atual
+- `target_date`: Data alvo
 - `description`: Descrição
-- `status`: Status (ativa/concluida/cancelada)
+- `priority`: Prioridade (low/medium/high)
+- `status`: Status (active/completed/cancelled)
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
 ### InvestmentContribution
-- `id`: ID do aporte
+- `id`: ID da contribuição
 - `user_id`: ID do usuário
-- `investment_id`: ID do investimento
-- `contribution_date`: Data do aporte
-- `amount`: Valor total do aporte
-- `quantity`: Quantidade de ativos
-- `unit_price`: Preço unitário
-- `broker`: Corretora (opcional)
-- `observations`: Observações (opcional)
+- `investment_goal_id`: ID da meta
+- `amount`: Valor da contribuição
+- `contribution_date`: Data da contribuição
+- `description`: Descrição
 - `created_at`: Data de criação
 - `updated_at`: Data de atualização
 
-## Endpoints da API
+### Creditor
+- `id`: ID do credor
+- `user_id`: ID do usuário
+- `name`: Nome do credor
+- `document_type`: Tipo (CPF/CNPJ)
+- `document_number`: Número do documento
+- `email`: Email do credor
+- `phone`: Telefone
+- `address`: Endereço
+- `contact_person`: Pessoa de contato
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Financing
+- `id`: ID do financiamento
+- `user_id`: ID do usuário
+- `creditor_id`: ID do credor
+- `description`: Descrição
+- `total_amount`: Valor total
+- `remaining_amount`: Valor restante
+- `interest_rate`: Taxa de juros
+- `start_date`: Data de início
+- `end_date`: Data de término
+- `payment_day`: Dia do pagamento
+- `payment_method`: Método (boleto/automatic_debit/transfer)
+- `status`: Status (active/paid/cancelled)
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### FinancingPayment
+- `id`: ID do pagamento
+- `financing_id`: ID do financiamento
+- `payment_date`: Data do pagamento
+- `amount`: Valor do pagamento
+- `principal_amount`: Valor do principal
+- `interest_amount`: Valor dos juros
+- `payment_method`: Método (boleto/automatic_debit/transfer)
+- `status`: Status (pending/paid/overdue)
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### FixedAccount
+- `id`: ID da conta fixa
+- `user_id`: ID do usuário
+- `name`: Nome da conta fixa
+- `amount`: Valor
+- `due_day`: Dia do vencimento
+- `description`: Descrição
+- `is_active`: Se está ativa
+- `is_paid`: Se foi paga
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### Notification
+- `id`: ID da notificação
+- `user_id`: ID do usuário
+- `title`: Título
+- `message`: Mensagem
+- `type`: Tipo (info/warning/error/success)
+- `is_read`: Se foi lida
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+### JobExecution
+- `id`: ID da execução
+- `job_name`: Nome do job
+- `status`: Status (running/completed/failed)
+- `started_at`: Data de início
+- `completed_at`: Data de conclusão
+- `error_message`: Mensagem de erro
+- `execution_time_ms`: Tempo de execução
+- `created_at`: Data de criação
+- `updated_at`: Data de atualização
+
+## 🔗 Endpoints da API
 
 ### Autenticação
-
-#### POST /auth/register
-Registra um novo usuário.
-```json
-{
-  "name": "Nome do Usuário",
-  "email": "email@exemplo.com",
-  "password": "senha123"
-}
-```
-
-#### POST /auth/login
-Autentica um usuário.
-```json
-{
-  "email": "email@exemplo.com",
-  "password": "senha123"
-}
-```
+- `POST /api/auth/register` - Registrar usuário
+- `POST /api/auth/login` - Fazer login
+- `POST /api/auth/logout` - Fazer logout
 
 ### Usuários
-
-#### GET /users/profile
-Retorna o perfil do usuário logado.
-
-#### PUT /users/profile
-Atualiza o perfil do usuário.
-```json
-{
-  "name": "Novo Nome",
-  "email": "novo@email.com"
-}
-```
-
-### Clientes
-
-#### GET /customers
-Lista todos os clientes do usuário.
-
-#### POST /customers
-Cria um novo cliente.
-```json
-{
-  "name": "Nome do Cliente",
-  "document_type": "CPF",
-  "document_number": "123.456.789-00",
-  "email": "cliente@email.com",
-  "phone": "(11) 99999-9999",
-  "address": "Endereço do Cliente",
-  "types": ["customer", "supplier"]
-}
-```
-
-#### GET /customers/:id
-Retorna detalhes de um cliente específico.
-
-#### PUT /customers/:id
-Atualiza um cliente.
-```json
-{
-  "name": "Novo Nome",
-  "email": "novo@email.com"
-}
-```
-
-#### DELETE /customers/:id
-Remove um cliente.
+- `GET /api/users/profile` - Obter perfil
+- `PUT /api/users/profile` - Atualizar perfil
 
 ### Contas
-
-#### GET /accounts
-Lista todas as contas do usuário.
-
-#### POST /accounts
-Cria uma nova conta.
-```json
-{
-  "name": "Conta Principal",
-  "type": "checking",
-  "balance": 1000.00
-}
-```
-
-#### GET /accounts/:id
-Retorna detalhes de uma conta específica.
-
-#### PUT /accounts/:id
-Atualiza uma conta.
-```json
-{
-  "name": "Novo Nome",
-  "balance": 2000.00
-}
-```
-
-#### DELETE /accounts/:id
-Remove uma conta.
+- `GET /api/accounts` - Listar contas
+- `POST /api/accounts` - Criar conta
+- `GET /api/accounts/:id` - Obter conta
+- `PUT /api/accounts/:id` - Atualizar conta
+- `DELETE /api/accounts/:id` - Deletar conta
 
 ### Categorias
-
-#### GET /categories
-Lista todas as categorias do usuário.
-
-#### POST /categories
-Cria uma nova categoria.
-```json
-{
-  "name": "Alimentação",
-  "type": "expense",
-  "color": "#FF0000"
-}
-```
-
-#### GET /categories/:id
-Retorna detalhes de uma categoria específica.
-
-#### PUT /categories/:id
-Atualiza uma categoria.
-```json
-{
-  "name": "Novo Nome",
-  "color": "#00FF00"
-}
-```
-
-#### DELETE /categories/:id
-Remove uma categoria.
+- `GET /api/categories` - Listar categorias
+- `POST /api/categories` - Criar categoria
+- `GET /api/categories/:id` - Obter categoria
+- `PUT /api/categories/:id` - Atualizar categoria
+- `DELETE /api/categories/:id` - Deletar categoria
 
 ### Transações
+- `GET /api/transactions` - Listar transações
+- `POST /api/transactions` - Criar transação
+- `GET /api/transactions/:id` - Obter transação
+- `PUT /api/transactions/:id` - Atualizar transação
+- `DELETE /api/transactions/:id` - Deletar transação
 
-#### GET /transactions
-Lista todas as transações do usuário.
+### Clientes
+- `GET /api/customers` - Listar clientes
+- `POST /api/customers` - Criar cliente
+- `GET /api/customers/:id` - Obter cliente
+- `PUT /api/customers/:id` - Atualizar cliente
+- `DELETE /api/customers/:id` - Deletar cliente
 
-#### POST /transactions
-Cria uma nova transação.
-```json
-{
-  "account_id": 1,
-  "category_id": 1,
-  "type": "expense",
-  "amount": 100.00,
-  "description": "Compra no supermercado",
-  "date": "2024-03-20"
-}
-```
+### Fornecedores
+- `GET /api/suppliers` - Listar fornecedores
+- `POST /api/suppliers` - Criar fornecedor
+- `GET /api/suppliers/:id` - Obter fornecedor
+- `PUT /api/suppliers/:id` - Atualizar fornecedor
+- `DELETE /api/suppliers/:id` - Deletar fornecedor
 
-#### GET /transactions/:id
-Retorna detalhes de uma transação específica.
+### Recebíveis
+- `GET /api/receivables` - Listar recebíveis
+- `POST /api/receivables` - Criar recebível
+- `GET /api/receivables/:id` - Obter recebível
+- `PUT /api/receivables/:id` - Atualizar recebível
+- `DELETE /api/receivables/:id` - Deletar recebível
 
-#### PUT /transactions/:id
-Atualiza uma transação.
-```json
-{
-  "amount": 150.00,
-  "description": "Nova descrição"
-}
-```
+### Pagáveis
+- `GET /api/payables` - Listar pagáveis
+- `POST /api/payables` - Criar pagável
+- `GET /api/payables/:id` - Obter pagável
+- `PUT /api/payables/:id` - Atualizar pagável
+- `DELETE /api/payables/:id` - Deletar pagável
 
-#### DELETE /transactions/:id
-Remove uma transação.
-
-### Contas a Receber
-
-#### GET /receivables
-Lista todas as contas a receber do usuário.
-
-#### POST /receivables
-Cria uma nova conta a receber.
-```json
-{
-  "customer_id": 1,
-  "description": "Venda de produto",
-  "amount": 1000.00,
-  "due_date": "2024-04-20",
-  "payment_terms": "À vista"
-}
-```
-
-#### GET /receivables/:id
-Retorna detalhes de uma conta a receber específica.
-
-#### PUT /receivables/:id
-Atualiza uma conta a receber.
-```json
-{
-  "amount": 1200.00,
-  "due_date": "2024-05-20"
-}
-```
-
-#### DELETE /receivables/:id
-Remove uma conta a receber.
-
-#### GET /receivables/:id/payments
-Lista todos os pagamentos de uma conta a receber.
-
-#### POST /receivables/:id/payments
-Registra um novo pagamento.
-```json
-{
-  "amount": 500.00,
-  "payment_date": "2024-03-20",
-  "payment_method": "pix",
-  "description": "Pagamento parcial",
-  "account_id": 1
-}
-```
-
-### Contas a Pagar
-
-#### GET /payables
-Lista todas as contas a pagar do usuário.
-
-#### POST /payables
-Cria uma nova conta a pagar.
-```json
-{
-  "customer_id": 1,
-  "description": "Compra de insumos",
-  "amount": 1000.00,
-  "due_date": "2024-04-20",
-  "payment_terms": "30 dias"
-}
-```
-
-#### GET /payables/:id
-Retorna detalhes de uma conta a pagar específica.
-
-#### PUT /payables/:id
-Atualiza uma conta a pagar.
-```json
-{
-  "amount": 1200.00,
-  "due_date": "2024-05-20"
-}
-```
-
-#### DELETE /payables/:id
-Remove uma conta a pagar.
-
-#### GET /payables/:id/payments
-Lista todos os pagamentos de uma conta a pagar.
-
-#### POST /payables/:id/payments
-Registra um novo pagamento.
-```json
-{
-  "amount": 500.00,
-  "payment_date": "2024-03-20",
-  "payment_method": "pix",
-  "description": "Pagamento parcial",
-  "account_id": 1
-}
-```
+### Pagamentos
+- `GET /api/payments` - Listar pagamentos
+- `POST /api/payments` - Criar pagamento
+- `GET /api/payments/:id` - Obter pagamento
+- `PUT /api/payments/:id` - Atualizar pagamento
+- `DELETE /api/payments/:id` - Deletar pagamento
 
 ### Investimentos
-
-#### GET /investments
-Lista todos os investimentos do usuário com filtros e estatísticas.
-
-#### POST /investments
-Cria um novo investimento.
-```json
-{
-  "investment_type": "acoes",
-  "asset_name": "Petrobras",
-  "ticker": "PETR4",
-  "invested_amount": 1000.00,
-  "quantity": 100,
-  "unit_price": 10.00,
-  "operation_date": "2024-03-20",
-  "operation_type": "compra",
-  "broker": "xp_investimentos",
-  "account_id": 1,
-  "category_id": 1,
-  "observations": "Primeira compra"
-}
-```
-
-#### GET /investments/:id
-Retorna detalhes de um investimento específico.
-
-#### PUT /investments/:id
-Atualiza um investimento.
-```json
-{
-  "invested_amount": 1500.00,
-  "quantity": 150,
-  "observations": "Atualização"
-}
-```
-
-#### DELETE /investments/:id
-Remove um investimento.
-
-#### GET /investments/statistics
-Retorna estatísticas gerais dos investimentos.
-
-#### GET /investments/positions
-Lista as posições atuais de todos os ativos do usuário.
-
-**Response:**
-```json
-[
-  {
-    "asset_name": "Petrobras",
-    "ticker": "PETR4",
-    "total_quantity": 150,
-    "average_price": 12.50,
-    "total_invested": 1875.00,
-    "current_value": 2250.00,
-    "profit_loss": 375.00,
-    "profit_loss_percentage": 20.00
-  }
-]
-```
-
-#### POST /investments/positions/{assetName}/sell
-Registra a venda de um ativo de investimento.
-
-**Parâmetros da URL:**
-- `assetName`: Nome do ativo a ser vendido (ex: "Petrobras")
-
-**Request:**
-```json
-{
-  "quantity": 10,
-  "unit_price": 30.00,
-  "operation_date": "2024-03-25",
-  "account_id": 1,
-  "broker": "xp_investimentos",
-  "observations": "Venda parcial para realização de lucro"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Venda registrada com sucesso",
-  "investment": {
-    "id": 2,
-    "user_id": 1,
-    "account_id": 1,
-    "category_id": 1,
-    "investment_type": "acoes",
-    "asset_name": "Petrobras",
-    "ticker": "PETR4",
-    "invested_amount": 300.00,
-    "quantity": 10,
-    "unit_price": 30.00,
-    "operation_date": "2024-03-25",
-    "operation_type": "venda",
-    "broker": "xp_investimentos",
-    "observations": "Venda parcial para realização de lucro",
-    "status": "ativo"
-  },
-  "transaction": {
-    "id": 15,
-    "user_id": 1,
-    "account_id": 1,
-    "category_id": 1,
-    "type": "income",
-    "amount": 300.00,
-    "description": "Venda de 10 PETR4 a R$ 30,00",
-    "date": "2024-03-25"
-  }
-}
-```
-
-**Funcionalidades da Venda de Ativos:**
-- **Validação de Posição**: Verifica se há quantidade suficiente do ativo para venda
-- **Seleção de Carteira**: Permite escolher a conta que receberá o valor da venda
-- **Transação Automática**: Gera automaticamente uma transação de entrada (`income`) na conta selecionada
-- **Categoria Automática**: Utiliza uma categoria válida do usuário para a transação
-- **Cálculo de Lucro/Prejuízo**: Calcula automaticamente o resultado da operação
-- **Histórico Completo**: Mantém registro de todas as operações de compra e venda
-
-**Validações:**
-- Quantidade disponível para venda
-- Conta válida do usuário
-- Preço unitário positivo
-- Data de operação válida
+- `GET /api/investments` - Listar investimentos
+- `POST /api/investments` - Criar investimento
+- `GET /api/investments/:id` - Obter investimento
+- `PUT /api/investments/:id` - Atualizar investimento
+- `DELETE /api/investments/:id` - Deletar investimento
 
 ### Metas de Investimento
+- `GET /api/investment-goals` - Listar metas
+- `POST /api/investment-goals` - Criar meta
+- `GET /api/investment-goals/:id` - Obter meta
+- `PUT /api/investment-goals/:id` - Atualizar meta
+- `DELETE /api/investment-goals/:id` - Deletar meta
 
-#### GET /investment-goals
-Lista todas as metas de investimento do usuário.
+### Contribuições para Metas
+- `GET /api/investment-contributions` - Listar contribuições
+- `POST /api/investment-contributions` - Criar contribuição
+- `GET /api/investment-contributions/:id` - Obter contribuição
+- `PUT /api/investment-contributions/:id` - Atualizar contribuição
+- `DELETE /api/investment-contributions/:id` - Deletar contribuição
 
-#### POST /investment-goals
-Cria uma nova meta de investimento.
-```json
-{
-  "investment_id": 1,
-  "name": "Meta Petrobras",
-  "target_amount": 5000.00,
-  "target_date": "2024-12-31",
-  "description": "Acumular 5000 reais em Petrobras"
-}
-```
+### Credores
+- `GET /api/creditors` - Listar credores
+- `POST /api/creditors` - Criar credor
+- `GET /api/creditors/:id` - Obter credor
+- `PUT /api/creditors/:id` - Atualizar credor
+- `DELETE /api/creditors/:id` - Deletar credor
 
-#### GET /investment-goals/:id
-Retorna detalhes de uma meta específica.
+### Financiamentos
+- `GET /api/financings` - Listar financiamentos
+- `POST /api/financings` - Criar financiamento
+- `GET /api/financings/:id` - Obter financiamento
+- `PUT /api/financings/:id` - Atualizar financiamento
+- `DELETE /api/financings/:id` - Deletar financiamento
 
-#### PUT /investment-goals/:id
-Atualiza uma meta.
-```json
-{
-  "target_amount": 6000.00,
-  "target_date": "2024-11-30"
-}
-```
+### Pagamentos de Financiamentos
+- `GET /api/financing-payments` - Listar pagamentos
+- `POST /api/financing-payments` - Criar pagamento
+- `GET /api/financing-payments/:id` - Obter pagamento
+- `PUT /api/financing-payments/:id` - Atualizar pagamento
+- `DELETE /api/financing-payments/:id` - Deletar pagamento
 
-#### DELETE /investment-goals/:id
-Remove uma meta.
+### Contas Fixas
+- `GET /api/fixed-accounts` - Listar contas fixas
+- `POST /api/fixed-accounts` - Criar conta fixa
+- `GET /api/fixed-accounts/:id` - Obter conta fixa
+- `PUT /api/fixed-accounts/:id` - Atualizar conta fixa
+- `DELETE /api/fixed-accounts/:id` - Deletar conta fixa
+- `PATCH /api/fixed-accounts/:id/toggle` - Alternar status
+- `PATCH /api/fixed-accounts/:id/pay` - Marcar como paga
 
-### Aportes de Investimento
+### Notificações
+- `GET /api/notifications` - Listar notificações
+- `POST /api/notifications` - Criar notificação
+- `GET /api/notifications/:id` - Obter notificação
+- `PUT /api/notifications/:id` - Atualizar notificação
+- `DELETE /api/notifications/:id` - Deletar notificação
+- `PATCH /api/notifications/:id/read` - Marcar como lida
 
-#### GET /investment-contributions
-Lista todos os aportes do usuário com filtros e paginação.
+### Jobs
+- `GET /api/jobs` - Listar jobs
+- `POST /api/jobs` - Executar job
+- `GET /api/jobs/:id` - Obter job
 
-#### POST /investment-contributions
-Cria um novo aporte.
-```json
-{
-  "investment_id": 1,
-  "contribution_date": "2024-03-20",
-  "amount": 500.00,
-  "quantity": 50,
-  "unit_price": 10.00,
-  "broker": "xp_investimentos",
-  "observations": "Aporte mensal"
-}
-```
+## 🔧 Comandos Úteis
 
-#### GET /investment-contributions/:id
-Retorna detalhes de um aporte específico.
-
-#### PUT /investment-contributions/:id
-Atualiza um aporte.
-```json
-{
-  "amount": 600.00,
-  "quantity": 60,
-  "observations": "Aporte atualizado"
-}
-```
-
-#### DELETE /investment-contributions/:id
-Remove um aporte.
-
-#### GET /investment-contributions/investment/:investmentId
-Lista todos os aportes de um investimento específico.
-
-#### GET /investment-contributions/statistics
-Retorna estatísticas gerais dos aportes.
-
-## Middlewares
-
-### AuthMiddleware
-Verifica se o usuário está autenticado através do token JWT.
-
-### ErrorHandler
-Trata erros da aplicação e retorna respostas apropriadas.
-
-## Configurações
-
-### Database
-Configuração do banco de dados MySQL usando Sequelize.
-
-### JWT
-Configuração do JWT para autenticação.
-
-## Scripts Disponíveis
-
-- `npm start`: Inicia o servidor
-- `npm run dev`: Inicia o servidor em modo desenvolvimento
-- `npm run migrate`: Executa as migrações do banco de dados
-- `npm run seed`: Popula o banco com dados iniciais
-- `npm test`: Executa os testes
-- `npm run test:coverage`: Executa os testes com cobertura
-
-## Testes
-
-O projeto inclui testes unitários e de integração para todas as funcionalidades:
-
+### Desenvolvimento
 ```bash
-# Executar todos os testes
-npm test
-
-# Executar testes com cobertura
-npm run test:coverage
-
-# Executar testes específicos
-npm test -- __tests__/integration/investmentContribution.test.js
+npm run dev              # Executar em modo desenvolvimento
+npm run lint             # Executar ESLint
+npm run lint:fix         # Corrigir problemas do ESLint
+npm run clean            # Limpar e reinstalar dependências
 ```
 
-## Documentação da API
-
-A documentação completa da API está disponível via Swagger UI:
-
+### Testes
+```bash
+npm run test:all         # Executar todos os testes
+npm run test:all:coverage # Executar com cobertura
+npm run test:all:sequential # Executar sequencialmente
 ```
-http://localhost:3001/api-docs
+
+### Documentação
+```bash
+npm run docs             # Gerar documentação JSDoc
+npm run docs:serve       # Servir documentação
+npm run docs:watch       # Gerar em modo watch
 ```
 
-## Segurança
+### Banco de Dados
+```bash
+npm run migrate          # Executar migrações
+npm run migrate:undo     # Desfazer migrações
+npm run seed             # Executar seeds
+npm run seed:undo        # Desfazer seeds
+```
 
-- Autenticação via JWT
-- Senhas criptografadas com bcrypt
-- Validação de dados com Zod
-- Proteção contra SQL Injection (Sequelize)
-- CORS configurado
-- Rate limiting
-- Sanitização de inputs 
+### Produção
+```bash
+npm start                # Executar em produção
+npm run prod:pm2         # Executar com PM2
+```
+
+## 📊 Status do Projeto
+
+### Funcionalidades Implementadas ✅
+- ✅ Autenticação JWT completa
+- ✅ CRUD de usuários, contas, categorias
+- ✅ Gestão de transações
+- ✅ Gestão de clientes e fornecedores
+- ✅ Controle de recebíveis e pagáveis
+- ✅ Sistema de pagamentos
+- ✅ Gestão de investimentos
+- ✅ Metas de investimento
+- ✅ Financiamentos e credores
+- ✅ Contas fixas
+- ✅ Sistema de notificações
+- ✅ Jobs em background
+- ✅ Validação com Zod
+- ✅ Testes unitários e de integração
+- ✅ Documentação JSDoc e OpenAPI
+- ✅ Execução sequencial de testes
+
+### Métricas de Qualidade
+- **13/17 suítes de integração** funcionando 100%
+- **142/215 testes** passando (66%)
+- **Cobertura de código** configurada
+- **Documentação completa** disponível
+- **Padrões de teste** estabelecidos
+
+### Próximos Passos
+1. **Monitorar performance** dos testes
+2. **Manter documentação atualizada**
+3. **Aplicar padrões a novas funcionalidades**
+4. **Revisar cobertura de código**
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## 📞 Suporte
+
+- **Email**: suporte@finance.com
+- **GitHub**: [Issues](https://github.com/seu-usuario/finance/issues)
+- **Documentação**: [JSDoc](./docs/jsdoc/) | [OpenAPI](./docs/openapi.yaml)
+
+## 📈 Histórico de Mudanças
+
+### Versão 2.0.0 (2025-06-20) - Lançamento Principal
+**Status**: ✅ Sistema completo e estável
+
+#### ✨ Funcionalidades Adicionadas
+- **Sistema Robusto de Testes**
+  - Execução sequencial de testes de integração
+  - Script `run-integration-tests.js`
+  - Isolamento completo entre suítes
+  - 13/17 suítes funcionando 100%
+
+- **Sistema de Financiamentos e Credores**
+  - Modelos: `Creditor`, `Financing`, `FinancingPayment`
+  - Controllers completos com cálculos
+  - Endpoints para gestão completa
+
+- **Sistema de Contas Fixas Aprimorado**
+  - Campo `is_paid` adicionado
+  - Endpoints para alternar status
+  - Integração com transações
+
+- **Sistema de Pagáveis Completo**
+  - Modelo `Payable` com relacionamentos
+  - Controller com CRUD completo
+  - Controle de status
+
+- **Sistema de Notificações e Jobs**
+  - Modelos: `Notification`, `JobExecution`
+  - Jobs em background
+  - Sistema de tracking
+
+- **Sistema de Usuários Administradores**
+  - Campo `role` no modelo `User`
+  - Middleware `adminAuth.js`
+  - Controle de permissões
+
+#### 🔧 Melhorias Implementadas
+- **Infraestrutura de Testes**
+  - Configuração Jest otimizada
+  - Detecção de handles abertos
+  - Timeouts configuráveis
+
+- **Banco de Dados**
+  - Schema SQL completo
+  - Todas as tabelas criadas
+  - Índices otimizados
+
+- **Documentação Completa**
+  - JSDoc em todos os arquivos
+  - OpenAPI/Swagger atualizado
+  - Guias de teste criados
+  - Relatórios de status
+
+#### 🐛 Correções Realizadas
+- **Conflitos de Dados Entre Testes**
+  - Isolamento completo
+  - Limpeza otimizada
+  - Emails únicos
+
+- **Problemas de Autenticação**
+  - Tokens JWT válidos
+  - Headers corretos
+  - Usuários únicos
+
+- **Configuração Jest**
+  - Opções inválidas removidas
+  - Timeouts configurados
+  - Logs melhorados
+
+### Versão 1.1.0 (2024-12-15)
+- Sistema de investimentos implementado
+- Venda de ativos adicionada
+- Testes de integração criados
+- Documentação OpenAPI atualizada
+
+### Versão 1.0.0 (2024-01-01)
+- Sistema base implementado
+- CRUD completo para recursos principais
+- Autenticação JWT configurada
+- Testes básicos criados
+
+## 🎯 Próximos Passos
+
+### Imediatos (1-2 semanas)
+1. **Implementar observabilidade** - Endpoints de monitoramento
+2. **Melhorar cobertura** - Atingir 80%+
+3. **Otimizar performance** - Reduzir tempo de execução
+4. **Documentar deployment** - Guia de produção
+
+### Médio Prazo (1-2 meses)
+1. **Sistema de relatórios** - Análises avançadas
+2. **Integração com APIs** - Cotação de moedas
+3. **Backup automático** - Proteção de dados
+4. **Testes de performance** - Benchmarks
+
+### Longo Prazo (3-6 meses)
+1. **Microserviços** - Arquitetura escalável
+2. **Cache distribuído** - Performance
+3. **Monitoramento avançado** - APM
+4. **CI/CD completo** - Automação
+
+## 📞 Contato e Suporte
+
+### Recursos
+- **Email**: suporte@finance.com
+- **GitHub**: [Issues](https://github.com/seu-usuario/finance/issues)
+- **Documentação**: [JSDoc](./docs/jsdoc/) | [OpenAPI](./docs/openapi.yaml)
+
+### Documentação Relacionada
+- **[CHANGELOG.md](./CHANGELOG.md)** - Histórico completo de mudanças
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Guia de testes
+- **[TESTING_PATTERNS.md](./TESTING_PATTERNS.md)** - Padrões de teste
+- **[TEST_STATUS_REPORT.md](./TEST_STATUS_REPORT.md)** - Status dos testes
+- **[TASKS_MELHORIAS.md](./TASKS_MELHORIAS.md)** - Lista de melhorias
+- **[DOCUMENTATION.md](./DOCUMENTATION.md)** - Visão geral da documentação
+
+---
+
+**Responsável**: Equipe de Desenvolvimento  
+**Versão**: 2.0.0  
+**Última atualização**: 20/06/2025

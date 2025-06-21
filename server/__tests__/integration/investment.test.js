@@ -1,67 +1,46 @@
 const request = require('supertest');
 const app = require('../../app');
 const { Investment, Account, Category, Transaction, User } = require('../../models');
-const { generateToken } = require('../../utils/helpers');
+const { createTestUser, cleanAllTestData } = require('./setup');
 
 describe('Investment Routes', () => {
   let token, user, account, category;
 
   beforeAll(async () => {
-    try {
-      console.log('Starting investment test setup...');
-      
-      // Criar usuário de teste com email único
-      user = await User.create({
-        name: 'Test User Investment',
-        email: `test.investment.${Date.now()}@example.com`,
-        password: 'password123'
-      });
-      
-      console.log('User created:', user.id);
-
-      // Criar conta de teste
-      account = await Account.create({
-        name: 'Conta Principal',
-        bank_name: 'Banco Teste',
-        account_type: 'checking',
-        balance: 10000,
-        user_id: user.id
-      });
-      
-      console.log('Account created:', account.id);
-
-      // Criar categoria de teste
-      category = await Category.create({
-        name: 'Ações',
-        type: 'expense',
-        user_id: user.id
-      });
-      
-      console.log('Category created:', category.id);
-
-      // Gerar token JWT
-      token = generateToken(user.id);
-      console.log('Token generated');
-      
-    } catch (error) {
-      console.error('Error in beforeAll:', error);
-      throw error;
-    }
+    await cleanAllTestData();
   });
 
   afterAll(async () => {
-    // Limpar dados de teste
-    await Transaction.destroy({ where: {} });
-    await Investment.destroy({ where: {} });
-    await Account.destroy({ where: {} });
-    await Category.destroy({ where: {} });
-    await User.destroy({ where: {} });
+    await cleanAllTestData();
   });
 
   beforeEach(async () => {
-    // Limpar investimentos antes de cada teste
+    // Limpar dados relevantes
     await Investment.destroy({ where: {} });
     await Transaction.destroy({ where: {} });
+    await Category.destroy({ where: {} });
+    await Account.destroy({ where: {} });
+    await User.destroy({ where: { email: 'testinvestment@example.com' } });
+
+    // Criar usuário de teste via API e obter token
+    token = await createTestUser(app, 'testinvestment@example.com', 'Test User Investment');
+    user = await User.findOne({ where: { email: 'testinvestment@example.com' } });
+    
+    // Criar conta de teste
+    account = await Account.create({
+      name: 'Conta Principal',
+      bank_name: 'Banco Teste',
+      account_type: 'checking',
+      balance: 10000,
+      user_id: user.id
+    });
+    
+    // Criar categoria de teste
+    category = await Category.create({
+      name: 'Ações',
+      type: 'expense',
+      user_id: user.id
+    });
   });
 
   describe('POST /investments', () => {
@@ -116,7 +95,7 @@ describe('Investment Routes', () => {
         .send(invalidData);
 
       expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('message');
+      expect(response.body).toHaveProperty('error');
     });
 
     it('should return 404 when account does not exist', async () => {
@@ -136,7 +115,7 @@ describe('Investment Routes', () => {
         .send(investmentData);
 
       expect(response.status).toBe(404);
-      expect(response.body).toHaveProperty('message', 'Conta não encontrada');
+      expect(response.body).toHaveProperty('error', 'Conta não encontrada');
     });
 
     it('should return 401 without authentication', async () => {
@@ -252,7 +231,7 @@ describe('Investment Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
-      expect(response.body).toHaveProperty('message', 'Investimento não encontrado');
+      expect(response.body).toHaveProperty('error', 'Investimento não encontrado');
     });
 
     it('should return 404 for investment from another user', async () => {
@@ -569,8 +548,8 @@ describe('Investment Routes', () => {
         .send(sellData);
 
       expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('message');
-      expect(response.body.message).toContain('Quantidade insuficiente');
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toContain('Quantidade insuficiente');
     });
 
     it('should return error when trying to sell non-existent asset', async () => {
@@ -588,8 +567,8 @@ describe('Investment Routes', () => {
         .send(sellData);
 
       expect(response.status).toBe(404);
-      expect(response.body).toHaveProperty('message');
-      expect(response.body.message).toContain('Posição não encontrada');
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toContain('Posição não encontrada');
     });
   });
 }); 

@@ -54,6 +54,10 @@ try {
   throw error;
 }
 
+// Adiciona relacionamentos específicos para os novos modelos
+// Removido: todas as associações duplicadas já definidas nos métodos associate dos modelos
+// Caso precise de alguma associação extra, adicione aqui, mas evite duplicidade de alias.
+
 db.sequelize = sequelize;
 db.Sequelize = Sequelize;
 

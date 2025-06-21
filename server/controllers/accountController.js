@@ -13,8 +13,7 @@ const accountController = {
    * @param {string} req.body.account_type - Tipo da conta ('checking', 'savings', 'investment').
    * @param {number} req.body.balance - Saldo inicial da conta.
    * @param {string} [req.body.description] - Descrição opcional da conta.
-   * @param {Object} req.user - Usuário autenticado (via middleware de autenticação).
-   * @param {number} req.user.id - ID do usuário autenticado.
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso e ID da conta criada.
    * @throws {Error} Se houver erro ao criar a conta no banco de dados.
@@ -26,7 +25,7 @@ const accountController = {
   createAccount: async (req, res) => {
     try {
       const { bank_name, account_type, balance, description } = req.body;
-      const userId = req.user.id;
+      const userId = req.userId;
 
       const account = await Account.create({
         user_id: userId,
@@ -46,8 +45,7 @@ const accountController = {
   /**
    * Lista todas as contas do usuário autenticado com o saldo total.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.user - Usuário autenticado.
-   * @param {number} req.user.id - ID do usuário autenticado.
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com lista de contas e saldo total.
    * @throws {Error} Se houver erro ao consultar o banco de dados.
@@ -58,8 +56,8 @@ const accountController = {
    */
   getAccounts: async (req, res) => {
     try {
-      console.log('User ID:', req.user.id);
-      const userId = req.user.id;
+      console.log('User ID:', req.userId);
+      const userId = req.userId;
       
       console.log('Buscando contas para o usuário:', userId);
       const accounts = await Account.findAll({
@@ -83,8 +81,7 @@ const accountController = {
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.params - Parâmetros da URL.
    * @param {number} req.params.id - ID da conta a ser consultada.
-   * @param {Object} req.user - Usuário autenticado.
-   * @param {number} req.user.id - ID do usuário autenticado.
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com os dados da conta.
    * @throws {Error} Se a conta não for encontrada, não pertencer ao usuário ou houver erro no banco.
@@ -101,7 +98,7 @@ const accountController = {
         return res.status(404).json({ error: 'Conta não encontrada' });
       }
 
-      if (account.user_id !== req.user.id) {
+      if (account.user_id !== req.userId) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
@@ -122,8 +119,7 @@ const accountController = {
    * @param {string} req.body.account_type - Novo tipo da conta.
    * @param {number} req.body.balance - Novo saldo da conta.
    * @param {string} [req.body.description] - Nova descrição da conta.
-   * @param {Object} req.user - Usuário autenticado.
-   * @param {number} req.user.id - ID do usuário autenticado.
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
    * @throws {Error} Se a conta não for encontrada, não pertencer ao usuário ou houver erro no banco.
@@ -142,7 +138,7 @@ const accountController = {
         return res.status(404).json({ error: 'Conta não encontrada' });
       }
 
-      if (account.user_id !== req.user.id) {
+      if (account.user_id !== req.userId) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
@@ -165,8 +161,7 @@ const accountController = {
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.params - Parâmetros da URL.
    * @param {number} req.params.id - ID da conta a ser excluída.
-   * @param {Object} req.user - Usuário autenticado.
-   * @param {number} req.user.id - ID do usuário autenticado.
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
    * @throws {Error} Se a conta não for encontrada, não pertencer ao usuário ou houver erro no banco.
@@ -183,7 +178,7 @@ const accountController = {
         return res.status(404).json({ error: 'Conta não encontrada' });
       }
 
-      if (account.user_id !== req.user.id) {
+      if (account.user_id !== req.userId) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 

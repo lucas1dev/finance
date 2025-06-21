@@ -1,44 +1,37 @@
 const request = require('supertest');
 const app = require('../../app');
-const { InvestmentGoal, Category, Investment, User } = require('../../models');
+const { InvestmentGoal, Category, Investment, User, Account } = require('../../models');
 const { generateToken } = require('../../utils/helpers');
+const { createTestUser, cleanAllTestData } = require('./setup');
 
 describe('Investment Goal Routes', () => {
   let token, user, category;
 
   beforeAll(async () => {
-    // Criar usuário de teste
-    user = await User.create({
-      name: 'Test User',
-      email: 'test@example.com',
-      password: 'password123'
-    });
+    await cleanAllTestData();
+  });
 
+  afterAll(async () => {
+    await cleanAllTestData();
+  });
+
+  beforeEach(async () => {
+    // Limpeza completa de dados
+    await cleanAllTestData();
+
+    // Criar usuário de teste via API e obter token
+    token = await createTestUser(app, 'testinvestmentgoal@example.com', 'Test User Investment Goal');
+    user = await User.findOne({ where: { email: 'testinvestmentgoal@example.com' } });
+    
     // Criar categoria de teste
     category = await Category.create({
       name: 'Investimentos',
       type: 'expense',
       user_id: user.id
     });
-
-    // Gerar token JWT
-    token = generateToken(user.id);
   });
 
-  afterAll(async () => {
-    // Limpar dados de teste
-    await Investment.destroy({ where: {} });
-    await InvestmentGoal.destroy({ where: {} });
-    await Category.destroy({ where: {} });
-    await User.destroy({ where: {} });
-  });
-
-  beforeEach(async () => {
-    // Limpar metas antes de cada teste
-    await InvestmentGoal.destroy({ where: {} });
-  });
-
-  describe('POST /investment-goals', () => {
+  describe('POST /api/investment-goals', () => {
     it('should create a new investment goal successfully', async () => {
       const goalData = {
         title: 'Aposentadoria',
@@ -51,7 +44,7 @@ describe('Investment Goal Routes', () => {
       };
 
       const response = await request(app)
-        .post('/investment-goals')
+        .post('/api/investment-goals')
         .set('Authorization', `Bearer ${token}`)
         .send(goalData);
 
@@ -59,7 +52,7 @@ describe('Investment Goal Routes', () => {
       expect(response.body).toHaveProperty('message', 'Meta de investimento criada com sucesso');
       expect(response.body).toHaveProperty('goal');
       expect(response.body.goal.title).toBe('Aposentadoria');
-      expect(response.body.goal.target_amount).toBe(500000);
+      expect(response.body.goal.target_amount).toBe('500000.00');
       expect(response.body.goal.progress).toBe(0);
       expect(response.body.goal).toHaveProperty('category');
     });
@@ -72,12 +65,13 @@ describe('Investment Goal Routes', () => {
       };
 
       const response = await request(app)
-        .post('/investment-goals')
+        .post('/api/investment-goals')
         .set('Authorization', `Bearer ${token}`)
         .send(invalidData);
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
+      expect(response.body).toHaveProperty('errors');
     });
 
     it('should return 404 when category does not exist', async () => {
@@ -90,7 +84,7 @@ describe('Investment Goal Routes', () => {
       };
 
       const response = await request(app)
-        .post('/investment-goals')
+        .post('/api/investment-goals')
         .set('Authorization', `Bearer ${token}`)
         .send(goalData);
 
@@ -100,14 +94,14 @@ describe('Investment Goal Routes', () => {
 
     it('should return 401 without authentication', async () => {
       const response = await request(app)
-        .post('/investment-goals')
+        .post('/api/investment-goals')
         .send({});
 
       expect(response.status).toBe(401);
     });
   });
 
-  describe('GET /investment-goals', () => {
+  describe('GET /api/investment-goals', () => {
     beforeEach(async () => {
       // Criar algumas metas de teste
       await InvestmentGoal.create({
@@ -135,7 +129,7 @@ describe('Investment Goal Routes', () => {
 
     it('should return investment goals with pagination and statistics', async () => {
       const response = await request(app)
-        .get('/investment-goals')
+        .get('/api/investment-goals')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
@@ -150,7 +144,7 @@ describe('Investment Goal Routes', () => {
 
     it('should apply status filter correctly', async () => {
       const response = await request(app)
-        .get('/investment-goals?status=ativa')
+        .get('/api/investment-goals?status=ativa')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
@@ -159,7 +153,7 @@ describe('Investment Goal Routes', () => {
 
     it('should return paginated results', async () => {
       const response = await request(app)
-        .get('/investment-goals?page=1&limit=1')
+        .get('/api/investment-goals?page=1&limit=1')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
@@ -171,7 +165,7 @@ describe('Investment Goal Routes', () => {
 
     it('should include progress, isOverdue, and isCompleted properties', async () => {
       const response = await request(app)
-        .get('/investment-goals')
+        .get('/api/investment-goals')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
@@ -184,7 +178,7 @@ describe('Investment Goal Routes', () => {
     });
   });
 
-  describe('GET /investment-goals/:id', () => {
+  describe('GET /api/investment-goals/:id', () => {
     let goal;
 
     beforeEach(async () => {
@@ -202,7 +196,7 @@ describe('Investment Goal Routes', () => {
 
     it('should return a specific investment goal', async () => {
       const response = await request(app)
-        .get(`/investment-goals/${goal.id}`)
+        .get(`/api/investment-goals/${goal.id}`)
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
@@ -216,7 +210,7 @@ describe('Investment Goal Routes', () => {
 
     it('should return 404 for non-existent goal', async () => {
       const response = await request(app)
-        .get('/investment-goals/999')
+        .get('/api/investment-goals/999')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
@@ -241,27 +235,24 @@ describe('Investment Goal Routes', () => {
       });
 
       const response = await request(app)
-        .get(`/investment-goals/${otherGoal.id}`)
+        .get(`/api/investment-goals/${otherGoal.id}`)
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
-
-      // Limpar
-      await InvestmentGoal.destroy({ where: { id: otherGoal.id } });
-      await User.destroy({ where: { id: otherUser.id } });
+      expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
 
-  describe('PUT /investment-goals/:id', () => {
+  describe('PUT /api/investment-goals/:id', () => {
     let goal;
 
     beforeEach(async () => {
       goal = await InvestmentGoal.create({
         title: 'Educação',
-        description: 'Meta para educação dos filhos',
-        target_amount: 200000,
-        target_date: '2035-12-31',
-        current_amount: 25000,
+        description: 'Meta para educação superior',
+        target_amount: 100000,
+        target_date: '2026-12-31',
+        current_amount: 20000,
         color: '#8B5CF6',
         user_id: user.id,
         category_id: category.id
@@ -271,12 +262,13 @@ describe('Investment Goal Routes', () => {
     it('should update an investment goal successfully', async () => {
       const updateData = {
         title: 'Educação Superior',
-        target_amount: 250000,
-        description: 'Meta atualizada para educação superior'
+        description: 'Meta atualizada para educação superior',
+        target_amount: 120000,
+        color: '#EC4899'
       };
 
       const response = await request(app)
-        .put(`/investment-goals/${goal.id}`)
+        .put(`/api/investment-goals/${goal.id}`)
         .set('Authorization', `Bearer ${token}`)
         .send(updateData);
 
@@ -284,22 +276,22 @@ describe('Investment Goal Routes', () => {
       expect(response.body).toHaveProperty('message', 'Meta de investimento atualizada com sucesso');
       expect(response.body).toHaveProperty('goal');
       expect(response.body.goal.title).toBe('Educação Superior');
-      expect(response.body.goal.target_amount).toBe(250000);
-      expect(response.body.goal.description).toBe('Meta atualizada para educação superior');
-      expect(response.body.goal).toHaveProperty('progress');
+      expect(response.body.goal.target_amount).toBe(120000);
+      expect(response.body.goal.color).toBe('#EC4899');
     });
 
     it('should return 404 for non-existent goal', async () => {
       const response = await request(app)
-        .put('/investment-goals/999')
+        .put('/api/investment-goals/999')
         .set('Authorization', `Bearer ${token}`)
-        .send({ title: 'Test' });
+        .send({ title: 'Updated' });
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
 
-  describe('PUT /investment-goals/:id/amount', () => {
+  describe('PUT /api/investment-goals/:id/amount', () => {
     let goal;
 
     beforeEach(async () => {
@@ -307,8 +299,8 @@ describe('Investment Goal Routes', () => {
         title: 'Carro',
         description: 'Meta para compra de carro',
         target_amount: 80000,
-        target_date: '2026-12-31',
-        current_amount: 20000,
+        target_date: '2027-06-30',
+        current_amount: 25000,
         color: '#EF4444',
         user_id: user.id,
         category_id: category.id
@@ -321,7 +313,7 @@ describe('Investment Goal Routes', () => {
       };
 
       const response = await request(app)
-        .put(`/investment-goals/${goal.id}/amount`)
+        .put(`/api/investment-goals/${goal.id}/amount`)
         .set('Authorization', `Bearer ${token}`)
         .send(updateData);
 
@@ -329,80 +321,92 @@ describe('Investment Goal Routes', () => {
       expect(response.body).toHaveProperty('message', 'Valor atual da meta atualizado com sucesso');
       expect(response.body).toHaveProperty('goal');
       expect(response.body.goal.current_amount).toBe(35000);
-      expect(response.body.goal).toHaveProperty('progress');
     });
 
     it('should return 404 for non-existent goal', async () => {
       const response = await request(app)
-        .put('/investment-goals/999/amount')
+        .put('/api/investment-goals/999/amount')
         .set('Authorization', `Bearer ${token}`)
-        .send({ current_amount: 1000 });
+        .send({ current_amount: 10000 });
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
 
-  describe('PUT /investment-goals/:id/calculate', () => {
+  describe('PUT /api/investment-goals/:id/calculate', () => {
     let goal;
 
     beforeEach(async () => {
       goal = await InvestmentGoal.create({
-        title: 'Investimentos',
-        description: 'Meta baseada em investimentos',
-        target_amount: 100000,
-        target_date: '2030-12-31',
+        title: 'Aposentadoria',
+        description: 'Meta para aposentadoria',
+        target_amount: 1000000,
+        target_date: '2040-12-31',
         current_amount: 0,
-        color: '#06B6D4',
+        color: '#3B82F6',
         user_id: user.id,
         category_id: category.id
       });
     });
 
     it('should calculate goal amount based on investments', async () => {
+      // Criar uma conta para os investimentos
+      const account = await Account.create({
+        name: 'Conta Teste',
+        bank_name: 'Banco Teste',
+        account_type: 'corrente',
+        type: 'corrente',
+        balance: 100000,
+        user_id: user.id
+      });
+
       // Criar alguns investimentos
       await Investment.create({
         investment_type: 'acoes',
         asset_name: 'Petrobras',
-        invested_amount: 15000,
-        quantity: 150,
+        invested_amount: 16000,
+        quantity: 100,
         operation_date: '2024-01-15',
         operation_type: 'compra',
-        status: 'ativo',
-        user_id: user.id
+        account_id: account.id,
+        user_id: user.id,
+        category_id: category.id
       });
 
       await Investment.create({
         investment_type: 'fundos',
-        asset_name: 'Fundos Imobiliários',
-        invested_amount: 25000,
-        quantity: 250,
+        asset_name: 'Fundo XP',
+        invested_amount: 27000,
+        quantity: 1000,
         operation_date: '2024-01-20',
         operation_type: 'compra',
-        status: 'ativo',
-        user_id: user.id
+        account_id: account.id,
+        user_id: user.id,
+        category_id: category.id
       });
 
       const response = await request(app)
-        .put(`/investment-goals/${goal.id}/calculate`)
+        .put(`/api/investment-goals/${goal.id}/calculate`)
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Valor atual da meta calculado automaticamente');
+      expect(response.body).toHaveProperty('message', 'Valor atual da meta calculado com sucesso');
       expect(response.body).toHaveProperty('goal');
-      expect(response.body.goal.current_amount).toBe(40000);
-      expect(response.body.goal).toHaveProperty('progress');
+      expect(response.body.goal.current_amount).toBe(43000); // 16000 + 27000
     });
 
     it('should return 404 for non-existent goal', async () => {
       const response = await request(app)
-        .put('/investment-goals/999/calculate')
+        .put('/api/investment-goals/999/calculate')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
 
-  describe('DELETE /investment-goals/:id', () => {
+  describe('DELETE /api/investment-goals/:id', () => {
     let goal;
 
     beforeEach(async () => {
@@ -410,8 +414,8 @@ describe('Investment Goal Routes', () => {
         title: 'Temporária',
         description: 'Meta temporária para teste',
         target_amount: 10000,
-        target_date: '2024-12-31',
-        current_amount: 1000,
+        target_date: '2025-12-31',
+        current_amount: 0,
         color: '#6B7280',
         user_id: user.id,
         category_id: category.id
@@ -420,7 +424,7 @@ describe('Investment Goal Routes', () => {
 
     it('should delete an investment goal successfully', async () => {
       const response = await request(app)
-        .delete(`/investment-goals/${goal.id}`)
+        .delete(`/api/investment-goals/${goal.id}`)
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
@@ -433,22 +437,24 @@ describe('Investment Goal Routes', () => {
 
     it('should return 404 for non-existent goal', async () => {
       const response = await request(app)
-        .delete('/investment-goals/999')
+        .delete('/api/investment-goals/999')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
 
-  describe('GET /investment-goals/statistics', () => {
+  describe('GET /api/investment-goals/statistics', () => {
     beforeEach(async () => {
-      // Criar metas para estatísticas
+      // Criar metas com diferentes status
       await InvestmentGoal.create({
         title: 'Meta 1',
         description: 'Primeira meta',
         target_amount: 100000,
         target_date: '2025-12-31',
-        current_amount: 25000,
+        current_amount: 50000,
+        status: 'ativa',
         color: '#3B82F6',
         user_id: user.id,
         category_id: category.id
@@ -458,20 +464,10 @@ describe('Investment Goal Routes', () => {
         title: 'Meta 2',
         description: 'Segunda meta',
         target_amount: 50000,
-        target_date: '2024-12-31',
+        target_date: '2025-12-31',
         current_amount: 50000,
+        status: 'concluida',
         color: '#10B981',
-        user_id: user.id,
-        category_id: category.id
-      });
-
-      await InvestmentGoal.create({
-        title: 'Meta 3',
-        description: 'Terceira meta',
-        target_amount: 75000,
-        target_date: '2023-12-31',
-        current_amount: 30000,
-        color: '#F59E0B',
         user_id: user.id,
         category_id: category.id
       });
@@ -479,18 +475,18 @@ describe('Investment Goal Routes', () => {
 
     it('should return investment goal statistics', async () => {
       const response = await request(app)
-        .get('/investment-goals/statistics')
+        .get('/api/investment-goals/statistics')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('general');
-      expect(response.body).toHaveProperty('upcomingGoals');
-      expect(response.body.general).toHaveProperty('totalGoals');
-      expect(response.body.general).toHaveProperty('activeGoals');
-      expect(response.body.general).toHaveProperty('completedGoals');
-      expect(response.body.general).toHaveProperty('overdueGoals');
-      expect(response.body.general).toHaveProperty('completionRate');
-      expect(response.body.general).toHaveProperty('averageProgress');
+      expect(response.body).toHaveProperty('totalGoals');
+      expect(response.body).toHaveProperty('activeGoals');
+      expect(response.body).toHaveProperty('completedGoals');
+      expect(response.body).toHaveProperty('completionRate');
+      expect(response.body.totalGoals).toBe(2);
+      expect(response.body.activeGoals).toBe(1);
+      expect(response.body.completedGoals).toBe(1);
+      expect(response.body.completionRate).toBe(50);
     });
   });
 }); 

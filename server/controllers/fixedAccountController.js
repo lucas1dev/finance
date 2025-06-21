@@ -232,34 +232,28 @@ async function updateFixedAccount(req, res) {
 }
 
 /**
- * Ativa ou desativa uma conta fixa.
+ * Ativa ou desativa uma conta fixa (toggle automático).
  * @param {Object} req - Objeto de requisição Express.
  * @param {number} req.params.id - ID da conta fixa.
- * @param {Object} req.body - Dados para ativação/desativação.
- * @param {boolean} req.body.is_active - Status de ativação.
  * @param {number} req.userId - ID do usuário autenticado.
  * @param {Object} res - Objeto de resposta Express.
  * @returns {Promise<Object>} Conta fixa atualizada em formato JSON.
  * @throws {NotFoundError} Se a conta fixa não for encontrada.
  * @example
  * // PATCH /fixed-accounts/1/toggle
- * // Body: { "is_active": false }
  * // Retorno: { "id": 1, "is_active": false, ... }
  */
 async function toggleFixedAccount(req, res) {
   const { id } = req.params;
-  const { is_active } = req.body;
-  
   const fixedAccount = await FixedAccount.findOne({
     where: { id, user_id: req.userId }
   });
-  
   if (!fixedAccount) {
     throw new NotFoundError('Conta fixa não encontrada');
   }
-  
-  await fixedAccount.update({ is_active });
-  
+  // Alternar o valor de is_active
+  const newIsActive = !fixedAccount.is_active;
+  await fixedAccount.update({ is_active: newIsActive });
   // Carrega as associações para retornar dados completos
   await fixedAccount.reload({
     include: [
@@ -267,7 +261,6 @@ async function toggleFixedAccount(req, res) {
       { model: Supplier, as: 'supplier' }
     ]
   });
-  
   res.json({
     success: true,
     data: fixedAccount
@@ -292,7 +285,6 @@ async function toggleFixedAccount(req, res) {
 async function payFixedAccount(req, res) {
   const { id } = req.params;
   const { payment_date } = req.body;
-  
   const fixedAccount = await FixedAccount.findOne({
     where: { id, user_id: req.userId },
     include: [
@@ -300,22 +292,17 @@ async function payFixedAccount(req, res) {
       { model: Supplier, as: 'supplier' }
     ]
   });
-  
   if (!fixedAccount) {
     throw new NotFoundError('Conta fixa não encontrada');
   }
-  
   if (!fixedAccount.is_active) {
     throw new ValidationError('Conta fixa está inativa');
   }
-  
   // Busca a primeira conta do usuário ou cria uma padrão
   let account = await Account.findOne({
     where: { user_id: req.userId }
   });
-  
   if (!account) {
-    // Cria uma conta padrão se não existir
     account = await Account.create({
       user_id: req.userId,
       bank_name: 'Conta Padrão',
@@ -324,7 +311,6 @@ async function payFixedAccount(req, res) {
       description: 'Conta criada automaticamente para transações de contas fixas'
     });
   }
-  
   // Cria a transação
   const transaction = await Transaction.create({
     user_id: req.userId,
@@ -338,14 +324,15 @@ async function payFixedAccount(req, res) {
     payment_date: payment_date || new Date(),
     fixed_account_id: fixedAccount.id
   });
-  
+  // Atualiza o campo is_paid para true
+  await fixedAccount.update({ is_paid: true });
   // Calcula a próxima data de vencimento
   const nextDueDate = calculateNextDueDate(fixedAccount.next_due_date, fixedAccount.periodicity);
   await fixedAccount.update({ next_due_date: nextDueDate });
-  
   res.status(201).json({
     success: true,
     data: transaction,
+    transaction,
     message: 'Conta fixa paga com sucesso'
   });
 }

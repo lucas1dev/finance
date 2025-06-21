@@ -1,0 +1,284 @@
+/**
+ * Testes unitários para o NotificationController.
+ * Testa funcionalidades isoladas do controller de notificações usando apenas mocks.
+ *
+ * @module tests/controllers/notificationController.unit.test
+ */
+
+// Mock dos modelos ANTES de importar o controller
+jest.mock('../../models', () => {
+  const mockNotification = {
+    findAndCountAll: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    count: jest.fn(),
+    findAll: jest.fn(),
+  };
+
+  const mockFinancingPayment = {
+    findAll: jest.fn(),
+  };
+
+  const mockUser = {
+    create: jest.fn(),
+    destroy: jest.fn(),
+  };
+
+  const mockJobExecution = {
+    destroy: jest.fn(),
+  };
+
+  return {
+    Notification: mockNotification,
+    FinancingPayment: mockFinancingPayment,
+    User: mockUser,
+    JobExecution: mockJobExecution,
+  };
+});
+
+// Mock do serviço de jobs
+jest.mock('../../services/notificationJobs', () => ({
+  createPaymentDueNotifications: jest.fn(),
+  createGeneralReminders: jest.fn(),
+  cleanupOldNotifications: jest.fn(),
+}));
+
+// Mock do serviço de tracking
+jest.mock('../../services/jobTracking', () => ({
+  getJobHistoryWithPagination: jest.fn(),
+  getDetailedStats: jest.fn(),
+}));
+
+// Mock do logger
+jest.mock('../../utils/logger', () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn(),
+  },
+}));
+
+// Mock das funções de resposta
+jest.mock('../../utils/response', () => ({
+  successResponse: jest.fn(),
+  errorResponse: jest.fn(),
+}));
+
+// Importar o controller APÓS os mocks
+const notificationController = require('../../controllers/notificationController');
+const { successResponse, errorResponse } = require('../../utils/response');
+
+describe('NotificationController (unitário)', () => {
+  let mockReq, mockRes, mockNotification, mockFinancingPayment;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReq = {
+      userId: 1,
+      query: {},
+      params: {},
+      body: {},
+    };
+    mockRes = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    };
+    const { Notification, FinancingPayment } = require('../../models');
+    mockNotification = Notification;
+    mockFinancingPayment = FinancingPayment;
+  });
+
+  describe('listNotifications', () => {
+    it('deve listar notificações com paginação', async () => {
+      const mockNotifications = {
+        rows: [
+          { id: 1, title: 'Test', message: 'Test message' },
+        ],
+        count: 1,
+      };
+      mockNotification.findAndCountAll.mockResolvedValue(mockNotifications);
+      successResponse.mockImplementation((res, data) => res.json(data));
+      await notificationController.listNotifications(mockReq, mockRes);
+      expect(mockNotification.findAndCountAll).toHaveBeenCalledWith({
+        where: { userId: 1, isActive: true },
+        order: expect.any(Array),
+        limit: 20,
+        offset: 0,
+      });
+      expect(successResponse).toHaveBeenCalled();
+    });
+    it('deve filtrar por notificações não lidas', async () => {
+      mockReq.query.isRead = 'false';
+      mockNotification.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
+      await notificationController.listNotifications(mockReq, mockRes);
+      expect(mockNotification.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 1, isActive: true, isRead: false },
+        })
+      );
+    });
+    it('deve filtrar por tipo de notificação', async () => {
+      mockReq.query.type = 'payment_due';
+      mockNotification.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
+      await notificationController.listNotifications(mockReq, mockRes);
+      expect(mockNotification.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 1, isActive: true, type: 'payment_due' },
+        })
+      );
+    });
+  });
+
+  describe('markAsRead', () => {
+    it('deve marcar uma notificação como lida', async () => {
+      mockReq.params.id = 1;
+      const mockNotificationInstance = {
+        update: jest.fn().mockResolvedValue(true),
+      };
+      mockNotification.findOne.mockResolvedValue(mockNotificationInstance);
+      successResponse.mockImplementation((res, data) => res.json(data));
+      await notificationController.markAsRead(mockReq, mockRes);
+      expect(mockNotification.findOne).toHaveBeenCalledWith({
+        where: { id: 1, userId: 1, isActive: true },
+      });
+      expect(mockNotificationInstance.update).toHaveBeenCalledWith({ isRead: true });
+      expect(successResponse).toHaveBeenCalled();
+    });
+    it('deve retornar erro quando notificação não encontrada', async () => {
+      mockReq.params.id = 999;
+      mockNotification.findOne.mockResolvedValue(null);
+      await notificationController.markAsRead(mockReq, mockRes);
+      expect(mockNotification.findOne).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalled();
+    });
+  });
+
+  describe('markAllAsRead', () => {
+    it('deve marcar todas as notificações como lidas', async () => {
+      mockNotification.update.mockResolvedValue([1]);
+      successResponse.mockImplementation((res, data) => res.json(data));
+      await notificationController.markAllAsRead(mockReq, mockRes);
+      expect(mockNotification.update).toHaveBeenCalledWith(
+        { isRead: true },
+        {
+          where: { userId: 1, isRead: false, isActive: true },
+        }
+      );
+      expect(successResponse).toHaveBeenCalled();
+    });
+  });
+
+  describe('createNotification', () => {
+    it('deve criar uma nova notificação', async () => {
+      mockReq.body = {
+        title: 'Test',
+        message: 'Test message',
+        type: 'reminder',
+        priority: 'medium',
+      };
+      const mockCreatedNotification = { id: 1, ...mockReq.body };
+      mockNotification.create.mockResolvedValue(mockCreatedNotification);
+      successResponse.mockImplementation((res, data) => res.json(data));
+      await notificationController.createNotification(mockReq, mockRes);
+      expect(mockNotification.create).toHaveBeenCalledWith({
+        userId: 1,
+        title: 'Test',
+        message: 'Test message',
+        type: 'reminder',
+        priority: 'medium',
+      });
+      expect(successResponse).toHaveBeenCalled();
+    });
+    it('deve retornar erro quando dados obrigatórios estão faltando', async () => {
+      mockReq.body = { title: 'Test' };
+      await notificationController.createNotification(mockReq, mockRes);
+      expect(mockNotification.create).not.toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteNotification', () => {
+    it('deve marcar uma notificação como inativa', async () => {
+      mockReq.params.id = 1;
+      const mockNotificationInstance = {
+        update: jest.fn().mockResolvedValue(true),
+      };
+      mockNotification.findOne.mockResolvedValue(mockNotificationInstance);
+      successResponse.mockImplementation((res, data) => res.json(data));
+      await notificationController.deleteNotification(mockReq, mockRes);
+      expect(mockNotification.findOne).toHaveBeenCalledWith({
+        where: { id: 1, userId: 1, isActive: true },
+      });
+      expect(mockNotificationInstance.update).toHaveBeenCalledWith({ isActive: false });
+      expect(successResponse).toHaveBeenCalled();
+    });
+    it('deve retornar erro quando notificação não encontrada', async () => {
+      mockReq.params.id = 999;
+      mockNotification.findOne.mockResolvedValue(null);
+      await notificationController.deleteNotification(mockReq, mockRes);
+      expect(mockNotification.findOne).toHaveBeenCalled();
+      expect(errorResponse).toHaveBeenCalled();
+    });
+  });
+
+  describe('getNotificationStats', () => {
+    it('deve retornar estatísticas das notificações', async () => {
+      mockNotification.count
+        .mockResolvedValueOnce(10) // total
+        .mockResolvedValueOnce(5); // não lidas
+      mockNotification.findAll
+        .mockResolvedValueOnce([]) // por tipo
+        .mockResolvedValueOnce([]); // por prioridade
+      successResponse.mockImplementation((res, data) => res.json(data));
+      await notificationController.getNotificationStats(mockReq, mockRes);
+      expect(mockNotification.count).toHaveBeenCalledTimes(2);
+      expect(mockNotification.findAll).toHaveBeenCalledTimes(2);
+      expect(successResponse).toHaveBeenCalled();
+    });
+  });
+
+  describe('createPaymentDueNotifications', () => {
+    it('deve criar notificações para pagamentos vencidos', async () => {
+      const mockPayments = [
+        {
+          id: 1,
+          dueDate: new Date('2024-01-01'),
+          amount: 100,
+          Financing: { name: 'Test Financing' },
+        },
+      ];
+      mockFinancingPayment.findAll.mockResolvedValue(mockPayments);
+      mockNotification.create.mockResolvedValue({ id: 1 });
+      await notificationController.createPaymentDueNotifications(1);
+      expect(mockFinancingPayment.findAll).toHaveBeenCalled();
+      expect(mockNotification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 1,
+          type: 'payment_due',
+          priority: 'high',
+        })
+      );
+    });
+    it('deve criar notificações para pagamentos que vencem em breve', async () => {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 3);
+      const mockPayments = [
+        {
+          id: 1,
+          dueDate: futureDate,
+          amount: 100,
+          Financing: { name: 'Test Financing' },
+        },
+      ];
+      mockFinancingPayment.findAll.mockResolvedValue(mockPayments);
+      mockNotification.create.mockResolvedValue({ id: 1 });
+      await notificationController.createPaymentDueNotifications(1);
+      expect(mockNotification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'payment_due',
+          priority: 'high',
+        })
+      );
+    });
+  });
+}); 

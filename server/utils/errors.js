@@ -25,8 +25,14 @@ class NotFoundError extends AppError {
  * Erro para requisições inválidas
  */
 class ValidationError extends AppError {
-  constructor(message = 'Invalid request data') {
+  /**
+   * Cria uma nova instância de ValidationError
+   * @param {string} message - Mensagem de erro
+   * @param {Array} errors - Array de erros de validação (opcional)
+   */
+  constructor(message = 'Invalid request data', errors = null) {
     super(message, 400);
+    this.errors = errors;
   }
 }
 

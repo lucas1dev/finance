@@ -83,6 +83,15 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: true
       },
+      /**
+       * Indica se a conta fixa já foi paga no ciclo atual.
+       * @type {boolean}
+       */
+      is_paid: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
       reminder_days: {
         type: DataTypes.INTEGER,
         allowNull: false,

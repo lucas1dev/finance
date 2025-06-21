@@ -18,8 +18,10 @@ require('./models');
 let swaggerDocument;
 try {
   swaggerDocument = YAML.load('./docs/openapi.yaml');
+  console.log('✅ Documentação Swagger carregada com sucesso');
+  console.log('📊 Endpoints encontrados:', Object.keys(swaggerDocument.paths || {}).length);
 } catch (error) {
-  console.warn('Documentação Swagger não encontrada:', error.message);
+  console.warn('❌ Documentação Swagger não encontrada:', error.message);
 }
 
 const app = express();
@@ -136,6 +138,24 @@ if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'tr
   }
 }
 
+// Servir arquivos Markdown da pasta docs
+app.use('/docs-md', express.static(path.join(__dirname, 'docs'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.md')) {
+      res.setHeader('Content-Type', 'text/markdown');
+    }
+  }
+}));
+
+// Servir arquivos Markdown da pasta principal
+app.use('/docs-root', express.static(__dirname, {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.md')) {
+      res.setHeader('Content-Type', 'text/markdown');
+    }
+  }
+}));
+
 // Rotas da API
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/accounts', require('./routes/accounts'));
@@ -145,11 +165,38 @@ app.use('/api/receivables', require('./routes/receivables'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/suppliers', require('./routes/supplierRoutes'));
 app.use('/api/payables', require('./routes/payableRoutes'));
-app.use('/api', require('./routes/payments'));
+app.use('/api/payments', require('./routes/payments'));
 app.use('/api/fixed-accounts', require('./routes/fixedAccounts'));
 app.use('/api/investments', require('./routes/investments'));
 app.use('/api/investment-goals', require('./routes/investmentGoals'));
 app.use('/api/investment-contributions', require('./routes/investmentContributions'));
+
+// Rotas de Financiamentos
+app.use('/api/creditors', require('./routes/creditors'));
+app.use('/api/financings', require('./routes/financings'));
+app.use('/api/financing-payments', require('./routes/financingPayments'));
+
+// Rotas de Notificações
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/notifications/jobs', require('./routes/notificationJobs'));
+
+// Rotas de Auditoria
+app.use('/api/audit', require('./routes/audit'));
+
+// Rotas de Integridade de Dados
+app.use('/api/data-integrity', require('./routes/dataIntegrity'));
+
+// Rotas de Timeout de Jobs
+app.use('/api/job-timeouts', require('./routes/jobTimeouts'));
+
+// Rotas de Configuração de Jobs
+app.use('/api/job-scheduler', require('./routes/jobScheduler'));
+
+// Rotas de Painel Administrativo de Jobs
+app.use('/api/job-admin', require('./routes/jobAdmin'));
+
+// Rotas de Permissões
+app.use('/api/permissions', require('./routes/permissions'));
 
 // Middleware para rotas não encontradas
 app.use('*', (req, res) => {
@@ -163,6 +210,26 @@ app.use('*', (req, res) => {
 // Middleware de tratamento de erros
 const { errorHandler } = require('./middlewares/errorMiddleware');
 app.use(errorHandler);
+
+// Inicializar serviços
+async function initializeServices() {
+  try {
+    // Inicializar serviço de email
+    // const emailService = require('./services/emailService');
+    // await emailService.initializeEmailService();
+    
+    // Inicializar jobs de notificação
+    // const { initializeNotificationJobs } = require('./services/notificationJobs');
+    // initializeNotificationJobs();
+    
+    console.log('✅ Serviços inicializados com sucesso');
+  } catch (error) {
+    console.error('❌ Erro ao inicializar serviços:', error);
+  }
+}
+
+// Inicializar serviços quando o app estiver pronto
+// // initializeServices();
 
 // Tratamento de erros não capturados
 process.on('uncaughtException', (err) => {

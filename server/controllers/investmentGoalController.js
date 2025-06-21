@@ -60,6 +60,10 @@ class InvestmentGoalController {
         ]
       });
 
+      if (!goalWithAssociations) {
+        throw new NotFoundError('Meta de investimento não encontrada após criação');
+      }
+
       // Calcula o progresso
       const progress = goalWithAssociations.getProgress();
 
@@ -258,6 +262,8 @@ class InvestmentGoalController {
         message: 'Meta de investimento atualizada com sucesso',
         goal: {
           ...updatedGoal.toJSON(),
+          current_amount: Number(updatedGoal.current_amount),
+          target_amount: Number(updatedGoal.target_amount),
           progress,
           isOverdue,
           isCompleted
@@ -290,49 +296,27 @@ class InvestmentGoalController {
   async updateGoalAmount(req, res) {
     try {
       const { id } = req.params;
-
-      // Valida os dados de entrada
       const validatedData = updateGoalAmountSchema.parse(req.body);
-
-      // Busca a meta
-      const goal = await InvestmentGoal.findOne({
-        where: { id, user_id: req.userId }
-      });
-
-      if (!goal) {
-        throw new NotFoundError('Meta de investimento não encontrada');
-      }
-
-      // Atualiza o valor atual
-      await goal.update({
-        current_amount: validatedData.current_amount
-      });
-
-      // Busca a meta atualizada com as associações
-      const updatedGoal = await InvestmentGoal.findByPk(id, {
-        include: [
-          { model: Category, as: 'category' }
-        ]
-      });
-
-      // Calcula o progresso
+      const goal = await InvestmentGoal.findOne({ where: { id, user_id: req.userId } });
+      if (!goal) throw new NotFoundError('Meta de investimento não encontrada');
+      await goal.update({ current_amount: validatedData.current_amount });
+      const updatedGoal = await InvestmentGoal.findByPk(id, { include: [{ model: Category, as: 'category' }] });
       const progress = updatedGoal.getProgress();
       const isOverdue = updatedGoal.isOverdue();
       const isCompleted = updatedGoal.isCompleted();
-
       res.json({
         message: 'Valor atual da meta atualizado com sucesso',
         goal: {
           ...updatedGoal.toJSON(),
+          current_amount: Number(updatedGoal.current_amount),
+          target_amount: Number(updatedGoal.target_amount),
           progress,
           isOverdue,
           isCompleted
         }
       });
     } catch (error) {
-      if (error.name === 'ZodError') {
-        throw new ValidationError('Dados inválidos', error.errors);
-      }
+      if (error.name === 'ZodError') throw new ValidationError('Dados inválidos', error.errors);
       throw error;
     }
   }
@@ -351,46 +335,27 @@ class InvestmentGoalController {
    */
   async calculateGoalAmount(req, res) {
     const { id } = req.params;
-
-    // Busca a meta
-    const goal = await InvestmentGoal.findOne({
-      where: { id, user_id: req.userId }
-    });
-
-    if (!goal) {
-      throw new NotFoundError('Meta de investimento não encontrada');
-    }
-
-    // Calcula o valor total dos investimentos ativos
-    const totalInvested = await Investment.sum('invested_amount', {
-      where: { 
+    const goal = await InvestmentGoal.findOne({ where: { id, user_id: req.userId } });
+    if (!goal) throw new NotFoundError('Meta de investimento não encontrada');
+    // Soma invested_amount dos investimentos
+    const totalInvestedAmount = await Investment.sum('invested_amount', {
+      where: {
         user_id: req.userId,
         operation_type: 'compra',
         status: 'ativo'
       }
     });
-
-    // Atualiza o valor atual da meta
-    await goal.update({
-      current_amount: totalInvested || 0
-    });
-
-    // Busca a meta atualizada com as associações
-    const updatedGoal = await InvestmentGoal.findByPk(id, {
-      include: [
-        { model: Category, as: 'category' }
-      ]
-    });
-
-    // Calcula o progresso
+    await goal.update({ current_amount: totalInvestedAmount || 0 });
+    const updatedGoal = await InvestmentGoal.findByPk(id, { include: [{ model: Category, as: 'category' }] });
     const progress = updatedGoal.getProgress();
     const isOverdue = updatedGoal.isOverdue();
     const isCompleted = updatedGoal.isCompleted();
-
     res.json({
-      message: 'Valor atual da meta calculado automaticamente',
+      message: 'Valor atual da meta calculado com sucesso',
       goal: {
         ...updatedGoal.toJSON(),
+        current_amount: Number(updatedGoal.current_amount),
+        target_amount: Number(updatedGoal.target_amount),
         progress,
         isOverdue,
         isCompleted
@@ -440,30 +405,13 @@ class InvestmentGoalController {
    * // Retorno: { "totalGoals": 5, "activeGoals": 3, "averageProgress": 45, ... }
    */
   async getInvestmentGoalStatistics(req, res) {
-    // Estatísticas gerais
     const totalGoals = await InvestmentGoal.count({ where: { user_id: req.userId } });
-    const activeGoals = await InvestmentGoal.count({ 
-      where: { user_id: req.userId, status: 'ativa' } 
-    });
-    const completedGoals = await InvestmentGoal.count({ 
-      where: { user_id: req.userId, status: 'concluida' } 
-    });
-    const overdueGoals = await InvestmentGoal.count({ 
-      where: { 
-        user_id: req.userId, 
-        status: 'ativa',
-        target_date: { [Op.lt]: new Date() }
-      } 
-    });
-
-    // Busca todas as metas para calcular progresso médio
-    const allGoals = await InvestmentGoal.findAll({
-      where: { user_id: req.userId }
-    });
-
+    const activeGoals = await InvestmentGoal.count({ where: { user_id: req.userId, status: 'ativa' } });
+    const completedGoals = await InvestmentGoal.count({ where: { user_id: req.userId, status: 'concluida' } });
+    const overdueGoals = await InvestmentGoal.count({ where: { user_id: req.userId, status: 'ativa', target_date: { [Op.lt]: new Date() } } });
+    const allGoals = await InvestmentGoal.findAll({ where: { user_id: req.userId } });
     let totalProgress = 0;
     let goalsWithProgress = 0;
-
     allGoals.forEach(goal => {
       const progress = goal.getProgress();
       if (!isNaN(progress)) {
@@ -471,51 +419,14 @@ class InvestmentGoalController {
         goalsWithProgress++;
       }
     });
-
     const averageProgress = goalsWithProgress > 0 ? totalProgress / goalsWithProgress : 0;
-
-    // Metas próximas do vencimento (próximos 30 dias)
-    const thirtyDaysFromNow = new Date();
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-
-    const upcomingGoals = await InvestmentGoal.findAll({
-      where: {
-        user_id: req.userId,
-        status: 'ativa',
-        target_date: {
-          [Op.between]: [new Date(), thirtyDaysFromNow]
-        }
-      },
-      include: [
-        { model: Category, as: 'category' }
-      ],
-      order: [['target_date', 'ASC']]
-    });
-
-    // Calcula progresso para metas próximas
-    const upcomingGoalsWithProgress = upcomingGoals.map(goal => {
-      const progress = goal.getProgress();
-      const isOverdue = goal.isOverdue();
-      const isCompleted = goal.isCompleted();
-
-      return {
-        ...goal.toJSON(),
-        progress,
-        isOverdue,
-        isCompleted
-      };
-    });
-
     res.json({
-      general: {
-        totalGoals,
-        activeGoals,
-        completedGoals,
-        overdueGoals,
-        completionRate: totalGoals > 0 ? (completedGoals / totalGoals) * 100 : 0,
-        averageProgress
-      },
-      upcomingGoals: upcomingGoalsWithProgress
+      totalGoals,
+      activeGoals,
+      completedGoals,
+      overdueGoals,
+      averageProgress: Math.round(averageProgress),
+      completionRate: totalGoals > 0 ? Math.round((completedGoals / totalGoals) * 100) : 0
     });
   }
 }

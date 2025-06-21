@@ -55,6 +55,15 @@ const server = app.listen(PORT, () => {
     console.log('🔒 Modo de produção ativado');
     console.log('📝 Logs detalhados habilitados');
   }
+
+  // Inicializar jobs de notificação
+  try {
+    const notificationJobs = require('./services/notificationJobs');
+    notificationJobs.initializeNotificationJobs();
+    console.log('🔔 Jobs de notificação inicializados com sucesso');
+  } catch (error) {
+    console.error('❌ Erro ao inicializar jobs de notificação:', error);
+  }
 });
 
 // Configurações de timeout para produção

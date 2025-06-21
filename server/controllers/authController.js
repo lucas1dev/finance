@@ -60,7 +60,7 @@ const authController = {
         }
       });
     } catch (error) {
-      console.error('Erro no registro:', error);
+      console.error('Erro ao registrar usuário:', error);
       res.status(500).json({ error: 'Erro ao registrar usuário' });
     }
   },

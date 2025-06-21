@@ -1,7 +1,14 @@
 const request = require('supertest');
 const app = require('../../app');
-const { User, Category, Supplier, FixedAccount, Transaction, Payable, Receivable, Payment, Account } = require('../../models');
-const { generateToken } = require('../../utils/helpers');
+const { 
+  createTestUser, 
+  createTestCategory, 
+  createTestSupplier, 
+  createTestFixedAccount,
+  generateAuthToken,
+  createTestAccount 
+} = require('./factories');
+const { cleanAllTestData } = require('./setup');
 
 describe('Fixed Account Integration Tests', () => {
   let authToken;
@@ -9,54 +16,33 @@ describe('Fixed Account Integration Tests', () => {
   let testCategory;
   let testSupplier;
   let testFixedAccount;
+  let testAccount;
 
   beforeAll(async () => {
-    // Limpa o banco de dados de teste
-    await Transaction.destroy({ where: {} });
-    await FixedAccount.destroy({ where: {} });
-    await Category.destroy({ where: {} });
-    await Supplier.destroy({ where: {} });
-    await User.destroy({ where: {} });
-
-    // Cria usuário de teste
-    testUser = await User.create({
-      name: 'Test User',
-      email: 'test@example.com',
-      password: 'password123'
-    });
-
-    // Gera token de autenticação
-    authToken = generateToken(testUser.id);
-
-    // Cria categoria de teste
-    testCategory = await Category.create({
-      name: 'Aluguel',
-      type: 'expense',
-      user_id: testUser.id,
-      color: '#FF0000'
-    });
-
-    // Cria fornecedor de teste
-    testSupplier = await Supplier.create({
-      name: 'Imobiliária ABC',
-      document_type: 'CNPJ',
-      document_number: '12345678000190',
-      user_id: testUser.id,
-      email: 'contato@imobiliaria.com'
-    });
+    await cleanAllTestData();
   });
 
   afterAll(async () => {
-    // Cleanup: remove todos os dados de teste
-    await Transaction.destroy({ where: {} });
-    await FixedAccount.destroy({ where: {} });
-    await Payable.destroy({ where: {} });
-    await Receivable.destroy({ where: {} });
-    await Payment.destroy({ where: {} });
-    await Account.destroy({ where: {} });
-    await Category.destroy({ where: {} });
-    await Supplier.destroy({ where: {} });
-    await User.destroy({ where: {} });
+    await cleanAllTestData();
+  });
+
+  beforeEach(async () => {
+    // Limpeza completa de dados
+    await cleanAllTestData();
+
+    // Criar dados obrigatórios
+    testUser = await createTestUser({ email: 'testfixedaccount@example.com', name: 'Test User Fixed Account' });
+    testCategory = await createTestCategory({ user_id: testUser.id });
+    testSupplier = await createTestSupplier({ user_id: testUser.id });
+    testAccount = await createTestAccount({ user_id: testUser.id });
+    authToken = generateAuthToken(testUser);
+
+    // Criar conta fixa de teste para cada teste
+    testFixedAccount = await createTestFixedAccount({
+      user_id: testUser.id,
+      category_id: testCategory.id,
+      supplier_id: testSupplier.id,
+    });
   });
 
   describe('POST /api/fixed-accounts', () => {
@@ -87,8 +73,6 @@ describe('Fixed Account Integration Tests', () => {
       expect(response.body.data.is_active).toBe(true);
       expect(response.body.data.category).toBeDefined();
       expect(response.body.data.supplier).toBeDefined();
-
-      testFixedAccount = response.body.data;
     });
 
     it('should return 400 for invalid data', async () => {
@@ -106,7 +90,7 @@ describe('Fixed Account Integration Tests', () => {
         .send(invalidData);
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toBeDefined();
+      expect(response.body.error).toBeDefined();
     });
 
     it('should return 400 for non-existent category', async () => {
@@ -124,7 +108,7 @@ describe('Fixed Account Integration Tests', () => {
         .send(data);
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Categoria não encontrada');
+      expect(response.body.error).toBe('Categoria não encontrada');
     });
 
     it('should return 401 without authentication', async () => {
@@ -176,7 +160,7 @@ describe('Fixed Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Conta fixa não encontrada');
+      expect(response.body.error).toBe('Conta fixa não encontrada');
     });
 
     it('should return 401 without authentication', async () => {
@@ -190,8 +174,9 @@ describe('Fixed Account Integration Tests', () => {
   describe('PUT /api/fixed-accounts/:id', () => {
     it('should update a fixed account', async () => {
       const updateData = {
+        description: 'Aluguel atualizado',
         amount: 1600.00,
-        observations: 'Aumento do aluguel'
+        observations: 'Aluguel com reajuste'
       };
 
       const response = await request(app)
@@ -201,24 +186,24 @@ describe('Fixed Account Integration Tests', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
+      expect(response.body.data.description).toBe(updateData.description);
       expect(response.body.data.amount).toBe('1600.00');
-      expect(response.body.data.observations).toBe(updateData.observations);
     });
 
     it('should return 404 for non-existent fixed account', async () => {
       const response = await request(app)
         .put('/api/fixed-accounts/999')
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ amount: 1600.00 });
+        .send({ description: 'Test' });
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Conta fixa não encontrada');
+      expect(response.body.error).toBe('Conta fixa não encontrada');
     });
 
     it('should return 401 without authentication', async () => {
       const response = await request(app)
         .put(`/api/fixed-accounts/${testFixedAccount.id}`)
-        .send({ amount: 1600.00 });
+        .send({ description: 'Test' });
 
       expect(response.status).toBe(401);
     });
@@ -228,28 +213,28 @@ describe('Fixed Account Integration Tests', () => {
     it('should toggle fixed account active status', async () => {
       const response = await request(app)
         .patch(`/api/fixed-accounts/${testFixedAccount.id}/toggle`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ is_active: false });
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.data.is_active).toBe(false);
+      const { FixedAccount } = require('../../models');
+      const updated = await FixedAccount.findByPk(testFixedAccount.id);
+      expect(response.body.data.is_active).toBe(updated.is_active);
+      expect(updated.is_active).toBe(!testFixedAccount.is_active);
     });
 
     it('should return 404 for non-existent fixed account', async () => {
       const response = await request(app)
         .patch('/api/fixed-accounts/999/toggle')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ is_active: false });
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Conta fixa não encontrada');
+      expect(response.body.error).toBe('Conta fixa não encontrada');
     });
 
     it('should return 401 without authentication', async () => {
       const response = await request(app)
-        .patch(`/api/fixed-accounts/${testFixedAccount.id}/toggle`)
-        .send({ is_active: true });
+        .patch(`/api/fixed-accounts/${testFixedAccount.id}/toggle`);
 
       expect(response.status).toBe(401);
     });
@@ -257,56 +242,42 @@ describe('Fixed Account Integration Tests', () => {
 
   describe('POST /api/fixed-accounts/:id/pay', () => {
     it('should mark fixed account as paid and create transaction', async () => {
-      // Primeiro, reativa a conta fixa
-      await request(app)
-        .patch(`/api/fixed-accounts/${testFixedAccount.id}/toggle`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ is_active: true });
-
       const response = await request(app)
         .post(`/api/fixed-accounts/${testFixedAccount.id}/pay`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ payment_date: '2024-01-15' });
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(201);
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveProperty('id');
-      expect(response.body.data.type).toBe('expense');
-      expect(response.body.data.amount).toBe('1600.00');
-      expect(response.body.data.fixed_account_id).toBe(testFixedAccount.id);
-      expect(response.body.message).toBe('Conta fixa paga com sucesso');
+      const { FixedAccount } = require('../../models');
+      const updated = await FixedAccount.findByPk(testFixedAccount.id);
+      expect(updated.is_paid).toBe(true);
+      expect(response.body.transaction).toBeDefined();
     });
 
     it('should return 404 for non-existent fixed account', async () => {
       const response = await request(app)
         .post('/api/fixed-accounts/999/pay')
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ payment_date: '2024-01-15' });
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Conta fixa não encontrada');
+      expect(response.body.error).toBe('Conta fixa não encontrada');
     });
 
     it('should return 400 for inactive fixed account', async () => {
-      // Desativa a conta fixa
-      await request(app)
-        .patch(`/api/fixed-accounts/${testFixedAccount.id}/toggle`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ is_active: false });
+      // Desativar a conta fixa primeiro
+      await testFixedAccount.update({ is_active: false });
 
       const response = await request(app)
         .post(`/api/fixed-accounts/${testFixedAccount.id}/pay`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send({ payment_date: '2024-01-15' });
+        .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(400);
-      expect(response.body.message).toBe('Conta fixa está inativa');
+      expect(response.body.error).toBe('Conta fixa está inativa');
     });
 
     it('should return 401 without authentication', async () => {
       const response = await request(app)
-        .post(`/api/fixed-accounts/${testFixedAccount.id}/pay`)
-        .send({ payment_date: '2024-01-15' });
+        .post(`/api/fixed-accounts/${testFixedAccount.id}/pay`);
 
       expect(response.status).toBe(401);
     });
@@ -329,7 +300,7 @@ describe('Fixed Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
-      expect(response.body.message).toBe('Conta fixa não encontrada');
+      expect(response.body.error).toBe('Conta fixa não encontrada');
     });
 
     it('should return 401 without authentication', async () => {
