@@ -52,10 +52,7 @@ async function createFinancingPayment(req, res) {
     });
 
     if (!financing) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'Financiamento não encontrado'
-      });
+      throw new NotFoundError('Financiamento não encontrado');
     }
 
     // Verifica se a conta existe e pertence ao usuário
@@ -67,10 +64,7 @@ async function createFinancingPayment(req, res) {
     });
 
     if (!account) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'Conta não encontrada'
-      });
+      throw new NotFoundError('Conta não encontrada');
     }
 
     // Verifica se a parcela já foi paga
@@ -82,19 +76,13 @@ async function createFinancingPayment(req, res) {
     });
 
     if (existingPayment) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Esta parcela já foi paga'
-      });
+      throw new ValidationError('Esta parcela já foi paga');
     }
 
     // Valida se o pagamento não resultará em saldo negativo
     const calculatedBalanceAfter = parseFloat(financing.current_balance) - validatedData.principal_amount;
     if (calculatedBalanceAfter < 0) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'O pagamento resultaria em saldo devedor negativo'
-      });
+      throw new ValidationError('O pagamento resultaria em saldo devedor negativo');
     }
 
     // Obtém uma categoria para a transação (categoria de despesa)
@@ -106,10 +94,7 @@ async function createFinancingPayment(req, res) {
     });
 
     if (!category) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Nenhuma categoria de despesa encontrada'
-      });
+      throw new ValidationError('Nenhuma categoria de despesa encontrada');
     }
 
     // Inicia transação do banco de dados
@@ -178,9 +163,8 @@ async function createFinancingPayment(req, res) {
       });
 
       res.status(201).json({
-        message: 'Pagamento registrado com sucesso',
-        payment: updatedPayment,
-        transaction: transactionRecord
+        message: 'Pagamento de financiamento criado com sucesso',
+        payment: updatedPayment
       });
     } catch (error) {
       // Reverte a transação em caso de erro
@@ -189,11 +173,7 @@ async function createFinancingPayment(req, res) {
     }
   } catch (error) {
     if (error.name === 'ZodError') {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'Dados inválidos',
-        errors: error.errors
-      });
+      throw new ValidationError('Dados inválidos', error.errors);
     }
     throw error;
   }
@@ -211,73 +191,34 @@ async function createFinancingPayment(req, res) {
  */
 async function listFinancingPayments(req, res) {
   try {
-    // Valida os parâmetros de consulta
     const validatedQuery = listFinancingPaymentsSchema.parse(req.query);
-
-    // Constrói as condições de busca
     const where = { user_id: req.userId };
-    if (validatedQuery.financing_id) {
-      where.financing_id = validatedQuery.financing_id;
-    }
-    if (validatedQuery.account_id) {
-      where.account_id = validatedQuery.account_id;
-    }
-    if (validatedQuery.payment_method) {
-      where.payment_method = validatedQuery.payment_method;
-    }
-    if (validatedQuery.payment_type) {
-      where.payment_type = validatedQuery.payment_type;
-    }
-    if (validatedQuery.status) {
-      where.status = validatedQuery.status;
-    }
-    if (validatedQuery.payment_date_from) {
-      where.payment_date = { [require('sequelize').Op.gte]: validatedQuery.payment_date_from };
-    }
+    if (validatedQuery.financing_id) where.financing_id = validatedQuery.financing_id;
+    if (validatedQuery.account_id) where.account_id = validatedQuery.account_id;
+    if (validatedQuery.payment_method) where.payment_method = validatedQuery.payment_method;
+    if (validatedQuery.payment_type) where.payment_type = validatedQuery.payment_type;
+    if (validatedQuery.status) where.status = validatedQuery.status;
+    if (validatedQuery.payment_date_from) where.payment_date = { [require('sequelize').Op.gte]: validatedQuery.payment_date_from };
     if (validatedQuery.payment_date_to) {
-      where.payment_date = { 
+      where.payment_date = {
         ...where.payment_date,
-        [require('sequelize').Op.lte]: validatedQuery.payment_date_to 
+        [require('sequelize').Op.lte]: validatedQuery.payment_date_to
       };
     }
-
-    // Executa a consulta com paginação
     const { count, rows: payments } = await FinancingPayment.findAndCountAll({
       where,
       include: [
-        {
-          model: Financing,
-          as: 'financing',
-          attributes: ['id', 'description', 'financing_type', 'creditor_id'],
-          include: [
-            {
-              model: Creditor,
-              as: 'creditor',
-              attributes: ['id', 'name']
-            }
-          ]
-        },
-        {
-          model: Account,
-          as: 'account',
-          attributes: ['id', 'bank_name', 'account_type']
-        },
-        {
-          model: Transaction,
-          as: 'transaction',
-          attributes: ['id', 'amount', 'description', 'date']
-        }
+        { model: Financing, as: 'financing', attributes: ['id', 'description', 'financing_type', 'creditor_id'], include: [{ model: Creditor, as: 'creditor', attributes: ['id', 'name'] }] },
+        { model: Account, as: 'account', attributes: ['id', 'bank_name', 'account_type'] },
+        { model: Transaction, as: 'transaction', attributes: ['id', 'amount', 'description', 'date'] }
       ],
       order: [['payment_date', 'DESC']],
       limit: validatedQuery.limit,
       offset: (validatedQuery.page - 1) * validatedQuery.limit
     });
-
-    // Calcula estatísticas
     const totalPages = Math.ceil(count / validatedQuery.limit);
     const hasNextPage = validatedQuery.page < totalPages;
     const hasPrevPage = validatedQuery.page > 1;
-
     res.json({
       payments,
       pagination: {
@@ -310,40 +251,17 @@ async function listFinancingPayments(req, res) {
  */
 async function getFinancingPayment(req, res) {
   const { id } = req.params;
-
   const payment = await FinancingPayment.findOne({
-    where: {
-      id,
-      user_id: req.userId
-    },
+    where: { id, user_id: req.userId },
     include: [
-      {
-        model: Financing,
-        as: 'financing',
-        include: [
-          {
-            model: Creditor,
-            as: 'creditor',
-            attributes: ['id', 'name', 'document_type', 'document_number']
-          }
-        ]
-      },
-      {
-        model: Account,
-        as: 'account',
-        attributes: ['id', 'bank_name', 'account_type', 'balance']
-      },
-      {
-        model: Transaction,
-        as: 'transaction'
-      }
+      { model: Financing, as: 'financing', include: [{ model: Creditor, as: 'creditor', attributes: ['id', 'name', 'document_type', 'document_number'] }] },
+      { model: Account, as: 'account', attributes: ['id', 'bank_name', 'account_type', 'balance'] },
+      { model: Transaction, as: 'transaction' }
     ]
   });
-
   if (!payment) {
     throw new NotFoundError('Pagamento não encontrado');
   }
-
   res.json({ payment });
 }
 
@@ -364,29 +282,13 @@ async function getFinancingPayment(req, res) {
 async function updateFinancingPayment(req, res) {
   try {
     const { id } = req.params;
-
-    // Busca o pagamento
-    const payment = await FinancingPayment.findOne({
-      where: {
-        id,
-        user_id: req.userId
-      }
-    });
-
+    const payment = await FinancingPayment.findOne({ where: { id, user_id: req.userId } });
     if (!payment) {
       throw new NotFoundError('Pagamento não encontrado');
     }
-
-    // Valida os dados de atualização
     const validatedData = updateFinancingPaymentSchema.parse(req.body);
-
-    // Atualiza o pagamento
     await payment.update(validatedData);
-
-    res.json({
-      message: 'Pagamento atualizado com sucesso',
-      payment
-    });
+    res.json({ message: 'Pagamento atualizado com sucesso', payment });
   } catch (error) {
     if (error.name === 'ZodError') {
       throw new ValidationError('Dados inválidos', error.errors);
@@ -402,37 +304,22 @@ async function updateFinancingPayment(req, res) {
  * @param {Object} res - Objeto de resposta Express
  * @returns {Promise<Object>} Confirmação de remoção
  * @throws {NotFoundError} Se o pagamento não for encontrado
- * @throws {Error} Se o pagamento tiver transação vinculada
+ * @throws {ValidationError} Se o pagamento tiver transação vinculada
  * @example
  * // DELETE /financing-payments/1
- * // Retorno: { "message": "Pagamento removido com sucesso" }
+ * // Retorno: { "message": "Pagamento excluído com sucesso" }
  */
 async function deleteFinancingPayment(req, res) {
   const { id } = req.params;
-
-  // Busca o pagamento
-  const payment = await FinancingPayment.findOne({
-    where: {
-      id,
-      user_id: req.userId
-    }
-  });
-
+  const payment = await FinancingPayment.findOne({ where: { id, user_id: req.userId } });
   if (!payment) {
     throw new NotFoundError('Pagamento não encontrado');
   }
-
-  // Verifica se há transação vinculada
   if (payment.transaction_id) {
-    throw new Error('Não é possível remover um pagamento com transação vinculada');
+    throw new ValidationError('Não é possível remover um pagamento com transação vinculada');
   }
-
-  // Remove o pagamento
   await payment.destroy();
-
-  res.json({
-    message: 'Pagamento removido com sucesso'
-  });
+  res.json({ message: 'Pagamento excluído com sucesso' });
 }
 
 /**

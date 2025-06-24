@@ -1,4 +1,5 @@
 const { Payment, Receivable, Payable } = require('../models');
+const { createPaymentSchema } = require('../utils/validators');
 const { Op } = require('sequelize');
 
 /**
@@ -26,7 +27,9 @@ class PaymentController {
    */
   async create(req, res) {
     try {
-      const { receivable_id, payable_id, amount, payment_date, payment_method, description } = req.body;
+      // Validar dados de entrada
+      const validatedData = createPaymentSchema.parse(req.body);
+      const { receivable_id, payable_id, amount, payment_date, payment_method, description } = validatedData;
       
       // Extrair IDs dos parâmetros da URL se não estiverem no body
       const urlReceivableId = req.params.receivable_id;
@@ -35,9 +38,9 @@ class PaymentController {
       const finalReceivableId = receivable_id || urlReceivableId;
       const finalPayableId = payable_id || urlPayableId;
 
-      if ((!finalReceivableId && !finalPayableId) || !amount || !payment_date || !payment_method) {
+      if (!finalReceivableId && !finalPayableId) {
         return res.status(400).json({
-          error: 'Dados incompletos. Forneça receivable_id ou payable_id, amount, payment_date e payment_method',
+          error: 'Dados incompletos. Forneça receivable_id ou payable_id',
         });
       }
 

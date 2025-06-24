@@ -8,11 +8,6 @@ module.exports = (sequelize) => {
         as: 'user'
       });
 
-      this.hasMany(models.CustomerType, {
-        foreignKey: 'customer_id',
-        as: 'types'
-      });
-
       this.hasMany(models.Receivable, {
         foreignKey: 'customer_id',
         as: 'receivables'
@@ -45,21 +40,17 @@ module.exports = (sequelize) => {
     },
     document_type: {
       type: DataTypes.ENUM('CPF', 'CNPJ'),
-      allowNull: false
+      allowNull: true
     },
-    document_number: {
+    document: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: true
     },
     email: {
       type: DataTypes.STRING,
       allowNull: true
     },
     phone: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-    address: {
       type: DataTypes.STRING,
       allowNull: true
     }

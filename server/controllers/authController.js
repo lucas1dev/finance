@@ -2,7 +2,17 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const speakeasy = require('speakeasy');
 const qrcode = require('qrcode');
+const crypto = require('crypto');
 const { User } = require('../models');
+const { sendPasswordResetEmail } = require('../services/emailService');
+const { 
+  registerUserSchema, 
+  loginUserSchema, 
+  updateProfileSchema, 
+  updatePasswordSchema, 
+  forgotPasswordSchema, 
+  resetPasswordSchema 
+} = require('../utils/validators');
 
 /**
  * Gera um token JWT para o usuário especificado.
@@ -14,6 +24,19 @@ const generateToken = (userId) => {
     { id: userId },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
+  );
+};
+
+/**
+ * Gera um token de recuperação de senha.
+ * @param {number} userId - ID do usuário.
+ * @returns {string} Token de recuperação.
+ */
+const generateResetToken = (userId) => {
+  return jwt.sign(
+    { id: userId, type: 'password_reset' },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' } // Token expira em 1 hora
   );
 };
 
@@ -35,7 +58,9 @@ const authController = {
    */
   register: async (req, res) => {
     try {
-      const { name, email, password } = req.body;
+      // Validar dados de entrada
+      const validatedData = registerUserSchema.parse(req.body);
+      const { name, email, password } = validatedData;
 
       const existingUser = await User.findOne({ where: { email } });
       if (existingUser) {
@@ -56,7 +81,8 @@ const authController = {
         user: {
           id: user.id,
           name: user.name,
-          email: user.email
+          email: user.email,
+          role: user.role
         }
       });
     } catch (error) {
@@ -81,7 +107,10 @@ const authController = {
    */
   login: async (req, res) => {
     try {
-      const { email, password } = req.body;
+      // Validar dados de entrada
+      const validatedData = loginUserSchema.parse(req.body);
+      const { email, password } = validatedData;
+      
       console.log('[LOGIN] Tentando login para:', email);
 
       const user = await User.findOne({ where: { email } });
@@ -105,7 +134,8 @@ const authController = {
         user: {
           id: user.id,
           name: user.name,
-          email: user.email
+          email: user.email,
+          role: user.role
         }
       });
     } catch (error) {
@@ -144,9 +174,27 @@ const authController = {
     }
   },
 
+  /**
+   * Atualiza o perfil do usuário autenticado.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.body - Dados para atualização.
+   * @param {string} req.body.name - Nome do usuário (opcional).
+   * @param {string} req.body.email - Email do usuário (opcional).
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
+   * @throws {Error} Se o usuário não for encontrado ou houver erro no banco.
+   * @example
+   * // PUT /auth/profile
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Body: { "name": "João Silva", "email": "joao.silva@example.com" }
+   * // Retorno: { "message": "Perfil atualizado com sucesso" }
+   */
   updateProfile: async (req, res) => {
     try {
-      const { name, email } = req.body;
+      // Validar dados de entrada
+      const validatedData = updateProfileSchema.parse(req.body);
+      const { name, email } = validatedData;
+      
       const user = await User.findByPk(req.user.id);
       
       if (!user) {
@@ -160,9 +208,27 @@ const authController = {
     }
   },
 
+  /**
+   * Atualiza a senha do usuário autenticado.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.body - Dados para atualização de senha.
+   * @param {string} req.body.currentPassword - Senha atual.
+   * @param {string} req.body.newPassword - Nova senha.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
+   * @throws {Error} Se a senha atual for incorreta ou houver erro no banco.
+   * @example
+   * // PUT /auth/password
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Body: { "currentPassword": "123456", "newPassword": "654321" }
+   * // Retorno: { "message": "Senha atualizada com sucesso" }
+   */
   updatePassword: async (req, res) => {
     try {
-      const { currentPassword, newPassword } = req.body;
+      // Validar dados de entrada
+      const validatedData = updatePasswordSchema.parse(req.body);
+      const { currentPassword, newPassword } = validatedData;
+      
       const user = await User.findByPk(req.user.id);
 
       if (!user) {
@@ -248,37 +314,106 @@ const authController = {
     }
   },
 
+  /**
+   * Processa solicitação de recuperação de senha.
+   * Gera um token de recuperação e envia email com link para reset.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.body - Dados da requisição.
+   * @param {string} req.body.email - Email do usuário.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
+   * @throws {Error} Se o usuário não for encontrado ou houver erro no envio de email.
+   * @example
+   * // POST /auth/forgot-password
+   * // Body: { "email": "joao@example.com" }
+   * // Retorno: { "message": "Instruções de recuperação enviadas para seu email." }
+   */
   forgotPassword: async (req, res) => {
     try {
+      // Validar dados de entrada (sem validar formato de email para manter compatibilidade)
       const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ error: 'Email é obrigatório' });
+      }
+      
       const user = await User.findOne({ where: { email } });
 
       if (!user) {
         return res.status(404).json({ error: 'Usuário não encontrado.' });
       }
 
-      // Aqui você implementaria a lógica de envio de email com token de recuperação
-      // Por enquanto, apenas retornamos uma mensagem
+      // Gerar token de recuperação
+      const resetToken = generateResetToken(user.id);
+      
+      // URL base da aplicação frontend
+      const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
+
+      try {
+        // Enviar email de recuperação
+        const emailSent = await sendPasswordResetEmail(user.email, user.name, resetUrl);
+
+        if (!emailSent) {
+          // Se o email não foi enviado, ainda retorna sucesso para não expor informações
+          console.warn('Email de recuperação não foi enviado, mas retornando sucesso para segurança');
+        }
+      } catch (emailError) {
+        // Se houver erro no envio de email, ainda retorna sucesso para não expor informações
+        console.warn('Erro ao enviar email de recuperação:', emailError.message);
+      }
+
       res.json({ message: 'Instruções de recuperação enviadas para seu email.' });
     } catch (error) {
+      console.error('Erro ao processar recuperação de senha:', error);
       res.status(500).json({ error: 'Erro ao processar recuperação de senha.' });
     }
   },
 
+  /**
+   * Redefine a senha do usuário usando token de recuperação.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.body - Dados da requisição.
+   * @param {string} req.body.token - Token de recuperação.
+   * @param {string} req.body.newPassword - Nova senha.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
+   * @throws {Error} Se o token for inválido ou houver erro ao atualizar senha.
+   * @example
+   * // POST /auth/reset-password
+   * // Body: { "token": "jwt_token", "newPassword": "nova_senha123" }
+   * // Retorno: { "message": "Senha atualizada com sucesso." }
+   */
   resetPassword: async (req, res) => {
     try {
-      const { token, newPassword } = req.body;
-      const user = await User.findByPk(req.user.id);
+      // Validar dados de entrada
+      const validatedData = resetPasswordSchema.parse(req.body);
+      const { token, newPassword } = validatedData;
       
+      // Verificar e decodificar o token
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Verificar se é um token de recuperação de senha
+        if (decoded.type !== 'password_reset') {
+          return res.status(400).json({ error: 'Token inválido para recuperação de senha.' });
+        }
+      } catch (error) {
+        return res.status(400).json({ error: 'Token inválido ou expirado.' });
+      }
+
+      const user = await User.findByPk(decoded.id);
       if (!user) {
         return res.status(404).json({ error: 'Usuário não encontrado' });
       }
 
-      // Aqui você implementaria a verificação do token de recuperação
-      // Por enquanto, apenas atualizamos a senha
+      // Atualizar a senha
       await user.update({ password: newPassword });
+      
       res.json({ message: 'Senha atualizada com sucesso.' });
     } catch (error) {
+      console.error('Erro ao redefinir senha:', error);
       res.status(500).json({ error: 'Erro ao redefinir senha.' });
     }
   }

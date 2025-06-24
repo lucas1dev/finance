@@ -12,7 +12,8 @@ module.exports = (sequelize, DataTypes) => {
 
       Payment.belongsTo(models.Payable, {
         foreignKey: 'payable_id',
-        as: 'payable'
+        as: 'payable',
+        onDelete: 'CASCADE'
       });
     }
   }

@@ -1,6 +1,6 @@
 /**
  * Testes unitários para o middleware de tratamento de erros.
- * @author AI
+ * @author Lucas Santos
  */
 const { errorHandler } = require('../../middlewares/errorMiddleware');
 const { AppError, ValidationError, NotFoundError } = require('../../utils/errors');

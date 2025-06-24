@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import api from '@/lib/axios';
@@ -7,6 +7,7 @@ interface User {
   id: number;
   name: string;
   email: string;
+  role: 'user' | 'admin';
 }
 
 interface AuthContextType {
@@ -25,20 +26,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Cache do perfil do usuário
-  const [profileCache, setProfileCache] = useState<{
-    data: User | null;
-    timestamp: number;
-  }>({
-    data: null,
-    timestamp: 0
-  });
-
-  // Tempo de expiração do cache (5 minutos)
-  const CACHE_EXPIRATION = 5 * 60 * 1000;
-
   useEffect(() => {
     const handleUnauthorized = () => {
+      console.log('AuthContext: Evento unauthorized disparado');
       setUser(null);
       navigate('/login', { replace: true });
     };
@@ -50,118 +40,102 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [navigate]);
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
-      // Verifica se o cache é válido
-      const now = Date.now();
-      if (profileCache.data && now - profileCache.timestamp < CACHE_EXPIRATION) {
-        setUser(profileCache.data);
-        return true;
-      }
-
       const response = await api.get('/auth/profile');
       const userData = response.data;
-      setUser(userData);
       
-      // Atualiza o cache
-      setProfileCache({
-        data: userData,
-        timestamp: now
-      });
+      setUser(userData);
       return true;
     } catch (error) {
-      console.error('Erro ao buscar perfil:', error);
+      console.error('❌ AuthContext: Erro ao buscar perfil:', error);
+      // Se houver erro 401, limpa o token
+      if (error && typeof error === 'object' && 'response' in error && (error as any).response?.status === 401) {
+        localStorage.removeItem('token');
+        delete api.defaults.headers.common['Authorization'];
+      }
       return false;
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    
     if (token) {
+      // Configura o token no axios imediatamente
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       fetchProfile();
     } else {
       setLoading(false);
     }
-  }, []);
+  }, [fetchProfile]);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     try {
+      setLoading(true);
+      
       const response = await api.post('/auth/login', { email, password });
       const { token, user: userData } = response.data;
       
+      // Armazena o token
       localStorage.setItem('token', token);
+      
+      // Configura o token no axios imediatamente
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      // Atualiza o estado do usuário diretamente
       setUser(userData);
       
-      // Atualiza o cache
-      setProfileCache({
-        data: userData,
-        timestamp: Date.now()
-      });
-
-      // Força uma pequena pausa para garantir que o token foi armazenado
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Verifica se o token foi armazenado corretamente
-      const storedToken = localStorage.getItem('token');
-      if (!storedToken) {
-        throw new Error('Erro ao armazenar token');
-      }
-
+      // Força uma atualização do estado
+      setLoading(false);
+      
       // Redireciona para o dashboard
       navigate('/', { replace: true });
     } catch (error) {
-      console.error('Erro no login:', error);
+      console.error('❌ AuthContext: Erro no login:', error);
+      setLoading(false);
       throw error;
     }
-  };
+  }, [navigate]);
 
-  const register = async (name: string, email: string, password: string) => {
+  const register = useCallback(async (name: string, email: string, password: string) => {
     try {
+      setLoading(true);
       const response = await api.post('/auth/register', { name, email, password });
       const { token, user: userData } = response.data;
       
+      // Armazena o token
       localStorage.setItem('token', token);
+    
+      // Configura o token no axios imediatamente
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      // Atualiza o estado do usuário imediatamente
       setUser(userData);
       
-      // Atualiza o cache
-      setProfileCache({
-        data: userData,
-        timestamp: Date.now()
-      });
-
-      // Força uma pequena pausa para garantir que o token foi armazenado
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Verifica se o token foi armazenado corretamente
-      const storedToken = localStorage.getItem('token');
-      if (!storedToken) {
-        throw new Error('Erro ao armazenar token');
-      }
-
-      // Redireciona para o dashboard
+      // Força uma atualização do estado
+      setLoading(false);
+      
       navigate('/', { replace: true });
     } catch (error) {
-      console.error('Erro no registro:', error);
+      console.error('AuthContext: Erro no registro:', error);
+      setLoading(false);
       throw error;
     }
-  };
+  }, [navigate]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('token');
+    delete api.defaults.headers.common['Authorization'];
     setUser(null);
-    // Limpa o cache
-    setProfileCache({
-      data: null,
-      timestamp: 0
-    });
     navigate('/login', { replace: true });
-  };
+  }, [navigate]);
 
-  const isAuthenticated = () => {
-    return !!localStorage.getItem('token');
-  };
+  const isAuthenticated = useCallback(() => {
+    return !!user;
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, isAuthenticated }}>
@@ -173,7 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+    throw new Error('useAuth deve ser usado dentro de AuthProvider');
   }
   return context;
 } 

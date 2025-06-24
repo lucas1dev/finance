@@ -54,20 +54,6 @@ app.use(compression({
   }
 }));
 
-// Configuração do rate limiting para produção
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutos
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limite de requisições
-  message: {
-    error: 'Muitas requisições. Tente novamente mais tarde.',
-    status: 429
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use(limiter);
-
 // Middleware para parsing de JSON com limite configurável
 app.use(express.json({ 
   limit: process.env.BODY_PARSER_LIMIT || '10mb' 
@@ -117,7 +103,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Health check endpoint (sem rate limiting)
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'OK',
@@ -156,47 +142,107 @@ app.use('/docs-root', express.static(__dirname, {
   }
 }));
 
-// Rotas da API
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/accounts', require('./routes/accounts'));
-app.use('/api/categories', require('./routes/categories'));
-app.use('/api/customers', require('./routes/customers'));
-app.use('/api/receivables', require('./routes/receivables'));
-app.use('/api/transactions', require('./routes/transactions'));
-app.use('/api/suppliers', require('./routes/supplierRoutes'));
-app.use('/api/payables', require('./routes/payableRoutes'));
-app.use('/api/payments', require('./routes/payments'));
-app.use('/api/fixed-accounts', require('./routes/fixedAccounts'));
-app.use('/api/investments', require('./routes/investments'));
-app.use('/api/investment-goals', require('./routes/investmentGoals'));
-app.use('/api/investment-contributions', require('./routes/investmentContributions'));
+// Rate limiting específico para autenticação (mais restritivo)
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 5, // 5 tentativas por 15 minutos
+  message: {
+    error: 'Muitas tentativas de login. Tente novamente em 15 minutos.',
+    status: 429
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Não conta tentativas bem-sucedidas
+  keyGenerator: (req) => {
+    return `${req.ip}-auth`;
+  }
+});
+
+// Rate limiting para dashboard (mais permissivo)
+const dashboardRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: parseInt(process.env.DASHBOARD_RATE_LIMIT_MAX) || 500, // 500 requisições por 15 minutos
+  message: {
+    error: 'Muitas requisições do dashboard. Tente novamente mais tarde.',
+    status: 429
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const userId = req.user?.id || 'anonymous';
+    return `${req.ip}-${userId}-dashboard`;
+  }
+});
+
+// Rate limiting para APIs gerais (moderado)
+const apiRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: parseInt(process.env.API_RATE_LIMIT_MAX) || 300, // 300 requisições por 15 minutos
+  message: {
+    error: 'Muitas requisições. Tente novamente mais tarde.',
+    status: 429
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const userId = req.user?.id || 'anonymous';
+    return `${req.ip}-${userId}-api`;
+  }
+});
+
+// Rotas da API com rate limiting específico
+app.use('/api/auth', authRateLimiter, require('./routes/auth'));
+app.use('/api/dashboard', dashboardRateLimiter, require('./routes/dashboard'));
+
+// Rotas da API com rate limiting padrão
+app.use('/api/accounts', apiRateLimiter, require('./routes/accounts'));
+app.use('/api/categories', apiRateLimiter, require('./routes/categories'));
+app.use('/api/customers', apiRateLimiter, require('./routes/customers'));
+app.use('/api/receivables', apiRateLimiter, require('./routes/receivables'));
+app.use('/api/transactions', apiRateLimiter, require('./routes/transactions'));
+app.use('/api/suppliers', apiRateLimiter, require('./routes/supplierRoutes'));
+app.use('/api/payables', apiRateLimiter, require('./routes/payableRoutes'));
+app.use('/api/payments', apiRateLimiter, require('./routes/payments'));
+app.use('/api/fixed-accounts', apiRateLimiter, require('./routes/fixedAccounts'));
+app.use('/api/investments', apiRateLimiter, require('./routes/investments'));
+app.use('/api/investment-goals', apiRateLimiter, require('./routes/investmentGoals'));
+app.use('/api/investment-contributions', apiRateLimiter, require('./routes/investmentContributions'));
 
 // Rotas de Financiamentos
-app.use('/api/creditors', require('./routes/creditors'));
-app.use('/api/financings', require('./routes/financings'));
-app.use('/api/financing-payments', require('./routes/financingPayments'));
+app.use('/api/creditors', apiRateLimiter, require('./routes/creditors'));
+app.use('/api/financings', apiRateLimiter, require('./routes/financings'));
+app.use('/api/financing-payments', apiRateLimiter, require('./routes/financingPayments'));
 
 // Rotas de Notificações
-app.use('/api/notifications', require('./routes/notifications'));
-app.use('/api/notifications/jobs', require('./routes/notificationJobs'));
+app.use('/api/notifications', apiRateLimiter, require('./routes/notifications'));
+app.use('/api/notifications/jobs', apiRateLimiter, require('./routes/notificationJobs'));
 
 // Rotas de Auditoria
-app.use('/api/audit', require('./routes/audit'));
+app.use('/api/audit', apiRateLimiter, require('./routes/audit'));
 
 // Rotas de Integridade de Dados
-app.use('/api/data-integrity', require('./routes/dataIntegrity'));
+app.use('/api/data-integrity', apiRateLimiter, require('./routes/dataIntegrity'));
 
 // Rotas de Timeout de Jobs
-app.use('/api/job-timeouts', require('./routes/jobTimeouts'));
+app.use('/api/job-timeouts', apiRateLimiter, require('./routes/jobTimeouts'));
 
 // Rotas de Configuração de Jobs
-app.use('/api/job-scheduler', require('./routes/jobScheduler'));
+app.use('/api/job-scheduler', apiRateLimiter, require('./routes/jobScheduler'));
 
 // Rotas de Painel Administrativo de Jobs
-app.use('/api/job-admin', require('./routes/jobAdmin'));
+app.use('/api/job-admin', apiRateLimiter, require('./routes/jobAdmin'));
 
 // Rotas de Permissões
-app.use('/api/permissions', require('./routes/permissions'));
+app.use('/api/permissions', apiRateLimiter, require('./routes/permissions'));
+
+// Rotas de Gerenciamento de Usuários (Administrativas)
+app.use('/api/admin/users', apiRateLimiter, require('./routes/adminUsers'));
+
+// Rotas de Configurações
+app.use('/api/settings', apiRateLimiter, require('./routes/settings'));
+
+// Rotas de Jobs de Contas Fixas
+app.use('/api/fixed-account-jobs', apiRateLimiter, require('./routes/fixedAccountJobs'));
 
 // Middleware para rotas não encontradas
 app.use('*', (req, res) => {
@@ -211,16 +257,24 @@ app.use('*', (req, res) => {
 const { errorHandler } = require('./middlewares/errorMiddleware');
 app.use(errorHandler);
 
-// Inicializar serviços
+// Função para inicializar serviços (apenas quando não estiver em teste)
 async function initializeServices() {
+  if (process.env.NODE_ENV === 'test') {
+    return; // Não inicializa serviços durante testes
+  }
+
   try {
     // Inicializar serviço de email
-    // const emailService = require('./services/emailService');
-    // await emailService.initializeEmailService();
+    const { initializeEmailService } = require('./services/emailService');
+    await initializeEmailService();
     
     // Inicializar jobs de notificação
-    // const { initializeNotificationJobs } = require('./services/notificationJobs');
-    // initializeNotificationJobs();
+    const { initializeNotificationJobs } = require('./services/notificationJobs');
+    initializeNotificationJobs();
+    
+    // Inicializar jobs de contas fixas
+    const { initializeFixedAccountJobs } = require('./services/fixedAccountJobs');
+    initializeFixedAccountJobs();
     
     console.log('✅ Serviços inicializados com sucesso');
   } catch (error) {
@@ -228,8 +282,10 @@ async function initializeServices() {
   }
 }
 
-// Inicializar serviços quando o app estiver pronto
-// // initializeServices();
+// Inicializar serviços apenas se não estiver em teste
+if (process.env.NODE_ENV !== 'test') {
+  initializeServices();
+}
 
 // Tratamento de erros não capturados
 process.on('uncaughtException', (err) => {

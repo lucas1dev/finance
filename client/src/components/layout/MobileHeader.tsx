@@ -1,37 +1,47 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
 import { Menu } from 'lucide-react';
-import { Sidebar } from './Sidebar';
-import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
 
-export function MobileHeader() {
-  const [open, setOpen] = useState(false);
-  const { user } = useAuth();
-  const location = useLocation();
+/**
+ * Header mobile da aplicação
+ * @author Lucas
+ *
+ * @description
+ * Header responsivo com botão de menu para mobile
+ *
+ * @param {Object} props - Propriedades do componente
+ * @param {boolean} props.sidebarOpen - Estado do sidebar
+ * @param {function} props.setSidebarOpen - Função para controlar o sidebar
+ * @returns {JSX.Element} Header mobile renderizado
+ */
+interface MobileHeaderProps {
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+}
 
+export function MobileHeader({ sidebarOpen, setSidebarOpen }: MobileHeaderProps) {
   return (
-    <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-background border-b">
-      <div className="flex items-center justify-between p-4">
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <Menu className="h-6 w-6" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0">
-            <Sidebar />
-          </SheetContent>
-        </Sheet>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{user?.name}</span>
+    <div className="sticky top-0 z-50 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        className="-m-2.5 p-2.5 text-gray-700 lg:hidden"
+        onClick={() => setSidebarOpen(true)}
+      >
+        <span className="sr-only">Abrir sidebar</span>
+        <Menu className="h-6 w-6" aria-hidden="true" />
+      </Button>
+
+      {/* Separador */}
+      <div className="h-6 w-px bg-gray-200 lg:hidden" />
+
+      <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
+        <div className="flex flex-1 items-center">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">F</span>
+            </div>
+            <span className="text-xl font-bold text-gray-900">Finance</span>
+          </div>
         </div>
       </div>
     </div>

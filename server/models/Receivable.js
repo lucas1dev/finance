@@ -59,36 +59,41 @@ module.exports = (sequelize, DataTypes) => {
     },
     category_id: {
       type: DataTypes.INTEGER,
-      allowNull: true,
+      allowNull: false,
       references: {
         model: 'categories',
         key: 'id'
       }
     },
     description: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    invoice_number: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    payment_terms: {
+      type: DataTypes.TEXT,
+      allowNull: true
     },
     amount: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false
+    },
+    remaining_amount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0
     },
     due_date: {
       type: DataTypes.DATE,
       allowNull: false
     },
     status: {
-      type: DataTypes.ENUM('pending', 'paid', 'overdue', 'cancelled'),
-      allowNull: false,
+      type: DataTypes.ENUM('pending', 'partially_paid', 'paid'),
+      allowNull: true,
       defaultValue: 'pending'
-    },
-    payment_date: {
-      type: DataTypes.DATE,
-      allowNull: true
-    },
-    payment_method: {
-      type: DataTypes.ENUM('cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer'),
-      allowNull: true
     },
     notes: {
       type: DataTypes.TEXT,

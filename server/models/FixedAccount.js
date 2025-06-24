@@ -70,6 +70,14 @@ module.exports = (sequelize) => {
           key: 'id'
         }
       },
+      account_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'accounts',
+          key: 'id'
+        }
+      },
       payment_method: {
         type: DataTypes.ENUM('card', 'boleto', 'automatic_debit'),
         allowNull: true
@@ -143,6 +151,11 @@ module.exports = (sequelize) => {
     FixedAccount.belongsTo(models.Supplier, {
       foreignKey: 'supplier_id',
       as: 'supplier'
+    });
+    
+    FixedAccount.belongsTo(models.Account, {
+      foreignKey: 'account_id',
+      as: 'account'
     });
     
     FixedAccount.hasMany(models.Transaction, {

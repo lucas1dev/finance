@@ -22,13 +22,18 @@ module.exports = (sequelize, DataTypes) => {
 
       Payable.hasMany(models.Payment, {
         foreignKey: 'payable_id',
-        as: 'payments'
+        as: 'payments',
+        onDelete: 'CASCADE'
       });
     }
 
     // Método para calcular o valor restante
     async getRemainingAmount() {
-      const payments = await this.getPayments();
+      const { Payment } = require('./index');
+      const payments = await Payment.findAll({
+        where: { payable_id: this.id },
+        attributes: ['amount']
+      });
       const totalPaid = payments.reduce((sum, payment) => sum + parseFloat(payment.amount), 0);
       return parseFloat(this.amount) - totalPaid;
     }

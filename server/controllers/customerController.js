@@ -1,5 +1,6 @@
-const { Customer, Receivable, CustomerType, sequelize } = require('../models');
+const { Customer, Receivable, sequelize } = require('../models');
 const { validateCPF, validateCNPJ } = require('../utils/documentValidator');
+const { createCustomerSchema, updateCustomerSchema } = require('../utils/validators');
 const { Op } = require('sequelize');
 
 class CustomerController {
@@ -20,22 +21,9 @@ class CustomerController {
     try {
       const { type } = req.query;
       const where = { user_id: req.user.id };
-      const include = [
-        {
-          model: CustomerType,
-          as: 'types',
-          attributes: ['type']
-        }
-      ];
-
-      // Se um tipo específico foi solicitado, filtrar por ele
-      if (type) {
-        include[0].where = { type };
-      }
 
       const customers = await Customer.findAll({
         where,
-        include,
         order: [['name', 'ASC']]
       });
 
@@ -65,11 +53,6 @@ class CustomerController {
         where: { id: req.params.id },
         include: [
           {
-            model: CustomerType,
-            as: 'types',
-            attributes: ['type']
-          },
-          {
             model: Receivable,
             as: 'receivables',
             attributes: ['id', 'amount', 'due_date', 'status']
@@ -98,146 +81,101 @@ class CustomerController {
    * @param {Object} req.body - Dados do cliente.
    * @param {string} req.body.name - Nome do cliente.
    * @param {string} req.body.documentType - Tipo do documento ('CPF' ou 'CNPJ').
-   * @param {string} req.body.documentNumber - Número do documento.
+   * @param {string} req.body.document - Número do documento.
    * @param {string} [req.body.email] - Email do cliente.
    * @param {string} [req.body.phone] - Telefone do cliente.
-   * @param {string} [req.body.address] - Endereço do cliente.
-   * @param {string[]} req.body.types - Tipos do cliente (ex: ['customer']).
    * @param {Object} req.user - Usuário autenticado (via JWT).
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Objeto com id do cliente criado e mensagem de sucesso.
    * @throws {Error} Se os dados forem inválidos ou já existir cliente com o mesmo documento.
    * @example
-   * // POST /api/customers
-   * // Body: { "name": "João", "documentType": "CPF", "documentNumber": "12345678909", "types": ["customer"] }
+   * // POST /customers
+   * // Body: { "name": "João Silva", "documentType": "CPF", "document": "12345678900", "email": "joao@example.com" }
    * // Retorno: { "id": 1, "message": "Cliente criado com sucesso" }
    */
   async create(req, res) {
     try {
-      const { name, documentType, documentNumber, email, phone, address, types } = req.body;
-
-      // Validação dos campos obrigatórios
-      if (!name || !documentType || !documentNumber || !types || !Array.isArray(types) || types.length === 0) {
-        return res.status(400).json({ error: 'Nome, tipo e número do documento e pelo menos um tipo (cliente/fornecedor) são obrigatórios' });
-      }
-
-      // Validação dos tipos
-      const validTypes = ['customer', 'supplier'];
-      const invalidTypes = types.filter(type => !validTypes.includes(type));
-      if (invalidTypes.length > 0) {
-        return res.status(400).json({ error: 'Tipos inválidos. Use apenas "customer" e/ou "supplier"' });
-      }
+      // Validar dados de entrada
+      const validatedData = createCustomerSchema.parse(req.body);
+      const { name, documentType, document, email, phone } = validatedData;
 
       // Validação do documento
       const isValidDocument = documentType === 'CPF' 
-        ? validateCPF(documentNumber)
-        : validateCNPJ(documentNumber);
+        ? validateCPF(document)
+        : validateCNPJ(document);
 
       if (!isValidDocument) {
         return res.status(400).json({ error: 'Documento inválido' });
       }
 
-      // Verificar se o documento já existe
+      // Verificar se já existe cliente com o mesmo documento
       const existingCustomer = await Customer.findOne({
-        where: {
-          document_type: documentType,
-          document_number: documentNumber,
-          user_id: req.user.id
-        },
-        include: [
-          {
-            model: CustomerType,
-            as: 'types',
-            attributes: ['type']
-          }
-        ]
+        where: { 
+          user_id: req.user.id,
+          document: document,
+          document_type: documentType
+        }
       });
 
       if (existingCustomer) {
-        // Adicionar os novos tipos que ainda não existem
-        const existingTypes = existingCustomer.types.map(t => t.type);
-        const newTypes = types.filter(type => !existingTypes.includes(type));
-
-        if (newTypes.length > 0) {
-          await CustomerType.bulkCreate(
-            newTypes.map(type => ({
-              customer_id: existingCustomer.id,
-              type
-            }))
-          );
-        }
-
-        return res.status(201).json({ 
-          id: existingCustomer.id, 
-          message: 'Tipos adicionados com sucesso' 
-        });
+        return res.status(400).json({ error: 'Já existe um cliente com este documento' });
       }
 
-      // Criar o cliente e seus tipos em uma transação
-      const result = await sequelize.transaction(async (t) => {
-        const customer = await Customer.create({
-          user_id: req.user.id,
-          name,
-          document_type: documentType,
-          document_number: documentNumber,
-          email: email || null,
-          phone: phone || null,
-          address: address || null
-        }, { transaction: t });
-
-        // Criar os tipos selecionados
-        await CustomerType.bulkCreate(
-          types.map(type => ({
-            customer_id: customer.id,
-            type
-          })),
-          { transaction: t }
-        );
-
-        return customer;
+      // Criar cliente
+      const customer = await Customer.create({
+        user_id: req.user.id,
+        name,
+        document_type: documentType,
+        document,
+        email: email || null,
+        phone: phone || null
       });
 
-      res.status(201).json({ id: result.id, message: 'Cliente criado com sucesso' });
+      res.status(201).json({
+        id: customer.id,
+        message: 'Cliente criado com sucesso'
+      });
     } catch (error) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Nome, tipo e número do documento são obrigatórios' });
+      }
       console.error('Erro ao criar cliente:', error);
       res.status(500).json({ error: 'Erro ao criar cliente' });
     }
   }
 
+  /**
+   * Atualiza um cliente existente.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.params.id - ID do cliente.
+   * @param {Object} req.body - Dados para atualização.
+   * @param {string} [req.body.name] - Nome do cliente.
+   * @param {string} [req.body.documentType] - Tipo do documento ('CPF' ou 'CNPJ').
+   * @param {string} [req.body.document] - Número do documento.
+   * @param {string} [req.body.email] - Email do cliente.
+   * @param {string} [req.body.phone] - Telefone do cliente.
+   * @param {Object} req.user - Usuário autenticado (via JWT).
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Mensagem de sucesso.
+   * @throws {Error} Se o cliente não for encontrado ou os dados forem inválidos.
+   * @example
+   * // PUT /customers/1
+   * // Body: { "name": "João Silva Atualizado", "email": "joao.novo@example.com" }
+   * // Retorno: { "message": "Cliente atualizado com sucesso" }
+   */
   async update(req, res) {
     try {
-      const { name, documentType, documentNumber, email, phone, address, types } = req.body;
+      console.log('📝 Dados recebidos para atualização:', req.body);
+      
+      // Validar dados de entrada
+      const validatedData = updateCustomerSchema.parse(req.body);
+      const { name, documentType, document, email, phone } = validatedData;
 
-      // Validação dos campos obrigatórios
-      if (!name || !documentType || !documentNumber || !types || !Array.isArray(types) || types.length === 0) {
-        return res.status(400).json({ error: 'Nome, tipo e número do documento e pelo menos um tipo (cliente/fornecedor) são obrigatórios' });
-      }
+      console.log('✅ Dados validados:', validatedData);
 
-      // Validação dos tipos
-      const validTypes = ['customer', 'supplier'];
-      const invalidTypes = types.filter(type => !validTypes.includes(type));
-      if (invalidTypes.length > 0) {
-        return res.status(400).json({ error: 'Tipos inválidos. Use apenas "customer" e/ou "supplier"' });
-      }
-
-      // Validação do documento
-      const isValidDocument = documentType === 'CPF' 
-        ? validateCPF(documentNumber)
-        : validateCNPJ(documentNumber);
-
-      if (!isValidDocument) {
-        return res.status(400).json({ error: 'Documento inválido' });
-      }
-
+      // Buscar cliente
       const customer = await Customer.findOne({
-        where: { id: req.params.id },
-        include: [
-          {
-            model: CustomerType,
-            as: 'types',
-            attributes: ['type']
-          }
-        ]
+        where: { id: req.params.id }
       });
 
       if (!customer) {
@@ -248,58 +186,68 @@ class CustomerController {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
-      // Verificar se o documento já existe em outro cliente
-      if (documentNumber !== customer.document_number || documentType !== customer.document_type) {
+      // Validação do documento se fornecido
+      if (document && documentType) {
+        const isValidDocument = documentType === 'CPF' 
+          ? validateCPF(document)
+          : validateCNPJ(document);
+
+        if (!isValidDocument) {
+          return res.status(400).json({ error: 'Documento inválido' });
+        }
+
+        // Verificar se o novo documento já existe em outro cliente
         const existingCustomer = await Customer.findOne({
-          where: {
-            document_type: documentType,
-            document_number: documentNumber,
+          where: { 
             user_id: req.user.id,
+            document: document,
+            document_type: documentType,
             id: { [Op.ne]: customer.id }
           }
         });
 
         if (existingCustomer) {
-          return res.status(400).json({ error: 'Já existe um cliente com este documento' });
+          return res.status(400).json({ error: 'Já existe outro cliente com este documento' });
         }
       }
 
-      // Atualizar os dados básicos
-      await customer.update({
-        name,
-        document_type: documentType,
-        document_number: documentNumber,
-        email: email || null,
-        phone: phone || null,
-        address: address || null
+      // Preparar dados para atualização
+      const updateData = {};
+      
+      if (name !== undefined) updateData.name = name;
+      if (documentType !== undefined) updateData.document_type = documentType;
+      if (document !== undefined) updateData.document = document;
+      if (email !== undefined) updateData.email = email || null;
+      if (phone !== undefined) updateData.phone = phone || null;
+
+      console.log('🔄 Dados para atualização:', updateData);
+
+      // Atualizar cliente
+      await customer.update(updateData);
+
+      console.log('✅ Cliente atualizado com sucesso');
+
+      res.json({ 
+        message: 'Cliente atualizado com sucesso',
+        customer: {
+          id: customer.id,
+          name: customer.name,
+          documentType: customer.document_type,
+          document: customer.document,
+          email: customer.email,
+          phone: customer.phone
+        }
       });
-
-      // Atualizar os tipos
-      const existingTypes = customer.types.map(t => t.type);
-      const typesToAdd = types.filter(type => !existingTypes.includes(type));
-      const typesToRemove = existingTypes.filter(type => !types.includes(type));
-
-      if (typesToAdd.length > 0) {
-        await CustomerType.bulkCreate(
-          typesToAdd.map(type => ({
-            customer_id: customer.id,
-            type
-          }))
-        );
-      }
-
-      if (typesToRemove.length > 0) {
-        await CustomerType.destroy({
-          where: {
-            customer_id: customer.id,
-            type: typesToRemove
-          }
+    } catch (error) {
+      console.error('❌ Erro ao atualizar cliente:', error);
+      
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          error: 'Dados inválidos',
+          details: error.errors 
         });
       }
-
-      res.json({ message: 'Cliente atualizado com sucesso' });
-    } catch (error) {
-      console.error('Erro ao atualizar cliente:', error);
+      
       res.status(500).json({ error: 'Erro ao atualizar cliente' });
     }
   }
@@ -307,13 +255,7 @@ class CustomerController {
   async delete(req, res) {
     try {
       const customer = await Customer.findOne({
-        where: { id: req.params.id },
-        include: [
-          {
-            model: CustomerType,
-            as: 'types'
-          }
-        ]
+        where: { id: req.params.id }
       });
 
       if (!customer) {
@@ -333,11 +275,6 @@ class CustomerController {
         return res.status(400).json({ error: 'Não é possível excluir um cliente com contas a receber' });
       }
 
-      // Remover os tipos associados
-      await CustomerType.destroy({
-        where: { customer_id: customer.id }
-      });
-
       await customer.destroy();
       res.json({ message: 'Cliente excluído com sucesso' });
     } catch (error) {
@@ -349,14 +286,7 @@ class CustomerController {
   async getCustomerReceivables(req, res) {
     try {
       const customer = await Customer.findOne({
-        where: { id: req.params.id },
-        include: [
-          {
-            model: CustomerType,
-            as: 'types',
-            where: { type: 'customer' }
-          }
-        ]
+        where: { id: req.params.id }
       });
 
       if (!customer) {

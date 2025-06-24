@@ -18,6 +18,11 @@ const RESOURCE_PERMISSIONS = {
   'jobs:execute': ['admin'],
   'jobs:configure': ['admin'],
   
+  // Jobs de Contas Fixas
+  'fixed-account-jobs:read': ['admin'],
+  'fixed-account-jobs:execute': ['admin'],
+  'fixed-account-jobs:configure': ['admin'],
+  
   // Integridade de Dados
   'data-integrity:read': ['admin'],
   'data-integrity:write': ['admin'],

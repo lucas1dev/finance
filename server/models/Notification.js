@@ -14,10 +14,9 @@ module.exports = (sequelize) => {
       primaryKey: true,
       autoIncrement: true,
     },
-    userId: {
+    user_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      field: 'user_id',
       references: {
         model: 'users',
         key: 'id',
@@ -38,34 +37,29 @@ module.exports = (sequelize) => {
       allowNull: false,
       comment: 'Mensagem detalhada da notificação',
     },
-    relatedType: {
+    related_type: {
       type: DataTypes.ENUM('financing', 'financing_payment', 'creditor', 'general'),
       allowNull: true,
-      field: 'related_type',
       comment: 'Tipo de entidade relacionada à notificação',
     },
-    relatedId: {
+    related_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'related_id',
       comment: 'ID da entidade relacionada',
     },
-    dueDate: {
+    due_date: {
       type: DataTypes.DATE,
       allowNull: true,
-      field: 'due_date',
       comment: 'Data de vencimento relacionada à notificação',
     },
-    isRead: {
+    is_read: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
-      field: 'is_read',
       comment: 'Indica se a notificação foi lida',
     },
-    isActive: {
+    is_active: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,
-      field: 'is_active',
       comment: 'Indica se a notificação está ativa',
     },
     priority: {
@@ -73,10 +67,9 @@ module.exports = (sequelize) => {
       defaultValue: 'medium',
       comment: 'Prioridade da notificação',
     },
-    scheduledFor: {
+    scheduled_for: {
       type: DataTypes.DATE,
       allowNull: true,
-      field: 'scheduled_for',
       comment: 'Data/hora programada para exibição da notificação',
     },
   }, {
@@ -98,34 +91,34 @@ module.exports = (sequelize) => {
 
   Notification.associate = (models) => {
     Notification.belongsTo(models.User, {
-      foreignKey: 'userId',
+      foreignKey: 'user_id',
       as: 'user',
     });
     
     Notification.belongsTo(models.Financing, {
-      foreignKey: 'relatedId',
+      foreignKey: 'related_id',
       as: 'financing',
       constraints: false,
       scope: {
-        relatedType: 'financing',
+        related_type: 'financing',
       },
     });
     
     Notification.belongsTo(models.FinancingPayment, {
-      foreignKey: 'relatedId',
+      foreignKey: 'related_id',
       as: 'financingPayment',
       constraints: false,
       scope: {
-        relatedType: 'financing_payment',
+        related_type: 'financing_payment',
       },
     });
     
     Notification.belongsTo(models.Creditor, {
-      foreignKey: 'relatedId',
+      foreignKey: 'related_id',
       as: 'creditor',
       constraints: false,
       scope: {
-        relatedType: 'creditor',
+        related_type: 'creditor',
       },
     });
   };

@@ -1,6 +1,6 @@
 /**
  * Testes unitários para o validador de documentos (CPF e CNPJ).
- * @author AI
+ * @author Lucas Santos
  */
 const { validateCPF, validateCNPJ } = require('../../utils/documentValidator');
 

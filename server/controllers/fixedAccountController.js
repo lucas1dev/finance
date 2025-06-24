@@ -1,6 +1,7 @@
 const { FixedAccount, Category, Supplier, Transaction, Account } = require('../models');
 const { ValidationError, NotFoundError } = require('../utils/errors');
 const { z } = require('zod');
+const { Op } = require('sequelize');
 
 /**
  * Esquema de validação para criação de conta fixa
@@ -17,6 +18,7 @@ const createFixedAccountSchema = z.object({
   }, 'Data de início deve ser uma data válida'),
   category_id: z.number().int().positive('Categoria é obrigatória'),
   supplier_id: z.number().int().positive().optional(),
+  account_id: z.number().int().positive().optional(),
   payment_method: z.enum(['card', 'boleto', 'automatic_debit']).optional(),
   observations: z.string().optional(),
   reminder_days: z.number().int().min(0).max(30).default(3)
@@ -37,6 +39,7 @@ const updateFixedAccountSchema = createFixedAccountSchema.partial();
  * @param {string} req.body.start_date - Data de início (YYYY-MM-DD).
  * @param {number} req.body.category_id - ID da categoria.
  * @param {number} [req.body.supplier_id] - ID do fornecedor (opcional).
+ * @param {number} [req.body.account_id] - ID da conta bancária (opcional).
  * @param {string} [req.body.payment_method] - Método de pagamento (opcional).
  * @param {string} [req.body.observations] - Observações (opcional).
  * @param {number} [req.body.reminder_days] - Dias de antecedência para lembretes (padrão: 3).
@@ -54,9 +57,15 @@ async function createFixedAccount(req, res) {
   try {
     const validatedData = createFixedAccountSchema.parse(req.body);
     
-    // Verifica se a categoria existe e pertence ao usuário
+    // Verifica se a categoria existe e pertence ao usuário ou é uma categoria padrão
     const category = await Category.findOne({
-      where: { id: validatedData.category_id, user_id: req.userId }
+      where: {
+        id: validatedData.category_id,
+        [Op.or]: [
+          { user_id: req.userId },
+          { is_default: true }
+        ]
+      }
     });
     
     if (!category) {
@@ -74,6 +83,17 @@ async function createFixedAccount(req, res) {
       }
     }
     
+    // Verifica se a conta bancária existe (se fornecida)
+    if (validatedData.account_id) {
+      const account = await Account.findOne({
+        where: { id: validatedData.account_id, user_id: req.userId }
+      });
+      
+      if (!account) {
+        throw new NotFoundError('Conta bancária não encontrada');
+      }
+    }
+    
     const fixedAccount = await FixedAccount.create({
       ...validatedData,
       user_id: req.userId,
@@ -84,7 +104,8 @@ async function createFixedAccount(req, res) {
     await fixedAccount.reload({
       include: [
         { model: Category, as: 'category' },
-        { model: Supplier, as: 'supplier' }
+        { model: Supplier, as: 'supplier' },
+        { model: Account, as: 'account' }
       ]
     });
     
@@ -190,7 +211,13 @@ async function updateFixedAccount(req, res) {
     // Verifica se a categoria existe (se fornecida)
     if (validatedData.category_id) {
       const category = await Category.findOne({
-        where: { id: validatedData.category_id, user_id: req.userId }
+        where: {
+          id: validatedData.category_id,
+          [Op.or]: [
+            { user_id: req.userId },
+            { is_default: true }
+          ]
+        }
       });
       
       if (!category) {
@@ -209,13 +236,25 @@ async function updateFixedAccount(req, res) {
       }
     }
     
+    // Verifica se a conta bancária existe (se fornecida)
+    if (validatedData.account_id) {
+      const account = await Account.findOne({
+        where: { id: validatedData.account_id, user_id: req.userId }
+      });
+      
+      if (!account) {
+        throw new NotFoundError('Conta bancária não encontrada');
+      }
+    }
+    
     await fixedAccount.update(validatedData);
     
     // Carrega as associações para retornar dados completos
     await fixedAccount.reload({
       include: [
         { model: Category, as: 'category' },
-        { model: Supplier, as: 'supplier' }
+        { model: Supplier, as: 'supplier' },
+        { model: Account, as: 'account' }
       ]
     });
     
@@ -258,7 +297,8 @@ async function toggleFixedAccount(req, res) {
   await fixedAccount.reload({
     include: [
       { model: Category, as: 'category' },
-      { model: Supplier, as: 'supplier' }
+      { model: Supplier, as: 'supplier' },
+      { model: Account, as: 'account' }
     ]
   });
   res.json({
@@ -298,6 +338,7 @@ async function payFixedAccount(req, res) {
   if (!fixedAccount.is_active) {
     throw new ValidationError('Conta fixa está inativa');
   }
+  
   // Busca a primeira conta do usuário ou cria uma padrão
   let account = await Account.findOne({
     where: { user_id: req.userId }
@@ -311,6 +352,12 @@ async function payFixedAccount(req, res) {
       description: 'Conta criada automaticamente para transações de contas fixas'
     });
   }
+
+  // Verificar se há saldo suficiente
+  if (parseFloat(account.balance) < parseFloat(fixedAccount.amount)) {
+    throw new ValidationError('Saldo insuficiente na conta bancária');
+  }
+
   // Cria a transação
   const transaction = await Transaction.create({
     user_id: req.userId,
@@ -324,11 +371,18 @@ async function payFixedAccount(req, res) {
     payment_date: payment_date || new Date(),
     fixed_account_id: fixedAccount.id
   });
+
+  // Atualizar saldo da conta bancária manualmente
+  const newBalance = parseFloat(account.balance) - parseFloat(fixedAccount.amount);
+  await account.update({ balance: newBalance });
+
   // Atualiza o campo is_paid para true
   await fixedAccount.update({ is_paid: true });
+  
   // Calcula a próxima data de vencimento
   const nextDueDate = calculateNextDueDate(fixedAccount.next_due_date, fixedAccount.periodicity);
   await fixedAccount.update({ next_due_date: nextDueDate });
+  
   res.status(201).json({
     success: true,
     data: transaction,
@@ -400,6 +454,170 @@ function calculateNextDueDate(currentDate, periodicity) {
   return date.toISOString().split('T')[0];
 }
 
+/**
+ * Obtém estatísticas das contas fixas do usuário.
+ * @param {Object} req - Objeto de requisição Express.
+ * @param {number} req.userId - ID do usuário autenticado.
+ * @param {Object} res - Objeto de resposta Express.
+ * @returns {Promise<Object>} Estatísticas em formato JSON.
+ * @example
+ * // GET /fixed-accounts/statistics
+ * // Retorno: { "total": 10, "totalAmount": 5000.00, "active": 8, "inactive": 2, ... }
+ */
+async function getFixedAccountStatistics(req, res) {
+  try {
+    // Busca todas as contas fixas do usuário
+    const fixedAccounts = await FixedAccount.findAll({
+      where: { user_id: req.userId },
+      include: [
+        { model: Category, as: 'category' },
+        { model: Supplier, as: 'supplier' }
+      ]
+    });
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Calcula estatísticas
+    const statistics = {
+      total: fixedAccounts.length,
+      totalAmount: 0,
+      active: 0,
+      inactive: 0,
+      paid: 0,
+      unpaid: 0,
+      overdue: 0,
+      dueThisMonth: 0,
+      dueNextMonth: 0,
+      byPeriodicity: {
+        daily: 0,
+        weekly: 0,
+        monthly: 0,
+        quarterly: 0,
+        yearly: 0
+      },
+      byCategory: {},
+      bySupplier: {},
+      totalMonthlyValue: 0,
+      totalYearlyValue: 0
+    };
+
+    fixedAccounts.forEach(account => {
+      // Total de valores
+      statistics.totalAmount += parseFloat(account.amount);
+
+      // Status ativo/inativo
+      if (account.is_active) {
+        statistics.active++;
+      } else {
+        statistics.inactive++;
+      }
+
+      // Status pago/não pago
+      if (account.is_paid) {
+        statistics.paid++;
+      } else {
+        statistics.unpaid++;
+      }
+
+      // Verifica se está vencida
+      const dueDate = new Date(account.next_due_date);
+      if (dueDate < today && !account.is_paid) {
+        statistics.overdue++;
+      }
+
+      // Vencimentos deste mês
+      const dueDateMonth = new Date(dueDate.getFullYear(), dueDate.getMonth(), 1);
+      const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      if (dueDate >= today && dueDate < nextMonth) {
+        statistics.dueThisMonth++;
+      }
+
+      // Vencimentos do próximo mês
+      const nextNextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 1);
+      if (dueDate >= nextMonth && dueDate < nextNextMonth) {
+        statistics.dueNextMonth++;
+      }
+
+      // Por periodicidade
+      statistics.byPeriodicity[account.periodicity]++;
+
+      // Por categoria
+      if (account.category) {
+        const categoryName = account.category.name;
+        if (!statistics.byCategory[categoryName]) {
+          statistics.byCategory[categoryName] = {
+            count: 0,
+            totalAmount: 0,
+            color: account.category.color
+          };
+        }
+        statistics.byCategory[categoryName].count++;
+        statistics.byCategory[categoryName].totalAmount += parseFloat(account.amount);
+      }
+
+      // Por fornecedor
+      if (account.supplier) {
+        const supplierName = account.supplier.name;
+        if (!statistics.bySupplier[supplierName]) {
+          statistics.bySupplier[supplierName] = {
+            count: 0,
+            totalAmount: 0
+          };
+        }
+        statistics.bySupplier[supplierName].count++;
+        statistics.bySupplier[supplierName].totalAmount += parseFloat(account.amount);
+      }
+
+      // Calcula valor mensal e anual baseado na periodicidade
+      const amount = parseFloat(account.amount);
+      switch (account.periodicity) {
+        case 'daily':
+          statistics.totalMonthlyValue += amount * 30;
+          statistics.totalYearlyValue += amount * 365;
+          break;
+        case 'weekly':
+          statistics.totalMonthlyValue += amount * 4.33; // 52 semanas / 12 meses
+          statistics.totalYearlyValue += amount * 52;
+          break;
+        case 'monthly':
+          statistics.totalMonthlyValue += amount;
+          statistics.totalYearlyValue += amount * 12;
+          break;
+        case 'quarterly':
+          statistics.totalMonthlyValue += amount / 3;
+          statistics.totalYearlyValue += amount * 4;
+          break;
+        case 'yearly':
+          statistics.totalMonthlyValue += amount / 12;
+          statistics.totalYearlyValue += amount;
+          break;
+      }
+    });
+
+    // Converte para números com 2 casas decimais
+    statistics.totalAmount = Math.round(statistics.totalAmount * 100) / 100;
+    statistics.totalMonthlyValue = Math.round(statistics.totalMonthlyValue * 100) / 100;
+    statistics.totalYearlyValue = Math.round(statistics.totalYearlyValue * 100) / 100;
+
+    // Arredonda valores por categoria e fornecedor
+    Object.keys(statistics.byCategory).forEach(category => {
+      statistics.byCategory[category].totalAmount = Math.round(statistics.byCategory[category].totalAmount * 100) / 100;
+    });
+
+    Object.keys(statistics.bySupplier).forEach(supplier => {
+      statistics.bySupplier[supplier].totalAmount = Math.round(statistics.bySupplier[supplier].totalAmount * 100) / 100;
+    });
+
+    res.json({
+      success: true,
+      data: statistics
+    });
+  } catch (error) {
+    throw error;
+  }
+}
+
 module.exports = {
   createFixedAccount,
   getFixedAccounts,
@@ -407,5 +625,9 @@ module.exports = {
   updateFixedAccount,
   toggleFixedAccount,
   payFixedAccount,
-  deleteFixedAccount
+  deleteFixedAccount,
+  calculateNextDueDate,
+  getFixedAccountStatistics,
+  createFixedAccountSchema,
+  updateFixedAccountSchema
 }; 

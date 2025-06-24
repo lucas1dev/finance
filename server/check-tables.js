@@ -1,29 +1,41 @@
-const { Sequelize } = require('sequelize');
-const config = require('./config/database');
-
-const sequelize = new Sequelize(config.test);
+const { sequelize } = require('./models');
 
 async function checkTables() {
   try {
-    await sequelize.authenticate();
-    console.log('Conexão estabelecida com sucesso.');
+    console.log('🔍 Verificando estrutura das tabelas...');
     
-    // Verificar várias tabelas importantes
-    const tables = ['payables', 'suppliers', 'users', 'categories', 'creditors', 'financings'];
+    // Verifica tabela transactions
+    const [transactionsColumns] = await sequelize.query(`
+      DESCRIBE transactions
+    `);
+    console.log('\n📋 Tabela transactions:');
+    transactionsColumns.forEach(col => {
+      console.log(`  - ${col.Field}: ${col.Type} ${col.Null === 'YES' ? 'NULL' : 'NOT NULL'}`);
+    });
     
-    for (const table of tables) {
-      try {
-        const [results] = await sequelize.query(`SHOW TABLES LIKE '${table}'`);
-        const exists = results.length > 0;
-        console.log(`Tabela ${table} existe: ${exists}`);
-      } catch (error) {
-        console.log(`Erro ao verificar tabela ${table}:`, error.message);
-      }
-    }
+    // Verifica tabela payables
+    const [payablesColumns] = await sequelize.query(`
+      DESCRIBE payables
+    `);
+    console.log('\n📋 Tabela payables:');
+    payablesColumns.forEach(col => {
+      console.log(`  - ${col.Field}: ${col.Type} ${col.Null === 'YES' ? 'NULL' : 'NOT NULL'}`);
+    });
     
-    await sequelize.close();
+    // Verifica tabela categories
+    const [categoriesColumns] = await sequelize.query(`
+      DESCRIBE categories
+    `);
+    console.log('\n📋 Tabela categories:');
+    categoriesColumns.forEach(col => {
+      console.log(`  - ${col.Field}: ${col.Type} ${col.Null === 'YES' ? 'NULL' : 'NOT NULL'}`);
+    });
+    
   } catch (error) {
-    console.error('Erro:', error);
+    console.error('❌ Erro ao verificar tabelas:', error.message);
+  } finally {
+    await sequelize.close();
+    process.exit(0);
   }
 }
 

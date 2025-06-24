@@ -1,6 +1,6 @@
 /**
  * Testes unitários para o AccountController
- * @author AI
+ * @author Lucas Santos
  */
 
 // Mock do controller inteiro

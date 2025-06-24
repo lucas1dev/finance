@@ -68,60 +68,183 @@ describe('[Nome do Módulo]', () => {
 });
 ```
 
-### Padrão para Controllers
+### Padrão para Controllers (Atualizado)
 
 ```javascript
-describe('Controller', () => {
+/**
+ * Testes unitários para o controlador de [Nome]
+ * @author Lucas
+ *
+ * @fileoverview
+ * Testa as funções do [nome]Controller, cobrindo casos de sucesso, erro e borda.
+ *
+ * @example
+ * // Para rodar os testes:
+ * // npm test __tests__/controllers/[nome]Controller.test.js
+ */
+
+describe('[Nome]Controller', () => {
   let controller;
-  let mockModels, mockServices;
+  let mockModels, mockValidators, mockErrors, mockOp;
 
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
 
+    // Mock dos operadores do Sequelize
+    mockOp = {
+      like: Symbol('like'),
+      ne: Symbol('ne'),
+      or: Symbol('or'),
+      gte: Symbol('gte'),
+      lte: Symbol('lte')
+    };
+
     // Mocks dos modelos
     mockModels = {
-      User: {
-        findByPk: jest.fn(),
+      [ModelName]: {
+        findOne: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
-        destroy: jest.fn()
+        destroy: jest.fn(),
+        findAndCountAll: jest.fn(),
+        findAll: jest.fn(),
+        findByPk: jest.fn(),
+        count: jest.fn()
       }
     };
 
-    // Mocks dos serviços
-    mockServices = {
-      someService: {
-        processData: jest.fn()
+    // Mocks dos validadores
+    mockValidators = {
+      [validatorName]: {
+        safeParse: jest.fn(),
+        parse: jest.fn()
+      }
+    };
+
+    // Mocks dos erros
+    mockErrors = {
+      ValidationError: class ValidationError extends Error {
+        constructor(message, errors) {
+          super(message);
+          this.name = 'ValidationError';
+          this.errors = errors;
+        }
+      },
+      NotFoundError: class NotFoundError extends Error {
+        constructor(message) {
+          super(message);
+          this.name = 'NotFoundError';
+        }
       }
     };
 
     // Aplicar mocks
     jest.mock('../../models', () => mockModels);
-    jest.mock('../../services/someService', () => mockServices);
+    jest.mock('../../utils/[validatorName]', () => mockValidators);
+    jest.mock('../../utils/errors', () => mockErrors);
+    jest.mock('sequelize', () => ({
+      Op: mockOp
+    }));
 
     // Importar controller
-    controller = require('../../controllers/someController');
+    controller = require('../../controllers/[nome]Controller');
   });
 
-  describe('someMethod', () => {
-    it('deve processar requisição com sucesso', async () => {
+  describe('[Método]', () => {
+    it('deve [comportamento esperado]', async () => {
       // Arrange
-      const req = { body: {}, params: {}, userId: 1 };
+      const req = { userId: 1, body: {}, params: {}, query: {} };
       const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
       const next = jest.fn();
 
-      mockModels.User.findByPk.mockResolvedValue({ id: 1, name: 'Test' });
+      mockValidators.[validatorName].safeParse.mockReturnValue({
+        success: true,
+        data: req.body
+      });
+      mockModels.[ModelName].[method].mockResolvedValue(expectedValue);
 
       // Act
-      await controller.someMethod(req, res, next);
+      await controller.[method](req, res, next);
 
       // Assert
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        success: true
-      }));
+      expect(mockValidators.[validatorName].safeParse).toHaveBeenCalledWith(req.body);
+      expect(mockModels.[ModelName].[method]).toHaveBeenCalledWith(expectedParams);
+      expect(res.status).toHaveBeenCalledWith(expectedStatus);
+      expect(res.json).toHaveBeenCalledWith(expectedResponse);
     });
+
+    it('deve retornar erro de validação para dados inválidos', async () => {
+      // Arrange
+      const req = { userId: 1, body: {} };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      const validationErrors = [{ message: 'Campo obrigatório' }];
+      mockValidators.[validatorName].safeParse.mockReturnValue({
+        success: false,
+        error: { errors: validationErrors }
+      });
+
+      // Act
+      await controller.[method](req, res, next);
+
+      // Assert
+      expect(next).toHaveBeenCalledWith(expect.any(mockErrors.ValidationError));
+      expect(next.mock.calls[0][0].message).toBe('Dados inválidos');
+    });
+
+    it('deve passar erro do banco para o next', async () => {
+      // Arrange
+      const req = { userId: 1, body: {} };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      const dbError = new Error('Erro de banco');
+      mockValidators.[validatorName].safeParse.mockReturnValue({
+        success: true,
+        data: req.body
+      });
+      mockModels.[ModelName].[method].mockRejectedValue(dbError);
+
+      // Act
+      await controller.[method](req, res, next);
+
+      // Assert
+      expect(next).toHaveBeenCalledWith(dbError);
+    });
+  });
+});
+```
+
+### Padrão para Casos de Borda
+
+```javascript
+describe('[Método]', () => {
+  it('deve lidar com casos de borda robustamente', async () => {
+    // Para casos onde o mock pode não funcionar perfeitamente
+    jest.resetModules();
+    jest.clearAllMocks();
+    
+    // Reaplicar mocks
+    jest.mock('../../models', () => mockModels);
+    jest.mock('../../utils/[validatorName]', () => mockValidators);
+    jest.mock('../../utils/errors', () => mockErrors);
+    jest.mock('sequelize', () => ({ Op: mockOp }));
+    
+    // Importar controller após mocks
+    const controller = require('../../controllers/[nome]Controller');
+    
+    const req = { userId: 1, query: { param: 'value' } };
+    const res = { json: jest.fn() };
+    const next = jest.fn();
+
+    await controller.[method](req, res, next);
+
+    // Assertions robustas para casos de borda
+    const arg = res.json.mock.calls[0][0];
+    expect(arg).toHaveProperty('expectedProperty');
+    expect(Array.isArray(arg.arrayProperty) || arg.arrayProperty === undefined).toBe(true);
   });
 });
 ```
@@ -366,6 +489,15 @@ expect(response.body).toBeDefined();
 - ✅ **Evite operações desnecessárias**
 - ✅ **Use timeouts apropriados**
 
+### 6. Mocks e Dependências
+
+- ✅ **Use jest.resetModules() no beforeEach**
+- ✅ **Aplique mocks antes de importar o módulo**
+- ✅ **Mock operadores do Sequelize (Op.like, Op.ne, etc.)**
+- ✅ **Mock validadores Zod (safeParse, parse)**
+- ✅ **Mock classes de erro customizadas**
+- ❌ **Não mock o controller inteiro**
+
 ## 🔧 Solução de Problemas
 
 ### Problemas Comuns
@@ -405,6 +537,25 @@ expect(response.body).toBeDefined();
 - Aumente `testTimeout` na configuração se necessário
 - Verifique se há operações assíncronas não aguardadas
 - Use `detectOpenHandles: true` para identificar handles abertos
+
+#### 5. Problemas com Mocks do Sequelize
+
+**Sintoma**: `{ creditors: undefined }` em vez de `{ creditors: [] }`
+
+**Solução**:
+- Use `jest.resetModules()` no beforeEach
+- Mock operadores do Sequelize: `jest.mock('sequelize', () => ({ Op: mockOp }))`
+- Para casos de borda, use assertions robustas
+- Importe o controller após aplicar todos os mocks
+
+#### 6. Cache de Módulos do Jest
+
+**Sintoma**: Mocks não sendo aplicados corretamente
+
+**Solução**:
+- Use `jest.resetModules()` no início do beforeEach
+- Aplique todos os mocks antes de importar o módulo
+- Para casos específicos, importe o módulo dentro do teste
 
 ## 📝 Exemplos Práticos
 
@@ -568,6 +719,6 @@ O arquivo `TEST_STATUS_REPORT.md` mantém o status atual dos testes:
 
 ---
 
-**Última atualização**: 20/06/2025  
-**Versão**: 2.0  
+**Última atualização**: 21/06/2025  
+**Versão**: 3.0  
 **Autor**: Equipe de Desenvolvimento 

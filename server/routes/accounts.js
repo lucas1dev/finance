@@ -7,6 +7,8 @@ router.use(auth);
 
 router.post('/', accountController.createAccount);
 router.get('/', accountController.getAccounts);
+router.get('/stats', accountController.getStats);
+router.get('/charts', accountController.getCharts);
 router.get('/:id', accountController.getAccount);
 router.put('/:id', accountController.updateAccount);
 router.delete('/:id', accountController.deleteAccount);

@@ -1,4 +1,5 @@
-const { Receivable, Transaction, Payment, Category, Account, Customer, CustomerType } = require('../models');
+const { Receivable, Transaction, Payment, Category, Account, Customer } = require('../models');
+const { createReceivableSchema, updateReceivableSchema, createReceivablePaymentSchema } = require('../utils/validators');
 const { Op } = require('sequelize');
 
 /**
@@ -25,20 +26,12 @@ class ReceivableController {
         include: [
           {
             model: Customer,
-            as: 'customer',
-            include: [
-              {
-                model: CustomerType,
-                as: 'types',
-                where: { type: 'customer' },
-                attributes: ['type']
-              }
-            ]
+            as: 'customer'
           },
           {
             model: Category,
             as: 'category',
-            attributes: ['id', 'name', 'color']
+            attributes: ['id', 'name', 'color', 'is_default']
           },
           {
             model: Payment,
@@ -84,20 +77,12 @@ class ReceivableController {
         include: [
           {
             model: Customer,
-            as: 'customer',
-            include: [
-              {
-                model: CustomerType,
-                as: 'types',
-                where: { type: 'customer' },
-                attributes: ['type']
-              }
-            ]
+            as: 'customer'
           },
           {
             model: Category,
             as: 'category',
-            attributes: ['id', 'name', 'color']
+            attributes: ['id', 'name', 'color', 'is_default']
           },
           {
             model: Payment,
@@ -148,57 +133,110 @@ class ReceivableController {
    */
   async store(req, res) {
     try {
-      const { customer_id, category_id, amount, due_date, description, notes } = req.body;
+      console.log('🔍 ReceivableController.store - Dados recebidos:', JSON.stringify(req.body, null, 2));
+      console.log('🔍 ReceivableController.store - Usuário:', req.user.id);
+      console.log('🔍 ReceivableController.store - Headers:', req.headers);
+      
+      // Validar dados de entrada
+      console.log('🔍 ReceivableController.store - Iniciando validação...');
+      const validatedData = createReceivableSchema.parse(req.body);
+      console.log('✅ ReceivableController.store - Dados validados:', JSON.stringify(validatedData, null, 2));
+      
+      const { customer_id, category_id, amount, due_date, description, invoice_number, payment_terms, notes } = validatedData;
 
-      // Validação dos campos obrigatórios
-      if (!customer_id || !amount || !due_date || !description) {
-        return res.status(400).json({ error: 'Cliente, valor, data de vencimento e descrição são obrigatórios' });
-      }
-
-      // Verificar se o cliente existe e é do tipo 'customer'
+      // Verificar se o cliente existe
+      console.log('🔍 ReceivableController.store - Verificando cliente:', customer_id);
       const customer = await Customer.findOne({
-        where: { id: customer_id },
-        include: [
-          {
-            model: CustomerType,
-            as: 'types',
-            where: { type: 'customer' }
-          }
-        ]
+        where: { id: customer_id }
       });
 
       if (!customer) {
-        return res.status(400).json({ error: 'Cliente não encontrado ou não é um cliente válido' });
+        console.log('❌ ReceivableController.store - Cliente não encontrado:', customer_id);
+        return res.status(400).json({ error: 'Cliente não encontrado' });
       }
+      console.log('✅ ReceivableController.store - Cliente encontrado:', customer.name);
 
       // Verificar se a categoria existe (se fornecida)
-      if (category_id) {
+      let finalCategoryId = category_id;
+      if (!finalCategoryId) {
+        console.log('🔍 ReceivableController.store - Buscando categoria padrão...');
+        const defaultCategory = await Category.findOne({
+          where: { 
+            [Op.or]: [
+              { user_id: req.user.id, is_default: true },
+              { user_id: null, is_default: true } // Categorias padrão do sistema
+            ]
+          }
+        });
+
+        if (!defaultCategory) {
+          console.log('❌ ReceivableController.store - Nenhuma categoria padrão encontrada');
+          return res.status(400).json({ error: 'Categoria é obrigatória' });
+        }
+        finalCategoryId = defaultCategory.id;
+        console.log('✅ ReceivableController.store - Usando categoria padrão:', defaultCategory.name);
+      } else {
+        console.log('🔍 ReceivableController.store - Verificando categoria:', finalCategoryId);
         const category = await Category.findOne({
           where: { 
-            id: category_id,
-            user_id: req.user.id
+            id: finalCategoryId,
+            [Op.or]: [
+              { user_id: req.user.id },
+              { user_id: null } // Categorias padrão do sistema
+            ]
           }
         });
 
         if (!category) {
+          console.log('❌ ReceivableController.store - Categoria não encontrada:', finalCategoryId);
           return res.status(400).json({ error: 'Categoria não encontrada' });
         }
+        console.log('✅ ReceivableController.store - Categoria encontrada:', category.name);
       }
 
+      console.log('🔍 ReceivableController.store - Criando recebível...');
+      console.log('🔍 ReceivableController.store - Dados para criação:', {
+        user_id: req.user.id,
+        customer_id,
+        category_id: finalCategoryId,
+        description,
+        amount,
+        remaining_amount: amount,
+        due_date,
+        status: 'pending',
+        invoice_number: invoice_number || null,
+        payment_terms: payment_terms || null,
+        notes: notes || null
+      });
+      
       const receivable = await Receivable.create({
         user_id: req.user.id,
         customer_id,
-        category_id: category_id || null,
+        category_id: finalCategoryId,
         description,
         amount,
+        remaining_amount: amount,
         due_date,
         status: 'pending',
+        invoice_number: invoice_number || null,
+        payment_terms: payment_terms || null,
         notes: notes || null
       });
 
+      console.log('✅ ReceivableController.store - Recebível criado com sucesso:', receivable.id);
       res.status(201).json(receivable);
     } catch (error) {
-      console.error('Erro ao criar conta a receber:', error);
+      console.error('❌ ReceivableController.store - Erro:', error);
+      console.error('❌ ReceivableController.store - Stack:', error.stack);
+      console.error('❌ ReceivableController.store - Nome do erro:', error.name);
+      console.error('❌ ReceivableController.store - Mensagem:', error.message);
+      
+      if (error.name === 'ZodError') {
+        console.log('❌ ReceivableController.store - Erro de validação Zod:', JSON.stringify(error.errors, null, 2));
+        return res.status(400).json({ error: 'Dados inválidos', details: error.errors });
+      }
+      
+      console.error('❌ ReceivableController.store - Erro ao criar conta a receber:', error);
       res.status(500).json({ error: 'Erro ao criar conta a receber' });
     }
   }
@@ -223,7 +261,9 @@ class ReceivableController {
    */
   async update(req, res) {
     try {
-      const { description, amount, due_date, category_id, notes } = req.body;
+      // Validar dados de entrada
+      const validatedData = updateReceivableSchema.parse(req.body);
+      const { description, amount, due_date, category_id, notes } = validatedData;
 
       const receivable = await Receivable.findOne({
         where: { id: req.params.id }
@@ -237,17 +277,15 @@ class ReceivableController {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
-      // Validação dos campos obrigatórios
-      if (!description || !amount || !due_date) {
-        return res.status(400).json({ error: 'Descrição, valor e data de vencimento são obrigatórios' });
-      }
-
       // Verificar se a categoria existe (se fornecida)
       if (category_id) {
         const category = await Category.findOne({
           where: { 
             id: category_id,
-            user_id: req.user.id
+            [Op.or]: [
+              { user_id: req.user.id },
+              { user_id: null } // Categorias padrão do sistema
+            ]
           }
         });
 
@@ -266,6 +304,9 @@ class ReceivableController {
 
       res.json(receivable);
     } catch (error) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Dados inválidos' });
+      }
       console.error('Erro ao atualizar conta a receber:', error);
       res.status(500).json({ error: 'Erro ao atualizar conta a receber' });
     }
@@ -344,52 +385,66 @@ class ReceivableController {
   }
 
   /**
-   * Adiciona um pagamento a uma conta a receber.
+   * Registra um pagamento para uma conta a receber.
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.body - Dados do pagamento.
    * @param {number} req.body.amount - Valor do pagamento.
    * @param {string} req.body.payment_date - Data do pagamento (YYYY-MM-DD).
    * @param {string} req.body.payment_method - Método de pagamento.
-   * @param {number} req.body.account_id - ID da conta bancária.
-   * @param {string} [req.body.description] - Descrição do pagamento.
+   * @param {number} req.body.account_id - ID da conta.
+   * @param {string} [req.body.description] - Descrição opcional.
+   * @param {string} req.params.id - ID da conta a receber.
    * @param {Object} req.user - Usuário autenticado (via JWT).
    * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Pagamento criado e novo saldo da conta em formato JSON.
-   * @throws {Error} Se os dados forem inválidos ou a conta a receber não for encontrada.
+   * @returns {Promise<Object>} Pagamento criado em formato JSON.
+   * @throws {Error} Se os dados forem inválidos ou a conta não for encontrada.
    * @example
    * // POST /api/receivables/1/payments
    * // Body: { "amount": 500, "payment_date": "2024-01-15", "payment_method": "pix", "account_id": 1 }
-   * // Retorno: { payment: {...}, newBalance: 1500 }
+   * // Retorno: { "payment": {...}, "newBalance": 1500 }
    */
   async addPayment(req, res) {
     try {
-      const { amount, payment_date, payment_method, description, account_id } = req.body;
+      console.log('🔍 ReceivableController.addPayment - Dados recebidos:', JSON.stringify(req.body, null, 2));
+      console.log('🔍 ReceivableController.addPayment - Receivable ID:', req.params.id);
+      console.log('🔍 ReceivableController.addPayment - Usuário:', req.user.id);
+      
+      // Validar dados de entrada
+      console.log('🔍 ReceivableController.addPayment - Iniciando validação...');
+      const validatedData = createReceivablePaymentSchema.parse(req.body);
+      console.log('✅ ReceivableController.addPayment - Dados validados:', JSON.stringify(validatedData, null, 2));
+      
+      const { amount, payment_date, payment_method, account_id, description } = validatedData;
 
-      if (!amount || !payment_date || !payment_method || !account_id) {
-        return res.status(400).json({ error: 'Valor, data do pagamento, método de pagamento e conta são obrigatórios' });
-      }
-
-      // Validação de valores negativos
-      if (parseFloat(amount) <= 0) {
-        return res.status(400).json({ error: 'Valor do pagamento deve ser maior que zero' });
-      }
-
+      // Buscar a conta a receber
+      console.log('🔍 ReceivableController.addPayment - Buscando recebível:', req.params.id);
       const receivable = await Receivable.findByPk(req.params.id);
+      
       if (!receivable) {
+        console.log('❌ ReceivableController.addPayment - Recebível não encontrado:', req.params.id);
         return res.status(404).json({ error: 'Conta a receber não encontrada' });
       }
 
       if (receivable.user_id !== req.user.id) {
+        console.log('❌ ReceivableController.addPayment - Acesso negado para usuário:', req.user.id);
         return res.status(403).json({ error: 'Acesso negado' });
       }
+      console.log('✅ ReceivableController.addPayment - Recebível encontrado:', receivable.description);
 
-      // Verifica se o valor do pagamento é maior que o valor restante
+      // Verificar se o valor do pagamento é maior que o valor restante
       const remainingAmount = await receivable.getRemainingAmount();
-      if (parseFloat(amount) > remainingAmount) {
-        return res.status(400).json({ error: 'Valor do pagamento não pode ser maior que o valor restante' });
+      console.log('🔍 ReceivableController.addPayment - Valor restante:', remainingAmount);
+      
+      if (amount > remainingAmount) {
+        console.log('❌ ReceivableController.addPayment - Valor maior que o restante:', amount, '>', remainingAmount);
+        return res.status(400).json({ 
+          error: 'Valor do pagamento não pode ser maior que o valor restante',
+          remaining_amount: remainingAmount
+        });
       }
 
-      // Busca a conta
+      // Buscar a conta
+      console.log('🔍 ReceivableController.addPayment - Buscando conta:', account_id);
       const account = await Account.findOne({
         where: {
           id: account_id,
@@ -398,17 +453,20 @@ class ReceivableController {
       });
 
       if (!account) {
+        console.log('❌ ReceivableController.addPayment - Conta não encontrada:', account_id);
         return res.status(404).json({ error: 'Conta não encontrada' });
       }
+      console.log('✅ ReceivableController.addPayment - Conta encontrada:', account.bank_name);
 
-      // Busca a categoria da conta a receber ou cria uma padrão
+      // Buscar a categoria da conta a receber ou usar padrão
       let category = null;
       if (receivable.category_id) {
+        console.log('🔍 ReceivableController.addPayment - Buscando categoria do recebível:', receivable.category_id);
         category = await Category.findByPk(receivable.category_id);
       }
 
       if (!category) {
-        // Busca a categoria padrão de recebimentos
+        console.log('🔍 ReceivableController.addPayment - Buscando categoria padrão de recebimentos...');
         category = await Category.findOne({
           where: {
             user_id: req.user.id,
@@ -418,7 +476,7 @@ class ReceivableController {
         });
 
         if (!category) {
-          // Se não existir, cria a categoria padrão
+          console.log('🔍 ReceivableController.addPayment - Criando categoria padrão...');
           category = await Category.create({
             user_id: req.user.id,
             name: 'Recebimentos',
@@ -427,8 +485,10 @@ class ReceivableController {
           });
         }
       }
+      console.log('✅ ReceivableController.addPayment - Categoria definida:', category.name);
 
-      // Cria o pagamento
+      // Criar o pagamento
+      console.log('🔍 ReceivableController.addPayment - Criando pagamento...');
       const payment = await Payment.create({
         receivable_id: receivable.id,
         amount,
@@ -436,22 +496,25 @@ class ReceivableController {
         payment_method,
         description: description || `Pagamento: ${receivable.description}`
       });
+      console.log('✅ ReceivableController.addPayment - Pagamento criado:', payment.id);
 
-      // Atualiza o saldo da conta
+      // Atualizar o saldo da conta
       const newBalance = Number(account.balance) + Number(amount);
+      console.log('🔍 ReceivableController.addPayment - Atualizando saldo da conta:', account.balance, '->', newBalance);
       await account.update({ balance: newBalance });
 
-      // Atualiza o status da conta a receber
-      const newRemainingAmount = remainingAmount - parseFloat(amount);
-      const newStatus = newRemainingAmount === 0 ? 'paid' : 'pending';
-
+      // Atualizar o status da conta a receber
+      const newRemainingAmount = remainingAmount - amount;
+      const newStatus = newRemainingAmount === 0 ? 'paid' : 'partially_paid';
+      
+      console.log('🔍 ReceivableController.addPayment - Atualizando status do recebível:', receivable.status, '->', newStatus);
       await receivable.update({
         status: newStatus,
-        payment_date: newStatus === 'paid' ? payment_date : null,
-        payment_method: newStatus === 'paid' ? payment_method : null
+        remaining_amount: newRemainingAmount
       });
 
-      // Registra a transação de entrada
+      // Registrar a transação de entrada
+      console.log('🔍 ReceivableController.addPayment - Criando transação...');
       await Transaction.create({
         user_id: req.user.id,
         account_id,
@@ -462,13 +525,36 @@ class ReceivableController {
         category_id: category.id,
         payment_id: payment.id
       });
+      console.log('✅ ReceivableController.addPayment - Transação criada');
 
+      console.log('✅ ReceivableController.addPayment - Pagamento registrado com sucesso');
       res.status(201).json({
-        payment,
-        newBalance
+        payment: {
+          id: payment.id,
+          receivable_id: payment.receivable_id,
+          amount: payment.amount,
+          payment_date: payment.payment_date,
+          payment_method: payment.payment_method,
+          description: payment.description,
+          created_at: payment.created_at
+        },
+        newBalance,
+        remainingAmount: newRemainingAmount,
+        status: newStatus
       });
     } catch (error) {
-      console.error('Erro ao adicionar pagamento:', error);
+      console.error('❌ ReceivableController.addPayment - Erro:', error);
+      
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          error: 'Dados inválidos',
+          details: error.errors.map(err => ({
+            field: err.path.join('.'),
+            message: err.message
+          }))
+        });
+      }
+      
       res.status(500).json({ error: 'Erro ao adicionar pagamento' });
     }
   }
@@ -502,20 +588,12 @@ class ReceivableController {
         include: [
           {
             model: Customer,
-            as: 'customer',
-            include: [
-              {
-                model: CustomerType,
-                as: 'types',
-                where: { type: 'customer' },
-                attributes: ['type']
-              }
-            ]
+            as: 'customer'
           },
           {
             model: Category,
             as: 'category',
-            attributes: ['id', 'name', 'color']
+            attributes: ['id', 'name', 'color', 'is_default']
           }
         ],
         order: [['due_date', 'ASC']]
@@ -555,15 +633,7 @@ class ReceivableController {
         include: [
           {
             model: Customer,
-            as: 'customer',
-            include: [
-              {
-                model: CustomerType,
-                as: 'types',
-                where: { type: 'customer' },
-                attributes: ['type']
-              }
-            ]
+            as: 'customer'
           },
           {
             model: Category,

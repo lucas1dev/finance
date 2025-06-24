@@ -1,28 +1,57 @@
 /**
  * Testes unitários para o InvestmentGoalController
- * @author AI
+ * @author Lucas Santos
  */
 
-// Mock do controller inteiro
-jest.mock('../../controllers/investmentGoalController', () => ({
-  createInvestmentGoal: jest.fn(),
-  listInvestmentGoals: jest.fn(),
-  getInvestmentGoal: jest.fn(),
-  updateInvestmentGoal: jest.fn(),
-  updateGoalAmount: jest.fn(),
-  calculateGoalAmount: jest.fn(),
-  deleteInvestmentGoal: jest.fn(),
-  getInvestmentGoalStatistics: jest.fn()
+const { ValidationError, NotFoundError } = require('../../utils/errors');
+
+// Mock dos modelos
+jest.mock('../../models', () => ({
+  InvestmentGoal: {
+    create: jest.fn(),
+    findAndCountAll: jest.fn(),
+    findByPk: jest.fn(),
+    findOne: jest.fn(),
+    update: jest.fn(),
+    destroy: jest.fn(),
+    count: jest.fn()
+  },
+  Category: {
+    findOne: jest.fn()
+  },
+  Investment: {
+    findAll: jest.fn(),
+    count: jest.fn()
+  }
 }));
 
-// Importar os mocks após a definição
-const investmentGoalController = require('../../controllers/investmentGoalController');
+// Mock das validações
+jest.mock('../../utils/investmentValidators', () => ({
+  createInvestmentGoalSchema: {
+    parse: jest.fn()
+  },
+  updateInvestmentGoalSchema: {
+    parse: jest.fn()
+  },
+  updateGoalAmountSchema: {
+    parse: jest.fn()
+  }
+}));
 
 describe('InvestmentGoalController', () => {
-  let mockReq, mockRes, mockNext;
+  let mockReq, mockRes, investmentGoalController;
+  let { InvestmentGoal, Category, Investment } = require('../../models');
+  let { createInvestmentGoalSchema, updateInvestmentGoalSchema } = require('../../utils/investmentValidators');
 
   beforeEach(() => {
+    // Importa o controller dentro do beforeEach para garantir que os mocks sejam aplicados
+    jest.resetModules();
+    investmentGoalController = require('../../controllers/investmentGoalController');
+    ({ InvestmentGoal, Category, Investment } = require('../../models'));
+    ({ createInvestmentGoalSchema, updateInvestmentGoalSchema } = require('../../utils/investmentValidators'));
+
     mockReq = {
+      user: { id: 1 },
       userId: 1,
       body: {},
       params: {},
@@ -31,461 +60,341 @@ describe('InvestmentGoalController', () => {
 
     mockRes = {
       status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis(),
-      send: jest.fn().mockReturnThis()
+      json: jest.fn().mockReturnThis()
     };
 
-    mockNext = jest.fn();
-
+    // Reset completo dos mocks
     jest.clearAllMocks();
   });
 
   describe('createInvestmentGoal', () => {
-    it('should create a new investment goal successfully', async () => {
-      // Arrange
+    it('should create an investment goal with valid data', async () => {
       const goalData = {
         title: 'Aposentadoria',
-        target_amount: 1000000,
+        description: 'Meta para aposentadoria',
+        target_amount: 1000000.00,
         target_date: '2035-12-31',
-        category_id: 1,
-        description: 'Meta para aposentadoria'
+        current_amount: 0,
+        color: '#3B82F6',
+        category_id: 1
       };
 
-      const createdGoal = {
+      const mockGoal = {
         id: 1,
         ...goalData,
         user_id: 1,
-        current_amount: 0,
-        progress: 0
+        toJSON: () => ({ id: 1, ...goalData, user_id: 1 }),
+        getProgress: () => 0
       };
+
+      createInvestmentGoalSchema.parse.mockReturnValue(goalData);
+      Category.findOne.mockResolvedValue({ id: 1, name: 'Investimentos' });
+      InvestmentGoal.create.mockResolvedValue(mockGoal);
+      InvestmentGoal.findByPk.mockResolvedValue(mockGoal);
 
       mockReq.body = goalData;
 
-      // Simular comportamento do controller
-      investmentGoalController.createInvestmentGoal.mockImplementation(async (req, res) => {
-        res.status(201).json({
-          message: 'Meta de investimento criada com sucesso',
-          goal: createdGoal
-        });
-      });
-
-      // Act
       await investmentGoalController.createInvestmentGoal(mockReq, mockRes);
 
-      // Assert
+      expect(createInvestmentGoalSchema.parse).toHaveBeenCalledWith(goalData);
+      expect(Category.findOne).toHaveBeenCalledWith({
+        where: { id: goalData.category_id, user_id: mockReq.userId }
+      });
+      expect(InvestmentGoal.create).toHaveBeenCalledWith({
+        ...goalData,
+        user_id: mockReq.userId,
+        current_amount: 0
+      });
       expect(mockRes.status).toHaveBeenCalledWith(201);
       expect(mockRes.json).toHaveBeenCalledWith({
         message: 'Meta de investimento criada com sucesso',
-        goal: createdGoal
+        goal: expect.any(Object)
       });
     });
 
     it('should handle validation errors', async () => {
-      // Arrange
-      mockReq.body = {
-        // Dados inválidos
-      };
-
-      // Simular comportamento do controller
-      investmentGoalController.createInvestmentGoal.mockImplementation(async (req, res) => {
-        res.status(400).json({ error: 'Dados inválidos' });
+      const zodError = new Error('Validation failed');
+      zodError.name = 'ZodError';
+      zodError.errors = [{ message: 'Invalid data' }];
+      
+      createInvestmentGoalSchema.parse.mockImplementation(() => { 
+        throw zodError; 
       });
 
-      // Act
-      await investmentGoalController.createInvestmentGoal(mockReq, mockRes);
+      mockReq.body = {};
 
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Dados inválidos' });
+      try {
+        await investmentGoalController.createInvestmentGoal(mockReq, mockRes);
+        throw new Error('Should have thrown');
+      } catch (error) {
+        expect(error.message).toBe('Dados inválidos');
+      }
+    });
+
+    it('should handle category not found', async () => {
+      const goalData = {
+        title: 'Aposentadoria',
+        target_amount: 1000000.00,
+        target_date: '2035-12-31',
+        category_id: 999
+      };
+
+      createInvestmentGoalSchema.parse.mockReturnValue(goalData);
+      Category.findOne.mockResolvedValue(null);
+
+      mockReq.body = goalData;
+
+      try {
+        await investmentGoalController.createInvestmentGoal(mockReq, mockRes);
+        throw new Error('Should have thrown');
+      } catch (error) {
+        expect(error.message).toBe('Categoria não encontrada');
+      }
     });
   });
 
-  describe('listInvestmentGoals', () => {
-    it('should list investment goals with pagination', async () => {
-      // Arrange
+  describe('getInvestmentGoals', () => {
+    it('should return all investment goals for user', async () => {
       const mockGoals = [
         {
           id: 1,
           title: 'Aposentadoria',
-          target_amount: 1000000,
-          current_amount: 200000,
-          progress: 20
+          target_amount: 1000000.00,
+          toJSON: () => ({ id: 1, title: 'Aposentadoria', target_amount: 1000000.00 }),
+          getProgress: () => 25,
+          isOverdue: () => false,
+          isCompleted: () => false
         },
         {
           id: 2,
           title: 'Viagem',
-          target_amount: 50000,
-          current_amount: 30000,
-          progress: 60
+          target_amount: 50000.00,
+          toJSON: () => ({ id: 2, title: 'Viagem', target_amount: 50000.00 }),
+          getProgress: () => 50,
+          isOverdue: () => false,
+          isCompleted: () => false
         }
       ];
 
-      // Simular comportamento do controller
-      investmentGoalController.listInvestmentGoals.mockImplementation(async (req, res) => {
-        res.json({
-          goals: mockGoals,
-          pagination: {
-            page: 1,
-            limit: 10,
-            total: 2,
-            totalPages: 1
-          }
-        });
+      const mockResult = {
+        count: 2,
+        rows: mockGoals
+      };
+
+      InvestmentGoal.findAndCountAll.mockResolvedValue(mockResult);
+      InvestmentGoal.count
+        .mockResolvedValueOnce(2) // totalGoals
+        .mockResolvedValueOnce(1) // activeGoals
+        .mockResolvedValueOnce(0); // completedGoals
+
+      await investmentGoalController.getInvestmentGoals(mockReq, mockRes);
+
+      expect(InvestmentGoal.findAndCountAll).toHaveBeenCalledWith({
+        where: { user_id: mockReq.userId },
+        include: [
+          { model: Category, as: 'category' }
+        ],
+        order: [['target_date', 'ASC']],
+        limit: 10,
+        offset: 0
       });
-
-      // Act
-      await investmentGoalController.listInvestmentGoals(mockReq, mockRes);
-
-      // Assert
       expect(mockRes.json).toHaveBeenCalledWith({
-        goals: mockGoals,
+        goals: expect.any(Array),
         pagination: {
+          total: 2,
           page: 1,
           limit: 10,
-          total: 2,
           totalPages: 1
+        },
+        statistics: {
+          totalGoals: 2,
+          activeGoals: 1,
+          completedGoals: 0,
+          completionRate: 0
         }
       });
     });
 
     it('should apply filters correctly', async () => {
-      // Arrange
       mockReq.query = {
-        status: 'active',
-        category_id: '1'
+        status: 'ativa',
+        page: 2,
+        limit: 5
       };
 
-      const mockGoals = [
-        {
-          id: 1,
-          title: 'Aposentadoria',
-          status: 'active',
-          category_id: 1
-        }
-      ];
+      const mockResult = { count: 0, rows: [] };
+      InvestmentGoal.findAndCountAll.mockResolvedValue(mockResult);
+      InvestmentGoal.count.mockResolvedValue(0);
 
-      // Simular comportamento do controller
-      investmentGoalController.listInvestmentGoals.mockImplementation(async (req, res) => {
-        res.json({
-          goals: mockGoals,
-          pagination: {
-            page: 1,
-            limit: 10,
-            total: 1,
-            totalPages: 1
-          }
-        });
-      });
+      await investmentGoalController.getInvestmentGoals(mockReq, mockRes);
 
-      // Act
-      await investmentGoalController.listInvestmentGoals(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({
-        goals: mockGoals,
-        pagination: {
-          page: 1,
-          limit: 10,
-          total: 1,
-          totalPages: 1
-        }
+      expect(InvestmentGoal.findAndCountAll).toHaveBeenCalledWith({
+        where: {
+          user_id: 1,
+          status: 'ativa'
+        },
+        include: expect.any(Array),
+        order: [['target_date', 'ASC']],
+        limit: 5,
+        offset: 5
       });
     });
   });
 
   describe('getInvestmentGoal', () => {
     it('should return a specific investment goal', async () => {
-      // Arrange
-      mockReq.params = { id: 1 };
       const mockGoal = {
         id: 1,
         title: 'Aposentadoria',
-        target_amount: 1000000,
-        current_amount: 200000,
-        progress: 20,
-        category: {
-          id: 1,
-          name: 'Aposentadoria'
-        }
+        target_amount: 1000000.00,
+        toJSON: () => ({ id: 1, title: 'Aposentadoria', target_amount: 1000000.00 }),
+        getProgress: () => 25,
+        isOverdue: () => false,
+        isCompleted: () => false
       };
 
-      // Simular comportamento do controller
-      investmentGoalController.getInvestmentGoal.mockImplementation(async (req, res) => {
-        res.json({ goal: mockGoal });
-      });
+      InvestmentGoal.findOne.mockResolvedValue(mockGoal);
 
-      // Act
+      mockReq.params = { id: 1 };
+
       await investmentGoalController.getInvestmentGoal(mockReq, mockRes);
 
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({ goal: mockGoal });
+      expect(InvestmentGoal.findOne).toHaveBeenCalledWith({
+        where: { id: 1, user_id: mockReq.userId },
+        include: [
+          { model: Category, as: 'category' }
+        ]
+      });
+      expect(mockRes.json).toHaveBeenCalledWith({
+        id: 1,
+        title: 'Aposentadoria',
+        target_amount: 1000000.00,
+        progress: 25,
+        isOverdue: false,
+        isCompleted: false
+      });
     });
 
     it('should return error when goal is not found', async () => {
-      // Arrange
+      InvestmentGoal.findOne.mockResolvedValue(null);
+
       mockReq.params = { id: 999 };
 
-      // Simular comportamento do controller
-      investmentGoalController.getInvestmentGoal.mockImplementation(async (req, res) => {
-        res.status(404).json({ error: 'Meta de investimento não encontrada' });
-      });
-
-      // Act
-      await investmentGoalController.getInvestmentGoal(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Meta de investimento não encontrada' });
+      try {
+        await investmentGoalController.getInvestmentGoal(mockReq, mockRes);
+        throw new Error('Should have thrown');
+      } catch (error) {
+        expect(error.message).toBe('Meta de investimento não encontrada');
+      }
     });
   });
 
   describe('updateInvestmentGoal', () => {
-    it('should update an investment goal successfully', async () => {
-      // Arrange
-      mockReq.params = { id: 1 };
-      mockReq.body = {
-        title: 'Aposentadoria Atualizada',
-        target_amount: 1200000,
-        target_date: '2036-12-31'
+    it('should update an investment goal with valid data', async () => {
+      const updateData = {
+        title: 'Aposentadoria Premium',
+        target_amount: 1500000.00
       };
 
-      const updatedGoal = {
+      const mockGoal = {
         id: 1,
-        title: 'Aposentadoria Atualizada',
-        target_amount: 1200000,
-        target_date: '2036-12-31'
+        user_id: 1,
+        title: 'Aposentadoria',
+        target_amount: 1000000.00,
+        update: jest.fn().mockResolvedValue(true),
+        getProgress: jest.fn().mockReturnValue(0.5),
+        isOverdue: jest.fn().mockReturnValue(false),
+        isCompleted: jest.fn().mockReturnValue(false),
+        toJSON: () => ({
+          id: 1,
+          user_id: 1,
+          title: 'Aposentadoria Premium',
+          target_amount: 1500000.00
+        })
       };
 
-      // Simular comportamento do controller
-      investmentGoalController.updateInvestmentGoal.mockImplementation(async (req, res) => {
-        res.json({
+      updateInvestmentGoalSchema.parse.mockReturnValue(updateData);
+      InvestmentGoal.findOne.mockResolvedValue(mockGoal);
+      InvestmentGoal.findByPk = jest.fn().mockResolvedValue({
+        ...mockGoal,
+        getProgress: jest.fn().mockReturnValue(0.5),
+        isOverdue: jest.fn().mockReturnValue(false),
+        isCompleted: jest.fn().mockReturnValue(false)
+      });
+
+      mockReq.params = { id: 1 };
+      mockReq.body = updateData;
+
+      await investmentGoalController.updateInvestmentGoal(mockReq, mockRes);
+
+      expect(updateInvestmentGoalSchema.parse).toHaveBeenCalledWith(updateData);
+      expect(InvestmentGoal.findOne).toHaveBeenCalledWith({
+        where: { id: 1, user_id: 1 }
+      });
+      expect(mockGoal.update).toHaveBeenCalledWith(updateData);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
           message: 'Meta de investimento atualizada com sucesso',
-          goal: updatedGoal
-        });
-      });
-
-      // Act
-      await investmentGoalController.updateInvestmentGoal(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Meta de investimento atualizada com sucesso',
-        goal: updatedGoal
-      });
+          goal: expect.objectContaining({
+            id: 1,
+            user_id: 1,
+            title: 'Aposentadoria Premium'
+          })
+        })
+      );
     });
 
     it('should return error when goal is not found', async () => {
-      // Arrange
+      InvestmentGoal.findOne.mockResolvedValue(null);
+
       mockReq.params = { id: 999 };
 
-      // Simular comportamento do controller
-      investmentGoalController.updateInvestmentGoal.mockImplementation(async (req, res) => {
-        res.status(404).json({ error: 'Meta de investimento não encontrada' });
-      });
-
-      // Act
-      await investmentGoalController.updateInvestmentGoal(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Meta de investimento não encontrada' });
-    });
-  });
-
-  describe('updateGoalAmount', () => {
-    it('should update goal amount successfully', async () => {
-      // Arrange
-      mockReq.params = { id: 1 };
-      mockReq.body = {
-        current_amount: 250000
-      };
-
-      const updatedGoal = {
-        id: 1,
-        current_amount: 250000,
-        progress: 25
-      };
-
-      // Simular comportamento do controller
-      investmentGoalController.updateGoalAmount.mockImplementation(async (req, res) => {
-        res.json({
-          message: 'Valor atualizado com sucesso',
-          goal: updatedGoal
-        });
-      });
-
-      // Act
-      await investmentGoalController.updateGoalAmount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Valor atualizado com sucesso',
-        goal: updatedGoal
-      });
-    });
-
-    it('should return error when goal is not found', async () => {
-      // Arrange
-      mockReq.params = { id: 999 };
-
-      // Simular comportamento do controller
-      investmentGoalController.updateGoalAmount.mockImplementation(async (req, res) => {
-        res.status(404).json({ error: 'Meta de investimento não encontrada' });
-      });
-
-      // Act
-      await investmentGoalController.updateGoalAmount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Meta de investimento não encontrada' });
-    });
-  });
-
-  describe('calculateGoalAmount', () => {
-    it('should calculate goal amount based on investments', async () => {
-      // Arrange
-      mockReq.params = { id: 1 };
-      const calculatedAmount = 300000;
-
-      // Simular comportamento do controller
-      investmentGoalController.calculateGoalAmount.mockImplementation(async (req, res) => {
-        res.json({
-          message: 'Valor calculado com sucesso',
-          calculated_amount: calculatedAmount
-        });
-      });
-
-      // Act
-      await investmentGoalController.calculateGoalAmount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Valor calculado com sucesso',
-        calculated_amount: calculatedAmount
-      });
-    });
-
-    it('should return error when goal is not found', async () => {
-      // Arrange
-      mockReq.params = { id: 999 };
-
-      // Simular comportamento do controller
-      investmentGoalController.calculateGoalAmount.mockImplementation(async (req, res) => {
-        res.status(404).json({ error: 'Meta de investimento não encontrada' });
-      });
-
-      // Act
-      await investmentGoalController.calculateGoalAmount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Meta de investimento não encontrada' });
+      try {
+        await investmentGoalController.updateInvestmentGoal(mockReq, mockRes);
+        throw new Error('Should have thrown');
+      } catch (error) {
+        expect(error.message).toBe('Meta de investimento não encontrada');
+      }
     });
   });
 
   describe('deleteInvestmentGoal', () => {
-    it('should delete an investment goal successfully', async () => {
-      // Arrange
+    it('should delete an investment goal', async () => {
+      const mockGoal = {
+        id: 1,
+        user_id: 1,
+        title: 'Aposentadoria',
+        target_amount: 1000000.00,
+        destroy: jest.fn().mockResolvedValue(true)
+      };
+      const { Investment } = require('../../models');
+      InvestmentGoal.findOne.mockResolvedValue(mockGoal);
+      Investment.findOne = jest.fn().mockResolvedValue(null);
+
       mockReq.params = { id: 1 };
 
-      // Simular comportamento do controller
-      investmentGoalController.deleteInvestmentGoal.mockImplementation(async (req, res) => {
-        res.json({ message: 'Meta de investimento excluída com sucesso' });
-      });
-
-      // Act
       await investmentGoalController.deleteInvestmentGoal(mockReq, mockRes);
 
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({ message: 'Meta de investimento excluída com sucesso' });
+      expect(InvestmentGoal.findOne).toHaveBeenCalledWith({
+        where: { id: 1, user_id: 1 }
+      });
+      expect(mockGoal.destroy).toHaveBeenCalled();
+      expect(mockRes.json).toHaveBeenCalledWith({
+        message: 'Meta de investimento excluída com sucesso'
+      });
     });
 
     it('should return error when goal is not found', async () => {
-      // Arrange
+      InvestmentGoal.findOne.mockResolvedValue(null);
+
       mockReq.params = { id: 999 };
 
-      // Simular comportamento do controller
-      investmentGoalController.deleteInvestmentGoal.mockImplementation(async (req, res) => {
-        res.status(404).json({ error: 'Meta de investimento não encontrada' });
-      });
-
-      // Act
-      await investmentGoalController.deleteInvestmentGoal(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Meta de investimento não encontrada' });
-    });
-  });
-
-  describe('getInvestmentGoalStatistics', () => {
-    it('should return investment goal statistics', async () => {
-      // Arrange
-      const mockStatistics = {
-        totalGoals: 5,
-        activeGoals: 3,
-        completedGoals: 1,
-        overdueGoals: 1,
-        averageProgress: 40,
-        completionRate: 20,
-        upcomingGoals: [
-          {
-            id: 1,
-            title: 'Aposentadoria',
-            progress: 20,
-            isCompleted: false,
-            isOverdue: false
-          }
-        ]
-      };
-
-      // Simular comportamento do controller
-      investmentGoalController.getInvestmentGoalStatistics.mockImplementation(async (req, res) => {
-        res.json({
-          general: {
-            totalGoals: 5,
-            activeGoals: 3,
-            completedGoals: 1,
-            overdueGoals: 1,
-            averageProgress: 40,
-            completionRate: 20
-          },
-          upcomingGoals: [
-            {
-              id: 1,
-              title: 'Aposentadoria',
-              progress: 20,
-              isCompleted: false,
-              isOverdue: false
-            }
-          ]
-        });
-      });
-
-      // Act
-      await investmentGoalController.getInvestmentGoalStatistics(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({
-        general: {
-          totalGoals: 5,
-          activeGoals: 3,
-          completedGoals: 1,
-          overdueGoals: 1,
-          averageProgress: 40,
-          completionRate: 20
-        },
-        upcomingGoals: [
-          {
-            id: 1,
-            title: 'Aposentadoria',
-            progress: 20,
-            isCompleted: false,
-            isOverdue: false
-          }
-        ]
-      });
+      try {
+        await investmentGoalController.deleteInvestmentGoal(mockReq, mockRes);
+        throw new Error('Should have thrown');
+      } catch (error) {
+        expect(error.message).toBe('Meta de investimento não encontrada');
+      }
     });
   });
 }); 

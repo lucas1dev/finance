@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Moon, Sun, User } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { NotificationBell } from '@/components/NotificationBell';
 
 export function Header() {
   const { user } = useAuth();
@@ -38,6 +39,10 @@ export function Header() {
             <Moon className="h-5 w-5" />
           )}
         </Button>
+        
+        {/* Componente de Notificações */}
+        <NotificationBell />
+        
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative h-8 w-8 rounded-full">

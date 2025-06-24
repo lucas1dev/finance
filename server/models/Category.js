@@ -23,6 +23,12 @@ module.exports = (sequelize) => {
         allowNull: true,
         defaultValue: '#4CAF50'
       },
+      is_default: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: 'Indica se é uma categoria padrão do sistema'
+      },
       user_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

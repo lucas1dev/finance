@@ -1,6 +1,6 @@
 /**
  * Testes unitários para as funções utilitárias (helpers).
- * @author AI
+ * @author Lucas Santos
  */
 const {
   formatCurrency,

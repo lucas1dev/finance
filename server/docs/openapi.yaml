@@ -28,22 +28,38 @@ info:
     - **Autenticação JWT**: Sistema seguro de autenticação
     - **Notificações**: Sistema de alertas e lembretes
     - **Jobs**: Processamento em background
-    - **Validações**: Validação robusta de dados
+    - **Validações Zod**: Validação robusta de dados com mensagens específicas
+    
+    ## Validações Implementadas
+    
+    ### Controllers com Validação Zod
+    - ✅ **Autenticação**: Login, registro, recuperação de senha
+    - ✅ **Transações**: CRUD completo com validação
+    - ✅ **Contas**: Validação de tipos e saldos
+    - ✅ **Categorias**: Validação de tipos e cores
+    - ✅ **Clientes**: Validação de documentos (CPF/CNPJ)
+    - ✅ **Fornecedores**: Validação de documentos e dados
+    - ✅ **Pagamentos**: Validação de valores e datas
+    - ✅ **Recebíveis**: Validação de clientes e valores
+    - ✅ **Pagáveis**: Validação de fornecedores e valores
+    - ✅ **Financiamentos**: Validação de cálculos e parcelas
+    - ✅ **Investimentos**: Validação de valores e metas
+    
+    ### Tratamento de Erros
+    - **Mensagens Específicas**: Erros de validação com mensagens claras
+    - **Códigos HTTP**: Respostas apropriadas (400, 401, 403, 404, 500)
+    - **Logs Estruturados**: Logs detalhados para debugging
+    - **Middleware Centralizado**: Tratamento uniforme de erros
     
     ## Status dos Testes
-    - **13/17 suítes de integração** funcionando 100%
-    - **142/215 testes** passando (66%)
-    - **Execução sequencial** implementada para evitar conflitos
-    - **Cobertura de código** configurada
+    - **43 suítes de teste**: Todas passando ✅
+    - **618 testes**: Todos passando ✅
+    - **1 teste pulado**: Configuração específica
+    - **Execução sequencial**: Implementada para evitar conflitos
+    - **Cobertura de código**: Configurada e monitorada
     
-    ## Documentação Relacionada
-    - [README Principal](/docs-root/README.md)
-    - [CHANGELOG](/docs-root/CHANGELOG.md)
-    - [Guia de Testes](/docs-md/TESTING_GUIDE.md)
-    - [Status dos Testes](/docs-md/TEST_STATUS_REPORT.md)
-    - [Padrões de Teste](/docs-md/TESTING_PATTERNS.md)
     
-  version: 2.0.0
+  version: 2.1.0
   contact:
     name: Suporte Técnico
     email: suporte@finance.com
@@ -151,7 +167,10 @@ components:
           description: Tipo da categoria (receita ou despesa)
         color:
           type: string
-          description: Cor da categoria em formato hexadecimal
+          description: Cor da categoria em formato hexadecimal (ex: #4CAF50)
+        is_default:
+          type: boolean
+          description: Indica se a categoria é padrão do sistema (não pode ser editada ou excluída)
         created_at:
           type: string
           format: date-time
@@ -161,6 +180,47 @@ components:
       required:
         - name
         - type
+        - color
+        - is_default
+      example:
+        id: 1
+        user_id: 1
+        name: "Salário"
+        type: "income"
+        color: "#4CAF50"
+        is_default: true
+        created_at: "2024-06-22T12:00:00Z"
+        updated_at: "2024-06-22T12:00:00Z"
+
+    # Exemplo de categoria personalizada
+    CategoryPersonal:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        color:
+          type: string
+        is_default:
+          type: boolean
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      example:
+        id: 200
+        user_id: 1
+        name: "Viagem"
+        type: "expense"
+        color: "#FF5722"
+        is_default: false
+        created_at: "2024-06-22T12:00:00Z"
+        updated_at: "2024-06-22T12:00:00Z"
 
     Customer:
       type: object
@@ -1299,7 +1359,12 @@ paths:
       tags:
         - Categories
       summary: Listar categorias
-      description: Retorna todas as categorias do usuário autenticado
+      description: |
+        Retorna todas as categorias do usuário autenticado, incluindo categorias padrão do sistema.
+        
+        **Observação:**
+        - O campo `is_default` indica se a categoria é padrão do sistema.
+        - Categorias padrão (`is_default: true`) não podem ser editadas ou excluídas.
       security:
         - bearerAuth: []
       responses:
@@ -1315,7 +1380,12 @@ paths:
       tags:
         - Categories
       summary: Criar categoria
-      description: Cria uma nova categoria
+      description: |
+        Cria uma nova categoria personalizada para o usuário.
+        
+        **Observação:**
+        - O campo `color` é opcional. Se não informado, será atribuído automaticamente conforme o tipo.
+        - O campo `is_default` sempre será `false` para categorias criadas pelo usuário.
       security:
         - bearerAuth: []
       requestBody:
@@ -1342,6 +1412,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Category'
+
+  /api/categories/{id}:
+    put:
+      tags:
+        - Categories
+      summary: Atualizar categoria
+      description: |
+        Atualiza uma categoria existente do usuário.
+        
+        **Atenção:**
+        - Não é possível editar categorias padrão do sistema (`is_default: true`).
+        - Apenas categorias personalizadas podem ser editadas.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [income, expense]
+                color:
+                  type: string
+      responses:
+        '200':
+          description: Categoria atualizada
+    delete:
+      tags:
+        - Categories
+      summary: Excluir categoria
+      description: |
+        Remove uma categoria personalizada do usuário.
+        
+        **Atenção:**
+        - Não é possível excluir categorias padrão do sistema (`is_default: true`).
+        - Apenas categorias personalizadas podem ser removidas.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Categoria removida
 
   /api/transactions:
     get:
@@ -1785,6 +1913,68 @@ paths:
       responses:
         '201':
           description: Conta fixa criada
+  /api/fixed-accounts/statistics:
+    get:
+      tags:
+        - FixedAccounts
+      summary: Estatísticas das contas fixas
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Estatísticas retornadas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: Total de contas fixas
+                      totalAmount:
+                        type: number
+                        description: Valor total das contas fixas
+                      active:
+                        type: integer
+                        description: Contas fixas ativas
+                      inactive:
+                        type: integer
+                        description: Contas fixas inativas
+                      paid:
+                        type: integer
+                        description: Contas fixas pagas
+                      unpaid:
+                        type: integer
+                        description: Contas fixas não pagas
+                      overdue:
+                        type: integer
+                        description: Contas fixas vencidas
+                      dueThisMonth:
+                        type: integer
+                        description: Contas fixas que vencem este mês
+                      dueNextMonth:
+                        type: integer
+                        description: Contas fixas que vencem próximo mês
+                      totalMonthlyValue:
+                        type: number
+                        description: Valor total mensal projetado
+                      totalYearlyValue:
+                        type: number
+                        description: Valor total anual projetado
+                      byPeriodicity:
+                        type: object
+                        description: Contas fixas por periodicidade
+                      byCategory:
+                        type: object
+                        description: Contas fixas por categoria
+                      bySupplier:
+                        type: object
+                        description: Contas fixas por fornecedor
   /api/fixed-accounts/{id}:
     get:
       tags:
@@ -2933,7 +3123,12 @@ paths:
       tags:
         - Categories
       summary: Atualizar categoria
-      description: Atualiza uma categoria existente
+      description: |
+        Atualiza uma categoria existente do usuário.
+        
+        **Atenção:**
+        - Não é possível editar categorias padrão do sistema (`is_default: true`).
+        - Apenas categorias personalizadas podem ser editadas.
       security:
         - bearerAuth: []
       parameters:
@@ -2963,7 +3158,12 @@ paths:
       tags:
         - Categories
       summary: Excluir categoria
-      description: Remove uma categoria
+      description: |
+        Remove uma categoria personalizada do usuário.
+        
+        **Atenção:**
+        - Não é possível excluir categorias padrão do sistema (`is_default: true`).
+        - Apenas categorias personalizadas podem ser removidas.
       security:
         - bearerAuth: []
       parameters:
@@ -4664,3 +4864,311 @@ paths:
           description: Parâmetros inválidos
         '401':
           description: Não autorizado
+
+  # ========================================
+  # ADMIN USERS ENDPOINTS
+  # ========================================
+
+  /api/admin/users:
+    get:
+      tags:
+        - Admin Users
+      summary: Listar usuários (apenas administradores)
+      description: |
+        Lista todos os usuários do sistema com paginação e filtros.
+        Apenas administradores podem acessar este endpoint.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Número da página
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+          description: Itens por página
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Termo de busca por nome ou email
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [admin, user]
+          description: Filtrar por role
+      responses:
+        '200':
+          description: Lista de usuários obtida com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      users:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+                      pagination:
+                        type: object
+                        properties:
+                          currentPage:
+                            type: integer
+                          totalPages:
+                            type: integer
+                          totalItems:
+                            type: integer
+                          itemsPerPage:
+                            type: integer
+                          hasNextPage:
+                            type: boolean
+                          hasPrevPage:
+                            type: boolean
+        '401':
+          description: Não autorizado
+        '403':
+          description: Acesso negado (apenas administradores)
+
+  /api/admin/users/stats:
+    get:
+      tags:
+        - Admin Users
+      summary: Obter estatísticas de usuários (apenas administradores)
+      description: |
+        Retorna estatísticas gerais sobre os usuários do sistema.
+        Apenas administradores podem acessar este endpoint.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Estatísticas obtidas com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      totalUsers:
+                        type: integer
+                        description: Total de usuários no sistema
+                      adminUsers:
+                        type: integer
+                        description: Número de usuários administradores
+                      regularUsers:
+                        type: integer
+                        description: Número de usuários regulares
+                      newUsersThisMonth:
+                        type: integer
+                        description: Novos usuários no mês atual
+                      newUsersThisWeek:
+                        type: integer
+                        description: Novos usuários na semana atual
+                      usersWith2FA:
+                        type: integer
+                        description: Usuários com autenticação de dois fatores
+                      monthlyDistribution:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            month:
+                              type: string
+                              description: Mês no formato YYYY-MM
+                            count:
+                              type: integer
+                              description: Número de usuários criados no mês
+                        description: Distribuição de usuários por mês (últimos 12 meses)
+                      lastUpdated:
+                        type: string
+                        format: date-time
+                        description: Data da última atualização das estatísticas
+        '401':
+          description: Não autorizado
+        '403':
+          description: Acesso negado (apenas administradores)
+
+  /api/admin/users/{id}/status:
+    put:
+      tags:
+        - Admin Users
+      summary: Ativar/desativar usuário (apenas administradores)
+      description: |
+        Ativa ou desativa um usuário no sistema.
+        Apenas administradores podem acessar este endpoint.
+        Não é possível desativar sua própria conta.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID do usuário
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active:
+                  type: boolean
+                  description: Status desejado (true = ativo, false = inativo)
+              required:
+                - active
+      responses:
+        '200':
+          description: Status do usuário alterado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                      active:
+                        type: boolean
+        '400':
+          description: Dados inválidos ou tentativa de desativar própria conta
+        '401':
+          description: Não autorizado
+        '403':
+          description: Acesso negado (apenas administradores)
+        '404':
+          description: Usuário não encontrado
+
+  /api/admin/users/{id}/role:
+    put:
+      tags:
+        - Admin Users
+      summary: Alterar role do usuário (apenas administradores)
+      description: |
+        Altera o role de um usuário (admin/user).
+        Apenas administradores podem acessar este endpoint.
+        Não é possível alterar seu próprio role.
+        Não é possível remover o último administrador do sistema.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID do usuário
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum: [admin, user]
+                  description: Novo role do usuário
+              required:
+                - role
+      responses:
+        '200':
+          description: Role do usuário alterado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                      role:
+                        type: string
+        '400':
+          description: Role inválido ou tentativa de alterar próprio role
+        '401':
+          description: Não autorizado
+        '403':
+          description: Acesso negado (apenas administradores)
+        '404':
+          description: Usuário não encontrado
+
+  /api/admin/users/{id}:
+    delete:
+      tags:
+        - Admin Users
+      summary: Excluir usuário (apenas administradores)
+      description: |
+        Exclui um usuário permanentemente do sistema.
+        Apenas administradores podem acessar este endpoint.
+        Não é possível excluir sua própria conta.
+        Não é possível excluir usuários com dados associados.
+        Não é possível excluir o último administrador do sistema.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID do usuário
+      responses:
+        '200':
+          description: Usuário excluído com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+        '400':
+          description: Tentativa de excluir própria conta ou usuário com dados associados
+        '401':
+          description: Não autorizado
+        '403':
+          description: Acesso negado (apenas administradores)
+        '404':
+          description: Usuário não encontrado

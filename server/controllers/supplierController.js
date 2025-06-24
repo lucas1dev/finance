@@ -4,6 +4,7 @@
  */
 const { Supplier, Payable } = require('../models');
 const { validateCPF, validateCNPJ } = require('../utils/documentValidator');
+const { createSupplierSchema, updateSupplierSchema } = require('../utils/validators');
 const { ValidationError, NotFoundError } = require('../utils/errors');
 
 /**
@@ -91,12 +92,9 @@ async function show(req, res, next) {
  */
 async function create(req, res, next) {
   try {
-    const { name, document_type, document_number, email, phone, address } = req.body;
-
-    // Validação dos campos obrigatórios
-    if (!name || !document_type || !document_number) {
-      return next(new ValidationError('Nome, tipo e número do documento são obrigatórios'));
-    }
+    // Validar dados de entrada
+    const validatedData = createSupplierSchema.parse(req.body);
+    const { name, document_type, document_number, email, phone, address } = validatedData;
 
     // Validação do documento
     const isValidDocument = document_type === 'CPF' 
@@ -136,6 +134,9 @@ async function create(req, res, next) {
       message: 'Fornecedor criado com sucesso'
     });
   } catch (error) {
+    if (error.name === 'ZodError') {
+      return next(new ValidationError('Nome, tipo e número do documento são obrigatórios'));
+    }
     return next(error);
   }
 }
@@ -159,12 +160,10 @@ async function create(req, res, next) {
 async function update(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, document_type, document_number, email, phone, address } = req.body;
-
-    // Validação dos campos obrigatórios
-    if (!name || !document_type || !document_number) {
-      return next(new ValidationError('Nome, tipo e número do documento são obrigatórios'));
-    }
+    
+    // Validar dados de entrada
+    const validatedData = updateSupplierSchema.parse(req.body);
+    const { name, document_type, document_number, email, phone, address } = validatedData;
 
     // Validação do documento
     const isValidDocument = document_type === 'CPF' 
@@ -217,6 +216,9 @@ async function update(req, res, next) {
       message: 'Fornecedor atualizado com sucesso'
     });
   } catch (error) {
+    if (error.name === 'ZodError') {
+      return next(new ValidationError('Nome, tipo e número do documento são obrigatórios'));
+    }
     return next(error);
   }
 }

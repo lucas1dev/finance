@@ -1,6 +1,6 @@
 /**
  * Testes unitários para o controlador de pagamentos.
- * @author AI
+ * @author Lucas Santos
  *
  * @fileoverview
  * Testa as funções do paymentController, cobrindo casos de sucesso, erro e borda.

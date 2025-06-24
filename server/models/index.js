@@ -54,6 +54,21 @@ try {
   throw error;
 }
 
+// Adiciona associações específicas para os novos modelos de usuário
+if (db.User && db.UserSession) {
+  db.User.hasMany(db.UserSession, {
+    foreignKey: 'user_id',
+    as: 'sessions'
+  });
+}
+
+if (db.User && db.UserSetting) {
+  db.User.hasMany(db.UserSetting, {
+    foreignKey: 'user_id',
+    as: 'settings'
+  });
+}
+
 // Adiciona relacionamentos específicos para os novos modelos
 // Removido: todas as associações duplicadas já definidas nos métodos associate dos modelos
 // Caso precise de alguma associação extra, adicione aqui, mas evite duplicidade de alias.

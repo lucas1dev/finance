@@ -49,6 +49,103 @@ async function initializeEmailService() {
 }
 
 /**
+ * Envia email genérico.
+ * @param {string} to - Email do destinatário.
+ * @param {string} subject - Assunto do email.
+ * @param {string} title - Título do email.
+ * @param {string} message - Mensagem do email.
+ * @param {Object} metadata - Metadados adicionais (opcional).
+ * @returns {Promise<boolean>} True se enviado com sucesso.
+ */
+async function sendEmail(to, subject, title, message, metadata = {}) {
+  try {
+    if (!transporter) {
+      logger.warn('Transporter de email não inicializado. Email não enviado.');
+      return false;
+    }
+
+    const htmlMessage = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px;">
+          <h2 style="color: #007bff; margin: 0 0 20px 0;">${title}</h2>
+          
+          <div style="background-color: white; padding: 20px; border-radius: 5px; border-left: 4px solid #007bff;">
+            <div style="margin: 0 0 15px 0; line-height: 1.6; color: #555; white-space: pre-line;">${message}</div>
+            
+            ${Object.keys(metadata).length > 0 ? `
+              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 3px; margin-top: 15px;">
+                <h4 style="margin: 0 0 10px 0; color: #333;">Detalhes:</h4>
+                <ul style="margin: 0; padding-left: 20px; color: #666;">
+                  ${Object.entries(metadata).map(([key, value]) => 
+                    `<li><strong>${key}:</strong> ${value}</li>`
+                  ).join('')}
+                </ul>
+              </div>
+            ` : ''}
+          </div>
+          
+          <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6; text-align: center; color: #6c757d; font-size: 12px;">
+            <p>Este é um email do Sistema Financeiro.</p>
+            <p>Data/Hora: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const mailOptions = {
+      from: `"Sistema Financeiro" <${process.env.SMTP_USER}>`,
+      to: to,
+      subject: subject,
+      html: htmlMessage,
+    };
+
+    const result = await transporter.sendMail(mailOptions);
+    
+    logger.info(`Email enviado com sucesso para ${to}`, {
+      messageId: result.messageId,
+      subject
+    });
+
+    return true;
+  } catch (error) {
+    logger.error('Erro ao enviar email:', error);
+    return false;
+  }
+}
+
+/**
+ * Envia email de recuperação de senha.
+ * @param {string} to - Email do destinatário.
+ * @param {string} userName - Nome do usuário.
+ * @param {string} resetUrl - URL para reset de senha.
+ * @returns {Promise<boolean>} True se enviado com sucesso.
+ */
+async function sendPasswordResetEmail(to, userName, resetUrl) {
+  const subject = 'Recuperação de Senha - Sistema Financeiro';
+  const title = 'Recuperação de Senha';
+  
+  const message = `Olá ${userName},
+
+Você solicitou a recuperação de senha para sua conta no Sistema Financeiro.
+
+Para redefinir sua senha, clique no link abaixo:
+${resetUrl}
+
+Este link é válido por 1 hora. Se você não solicitou esta recuperação, ignore este email.
+
+Atenciosamente,
+Equipe do Sistema Financeiro`;
+
+  const metadata = {
+    'Usuário': userName,
+    'Link de Recuperação': resetUrl,
+    'Validade': '1 hora'
+  };
+
+  return await sendEmail(to, subject, title, message, metadata);
+}
+
+/**
  * Envia email de alerta para administradores.
  * @param {string} subject - Assunto do email.
  * @param {string} message - Mensagem do email.
@@ -358,5 +455,7 @@ module.exports = {
   sendConsecutiveFailureAlert,
   sendConnectivityAlert,
   sendIntegrityAlert,
-  sendTestEmail
+  sendTestEmail,
+  sendEmail,
+  sendPasswordResetEmail
 }; 

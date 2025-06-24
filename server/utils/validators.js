@@ -1,3 +1,5 @@
+const { z } = require('zod');
+
 /**
  * Valida se um email é válido.
  * @param {string} email - Email a ser validado.
@@ -145,6 +147,253 @@ const isValidDocument = (document) => {
   return cleanDocument.length === 11 ? isValidCPF(document) : isValidCNPJ(document);
 };
 
+// Esquemas de validação Zod para endpoints
+
+/**
+ * Esquema de validação para registro de usuário.
+ */
+const registerUserSchema = z.object({
+  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100, 'Nome muito longo'),
+  email: z.string().email('Email inválido'),
+  password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres')
+});
+
+/**
+ * Esquema de validação para login de usuário.
+ */
+const loginUserSchema = z.object({
+  email: z.string().email('Email inválido'),
+  password: z.string().min(1, 'Senha é obrigatória')
+});
+
+/**
+ * Esquema de validação para atualização de perfil.
+ */
+const updateProfileSchema = z.object({
+  name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100, 'Nome muito longo').optional(),
+  email: z.string().email('Email inválido').optional()
+});
+
+/**
+ * Esquema de validação para atualização de senha.
+ */
+const updatePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Senha atual é obrigatória'),
+  newPassword: z.string().min(6, 'Nova senha deve ter pelo menos 6 caracteres')
+});
+
+/**
+ * Esquema de validação para recuperação de senha.
+ */
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Email inválido')
+});
+
+/**
+ * Esquema de validação para reset de senha.
+ */
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Token é obrigatório'),
+  newPassword: z.string().min(6, 'Nova senha deve ter pelo menos 6 caracteres')
+});
+
+/**
+ * Esquema de validação para criação de transação.
+ */
+const createTransactionSchema = z.object({
+  account_id: z.number().int().positive('ID da conta deve ser um número positivo'),
+  category_id: z.number().int().positive('ID da categoria deve ser um número positivo').optional(),
+  type: z.enum(['income', 'expense'], { errorMap: () => ({ message: 'Tipo deve ser income ou expense' }) }),
+  amount: z.number().positive('Valor deve ser positivo'),
+  description: z.string().min(1, 'Descrição é obrigatória').max(255, 'Descrição muito longa'),
+  date: z.string().optional().or(z.date().optional())
+});
+
+/**
+ * Esquema de validação para atualização de transação.
+ */
+const updateTransactionSchema = z.object({
+  type: z.enum(['income', 'expense'], { errorMap: () => ({ message: 'Tipo deve ser income ou expense' }) }).optional(),
+  amount: z.number().positive('Valor deve ser positivo').optional(),
+  category_id: z.number().int().positive('ID da categoria deve ser um número positivo').optional(),
+  description: z.string().min(1, 'Descrição é obrigatória').max(255, 'Descrição muito longa').optional(),
+  date: z.string().optional().or(z.date().optional())
+});
+
+/**
+ * Esquema de validação para criação de conta.
+ */
+const createAccountSchema = z.object({
+  bank_name: z.string().min(1, 'Nome do banco é obrigatório').max(100, 'Nome do banco muito longo'),
+  account_type: z.enum(['checking', 'savings', 'investment'], { 
+    errorMap: () => ({ message: 'Tipo de conta deve ser checking, savings ou investment' }) 
+  }),
+  balance: z.number().min(0, 'Saldo não pode ser negativo'),
+  description: z.string().max(255, 'Descrição muito longa').optional()
+});
+
+/**
+ * Esquema de validação para atualização de conta.
+ */
+const updateAccountSchema = z.object({
+  bank_name: z.string().min(1, 'Nome do banco é obrigatório').max(100, 'Nome do banco muito longo').optional(),
+  account_type: z.enum(['checking', 'savings', 'investment'], { 
+    errorMap: () => ({ message: 'Tipo de conta deve ser checking, savings ou investment' }) 
+  }).optional(),
+  balance: z.number().min(0, 'Saldo não pode ser negativo').optional(),
+  description: z.string().max(255, 'Descrição muito longa').optional()
+});
+
+/**
+ * Esquema de validação para criação de categoria.
+ */
+const createCategorySchema = z.object({
+  name: z.string().min(1, 'Nome é obrigatório').max(50, 'Nome muito longo'),
+  type: z.enum(['income', 'expense'], { errorMap: () => ({ message: 'Tipo deve ser income ou expense' }) }),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve ser um código hexadecimal válido (ex: #FF5722)').optional()
+});
+
+/**
+ * Esquema de validação para atualização de categoria.
+ */
+const updateCategorySchema = z.object({
+  name: z.string().min(1, 'Nome é obrigatório').max(50, 'Nome muito longo').optional(),
+  type: z.enum(['income', 'expense'], { errorMap: () => ({ message: 'Tipo deve ser income ou expense' }) }).optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Cor deve ser um código hexadecimal válido (ex: #FF5722)').optional()
+});
+
+/**
+ * Esquema de validação para criação de cliente.
+ */
+const createCustomerSchema = z.object({
+  name: z.string().min(1, 'Nome é obrigatório').max(100, 'Nome muito longo'),
+  documentType: z.enum(['CPF', 'CNPJ'], { errorMap: () => ({ message: 'Tipo de documento deve ser CPF ou CNPJ' }) }),
+  document: z.string().min(1, 'Número do documento é obrigatório'),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  phone: z.string().optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para atualização de cliente.
+ */
+const updateCustomerSchema = z.object({
+  name: z.string().min(1, 'Nome é obrigatório').max(100, 'Nome muito longo').optional(),
+  documentType: z.enum(['CPF', 'CNPJ'], { errorMap: () => ({ message: 'Tipo de documento deve ser CPF ou CNPJ' }) }).optional(),
+  document: z.string().min(1, 'Número do documento é obrigatório').optional(),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  phone: z.string().optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para criação de fornecedor.
+ */
+const createSupplierSchema = z.object({
+  name: z.string().min(1, 'Nome é obrigatório').max(100, 'Nome muito longo'),
+  document_type: z.enum(['CPF', 'CNPJ'], { errorMap: () => ({ message: 'Tipo de documento deve ser CPF ou CNPJ' }) }),
+  document_number: z.string().min(1, 'Número do documento é obrigatório'),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  phone: z.string().optional().or(z.literal('')),
+  address: z.string().max(255, 'Endereço muito longo').optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para atualização de fornecedor.
+ */
+const updateSupplierSchema = z.object({
+  name: z.string().min(1, 'Nome é obrigatório').max(100, 'Nome muito longo').optional(),
+  document_type: z.enum(['CPF', 'CNPJ'], { errorMap: () => ({ message: 'Tipo de documento deve ser CPF ou CNPJ' }) }).optional(),
+  document_number: z.string().min(1, 'Número do documento é obrigatório').optional(),
+  email: z.string().email('Email inválido').optional().or(z.literal('')),
+  phone: z.string().optional().or(z.literal('')),
+  address: z.string().max(255, 'Endereço muito longo').optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para criação de pagamento de recebível.
+ */
+const createReceivablePaymentSchema = z.object({
+  amount: z.number().positive('Valor deve ser positivo'),
+  payment_date: z.string().min(1, 'Data do pagamento é obrigatória'),
+  payment_method: z.enum(['cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer'], {
+    errorMap: () => ({ message: 'Método de pagamento inválido' })
+  }),
+  account_id: z.number().int().positive('ID da conta deve ser um número positivo'),
+  description: z.string().max(255, 'Descrição muito longa').optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para criação de pagamento.
+ */
+const createPaymentSchema = z.object({
+  receivable_id: z.number().int().positive('ID do recebível deve ser um número positivo').optional(),
+  payable_id: z.number().int().positive('ID do pagável deve ser um número positivo').optional(),
+  amount: z.number().positive('Valor deve ser positivo'),
+  payment_date: z.string().optional(),
+  payment_method: z.string().min(1, 'Método de pagamento é obrigatório'),
+  description: z.string().max(255, 'Descrição muito longa').optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para criação de conta a receber.
+ */
+const createReceivableSchema = z.object({
+  customer_id: z.number().int().positive('ID do cliente deve ser um número positivo'),
+  category_id: z.number().int().positive('ID da categoria deve ser um número positivo').optional().nullable(),
+  amount: z.number().positive('Valor deve ser positivo'),
+  due_date: z.string().min(1, 'Data de vencimento é obrigatória').optional().or(z.literal('')),
+  description: z.string().min(1, 'Descrição é obrigatória').max(255, 'Descrição muito longa'),
+  invoice_number: z.string().max(100, 'Número da nota fiscal muito longo').optional().or(z.literal('')),
+  payment_terms: z.string().max(255, 'Termos de pagamento muito longos').optional().or(z.literal('')),
+  notes: z.string().max(500, 'Observações muito longas').optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para atualização de conta a receber.
+ */
+const updateReceivableSchema = z.object({
+  description: z.string().min(1, 'Descrição é obrigatória').max(255, 'Descrição muito longa').optional(),
+  amount: z.number().positive('Valor deve ser positivo').optional(),
+  due_date: z.string().optional(),
+  category_id: z.number().int().positive('ID da categoria deve ser um número positivo').optional(),
+  notes: z.string().max(500, 'Observações muito longas').optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para criação de conta a pagar.
+ */
+const createPayableSchema = z.object({
+  supplier_id: z.number().int().positive('ID do fornecedor deve ser um número positivo'),
+  category_id: z.number().int().positive('ID da categoria deve ser um número positivo').optional(),
+  description: z.string().min(1, 'Descrição é obrigatória').max(255, 'Descrição muito longa'),
+  amount: z.number().positive('Valor deve ser positivo'),
+  due_date: z.string().optional(),
+  notes: z.string().max(500, 'Observações muito longas').optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para atualização de conta a pagar.
+ */
+const updatePayableSchema = z.object({
+  description: z.string().min(1, 'Descrição é obrigatória').max(255, 'Descrição muito longa').optional(),
+  amount: z.number().positive('Valor deve ser positivo').optional(),
+  due_date: z.string().optional(),
+  category_id: z.number().int().positive('ID da categoria deve ser um número positivo').optional(),
+  notes: z.string().max(500, 'Observações muito longas').optional().or(z.literal(''))
+});
+
+/**
+ * Esquema de validação para adição de pagamento a conta a pagar.
+ */
+const addPaymentSchema = z.object({
+  amount: z.number().positive('Valor deve ser positivo'),
+  payment_date: z.string().min(1, 'Data do pagamento é obrigatória'),
+  payment_method: z.enum(['cash', 'credit_card', 'debit_card', 'pix', 'bank_transfer'], {
+    errorMap: () => ({ message: 'Método de pagamento deve ser cash, credit_card, debit_card, pix ou bank_transfer' })
+  }),
+  account_id: z.number().int().positive('ID da conta bancária deve ser um número positivo'),
+  notes: z.string().max(500, 'Observações muito longas').optional().or(z.literal(''))
+});
+
 module.exports = {
   isValidEmail,
   isValidPassword,
@@ -153,5 +402,28 @@ module.exports = {
   isValidPhone,
   isValidDate,
   isValidAmount,
-  isValidDocument
+  isValidDocument,
+  // Esquemas Zod
+  registerUserSchema,
+  loginUserSchema,
+  updateProfileSchema,
+  updatePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  createTransactionSchema,
+  updateTransactionSchema,
+  createAccountSchema,
+  updateAccountSchema,
+  createCategorySchema,
+  updateCategorySchema,
+  createCustomerSchema,
+  updateCustomerSchema,
+  createSupplierSchema,
+  updateSupplierSchema,
+  createReceivablePaymentSchema,
+  createReceivableSchema,
+  updateReceivableSchema,
+  createPayableSchema,
+  updatePayableSchema,
+  addPaymentSchema
 }; 

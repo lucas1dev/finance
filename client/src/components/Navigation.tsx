@@ -1,92 +1,282 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Wallet, Receipt, Tag, Users, FileText } from 'lucide-react';
+import { useEffect } from 'react';
+import { 
+  Home, 
+  Wallet, 
+  Receipt, 
+  Tag, 
+  Users, 
+  FileText, 
+  Building2, 
+  CreditCard,
+  TrendingUp,
+  Target,
+  Settings,
+  LogOut,
+  Clock,
+  Bell,
+  Database,
+  Shield,
+  Calendar
+} from 'lucide-react';
+import { 
+  SidebarMenu, 
+  SidebarMenuItem, 
+  SidebarMenuButton,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent
+} from '@/components/ui/sidebar';
+import { useAuth } from '@/contexts/AuthContext';
 
+/**
+ * Componente de navegação usando Sidebar do Shadcn/UI
+ * @author Lucas
+ *
+ * @description
+ * Menu de navegação responsivo com ícones e grupos organizados
+ *
+ * @returns {JSX.Element} Menu de navegação renderizado
+ */
 export function Navigation() {
   const location = useLocation();
+  const { logout, user, loading } = useAuth();
 
   const isActive = (path: string) => {
     return location.pathname === path;
   };
 
+  const handleLogout = () => {
+    logout();
+  };
+
+  // Se ainda está carregando, não renderiza as opções administrativas
+  if (loading) {
+    return (
+      <SidebarMenu key="loading-menu">
+        {/* Dashboard */}
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild isActive={isActive('/')}>
+            <Link to="/">
+              <Home className="h-4 w-4" />
+              <span>Dashboard</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
+
+  // Verifica se deve renderizar as opções administrativas
+  const shouldRenderAdmin = user?.role === 'admin';
+
+  // Chave única baseada no usuário para forçar re-renderização
+  const menuKey = user ? `menu-${user.id}-${user.role}` : 'menu-no-user';
+
   return (
-    <nav className="bg-white shadow-sm">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
-          <div className="flex items-center">
-            <Link to="/" className="text-xl font-bold text-gray-800">
-              Finance
-            </Link>
-          </div>
-          <div className="flex items-center space-x-4">
-            <Link
-              to="/"
-              className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/')
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <Home className="h-5 w-5 mr-2" />
-              Dashboard
-            </Link>
-            <Link
-              to="/accounts"
-              className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/accounts')
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <Wallet className="h-5 w-5 mr-2" />
-              Contas
-            </Link>
-            <Link
-              to="/transactions"
-              className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/transactions')
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <Receipt className="h-5 w-5 mr-2" />
-              Transações
-            </Link>
-            <Link
-              to="/categories"
-              className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/categories')
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <Tag className="h-5 w-5 mr-2" />
-              Categorias
-            </Link>
-            <Link
-              to="/customers"
-              className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/customers')
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <Users className="h-5 w-5 mr-2" />
-              Clientes
-            </Link>
-            <Link
-              to="/receivables"
-              className={`flex items-center px-3 py-2 rounded-md text-sm font-medium ${
-                isActive('/receivables')
-                  ? 'bg-gray-100 text-gray-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <FileText className="h-5 w-5 mr-2" />
-              Contas a Receber
-            </Link>
-          </div>
-        </div>
-      </div>
-    </nav>
+    <SidebarMenu key={menuKey}>
+      {/* Dashboard */}
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild isActive={isActive('/')}>
+          <Link to="/">
+            <Home className="h-4 w-4" />
+            <span>Dashboard</span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+
+      {/* Gestão Financeira */}
+      <SidebarGroup>
+        <SidebarGroupLabel>Gestão Financeira</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/accounts')}>
+              <Link to="/accounts">
+                <Wallet className="h-4 w-4" />
+                <span>Contas</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/transactions')}>
+              <Link to="/transactions">
+                <Receipt className="h-4 w-4" />
+                <span>Transações</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/categories')}>
+              <Link to="/categories">
+                <Tag className="h-4 w-4" />
+                <span>Categorias</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      {/* Relacionamentos */}
+      <SidebarGroup>
+        <SidebarGroupLabel>Relacionamentos</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/customers')}>
+              <Link to="/customers">
+                <Users className="h-4 w-4" />
+                <span>Clientes</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/creditors')}>
+              <Link to="/creditors">
+                <Building2 className="h-4 w-4" />
+                <span>Credores</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      {/* Receitas e Despesas */}
+      <SidebarGroup>
+        <SidebarGroupLabel>Receitas e Despesas</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/receivables')}>
+              <Link to="/receivables">
+                <FileText className="h-4 w-4" />
+                <span>Contas a Receber</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/fixed-accounts')}>
+              <Link to="/fixed-accounts">
+                <Calendar className="h-4 w-4" />
+                <span>Contas Fixas</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      {/* Investimentos e Financiamentos */}
+      <SidebarGroup>
+        <SidebarGroupLabel>Investimentos e Financiamentos</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/financings')}>
+              <Link to="/financings">
+                <CreditCard className="h-4 w-4" />
+                <span>Financiamentos</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/investments')}>
+              <Link to="/investments">
+                <TrendingUp className="h-4 w-4" />
+                <span>Investimentos</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/investment-goals')}>
+              <Link to="/investment-goals">
+                <Target className="h-4 w-4" />
+                <span>Metas de Investimento</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      {/* Configurações */}
+      <SidebarGroup>
+        <SidebarGroupLabel>Configurações</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={isActive('/settings')}>
+              <Link to="/settings">
+                <Settings className="h-4 w-4" />
+                <span>Configurações</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+              <span>Sair</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      {/* Administração - só para admin */}
+      {shouldRenderAdmin && (
+        <SidebarGroup>
+          <SidebarGroupLabel>Administração</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive('/admin/dashboard')}>
+                <Link to="/admin/dashboard">
+                  <Settings className="h-4 w-4" />
+                  <span>Dashboard Administrativo</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive('/admin/users')}>
+                <Link to="/admin/users">
+                  <Users className="h-4 w-4" />
+                  <span>Usuários</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive('/admin/jobs')}>
+                <Link to="/admin/jobs">
+                  <Clock className="h-4 w-4" />
+                  <span>Jobs</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive('/admin/notifications')}>
+                <Link to="/admin/notifications">
+                  <Bell className="h-4 w-4" />
+                  <span>Notificações</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive('/admin/dataintegrity')}>
+                <Link to="/admin/dataintegrity">
+                  <Database className="h-4 w-4" />
+                  <span>Integridade de Dados</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isActive('/admin/audit')}>
+                <Link to="/admin/audit">
+                  <Shield className="h-4 w-4" />
+                  <span>Auditoria</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
+    </SidebarMenu>
   );
 } 

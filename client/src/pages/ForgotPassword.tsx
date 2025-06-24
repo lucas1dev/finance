@@ -1,3 +1,12 @@
+/**
+ * Página de recuperação de senha.
+ * Permite ao usuário solicitar o envio de instruções de recuperação para o email.
+ * Valida o email com Zod e exibe feedback visual.
+ * @module ForgotPassword
+ * @returns {JSX.Element} Página de recuperação de senha
+ * @example
+ * <ForgotPassword />
+ */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -6,21 +15,52 @@ import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
 import { toast } from 'sonner';
 import api from '@/lib/axios';
+import { z } from 'zod';
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Email inválido'),
+});
 
 export function ForgotPassword() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  /**
+   * Manipula a mudança do campo de email, validando e limpando erros.
+   * @param {React.ChangeEvent<HTMLInputElement>} e - Evento de mudança
+   */
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newEmail = e.target.value;
+    setEmail(newEmail);
+    
+    // Limpar erro se o email for válido
+    if (error && newEmail) {
+      const result = forgotPasswordSchema.safeParse({ email: newEmail });
+      if (result.success) {
+        setError('');
+      }
+    }
+  };
+
+  /**
+   * Manipula o envio do formulário de recuperação de senha.
+   * @param {React.FormEvent} e - Evento do formulário
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    const result = forgotPasswordSchema.safeParse({ email });
+    if (!result.success) {
+      setError(result.error.errors[0].message);
+      return;
+    }
     setIsLoading(true);
-
     try {
-      await api.post('/auth/forgot-password', {
-        email
-      });
+      await api.post('/auth/forgot-password', { email });
       toast.success('Instruções de recuperação enviadas para seu email');
+      setEmail(''); // Limpar o formulário após sucesso
       navigate('/login');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Erro ao processar recuperação de senha');
@@ -39,7 +79,7 @@ export function ForgotPassword() {
           </p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -49,14 +89,23 @@ export function ForgotPassword() {
                 required
                 placeholder="seu@email.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={handleEmailChange}
                 disabled={isLoading}
+                aria-invalid={!!error}
+                aria-describedby={error ? 'email-error' : undefined}
+                autoFocus
               />
+              {error && (
+                <span id="email-error" className="text-sm text-red-600 block" role="alert">
+                  {error}
+                </span>
+              )}
             </div>
             <Button
               type="submit"
               className="w-full"
               disabled={isLoading}
+              aria-busy={isLoading}
             >
               {isLoading ? 'Enviando...' : 'Enviar instruções'}
             </Button>

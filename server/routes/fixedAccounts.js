@@ -46,6 +46,14 @@ router.post('/', asyncHandler(fixedAccountController.createFixedAccount));
 router.get('/', asyncHandler(fixedAccountController.getFixedAccounts));
 
 /**
+ * @route GET /fixed-accounts/statistics
+ * @desc Obtém estatísticas das contas fixas do usuário
+ * @access Private
+ * @returns {Object} Estatísticas das contas fixas
+ */
+router.get('/statistics', asyncHandler(fixedAccountController.getFixedAccountStatistics));
+
+/**
  * @route GET /fixed-accounts/:id
  * @desc Obtém uma conta fixa específica por ID
  * @access Private

@@ -1,6 +1,6 @@
 /**
  * Testes unitários para o middleware de autenticação.
- * @author AI
+ * @author Lucas Santos
  */
 const jwt = require('jsonwebtoken');
 

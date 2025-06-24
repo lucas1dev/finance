@@ -30,6 +30,20 @@ Sistema completo de gestão de contas fixas (despesas recorrentes) com as seguin
 - ✅ Sistema de lembretes configurável
 - ✅ API RESTful completa
 
+### 🎨 Funcionalidade: Categorias Padrão e Personalizadas
+
+Sistema inteligente de categorização com categorias pré-definidas e personalização:
+
+- ✅ **Categorias Padrão**: 12 categorias pré-definidas (receitas e despesas)
+- ✅ **Proteção de Dados**: Categorias padrão não podem ser editadas/excluídas
+- ✅ **Cores Personalizadas**: Suporte a cores hexadecimais para categorias
+- ✅ **Categorias Personalizadas**: Usuários podem criar suas próprias categorias
+- ✅ **Atribuição Automática**: Cores são atribuídas automaticamente se não informadas
+
+**Categorias Padrão Incluídas:**
+- **Receitas**: Salário, Freelance, Investimentos, Outros
+- **Despesas**: Alimentação, Transporte, Moradia, Saúde, Educação, Lazer, Vestuário, Outros
+
 ## 🛠️ Tecnologias
 
 ### Backend
@@ -77,6 +91,40 @@ npm run dev
 
 # Executar testes
 npm test
+```
+
+### Configuração Inicial
+
+Após executar as migrações, execute o seeder para criar as categorias padrão:
+
+```bash
+# Executar seeder de categorias padrão
+npm run seed
+```
+
+**O que o seeder faz:**
+- Cria 12 categorias padrão (4 receitas + 8 despesas)
+- Atribui cores automáticas para cada categoria
+- Define `is_default: true` para proteção
+- Disponibiliza categorias para todos os usuários
+
+**Categorias Criadas:**
+```javascript
+// Receitas (verde/amarelo)
+{ name: 'Salário', type: 'income', color: '#4CAF50', is_default: true }
+{ name: 'Freelance', type: 'income', color: '#8BC34A', is_default: true }
+{ name: 'Investimentos', type: 'income', color: '#FFC107', is_default: true }
+{ name: 'Outros', type: 'income', color: '#9E9E9E', is_default: true }
+
+// Despesas (vermelho/azul/roxo)
+{ name: 'Alimentação', type: 'expense', color: '#FF5722', is_default: true }
+{ name: 'Transporte', type: 'expense', color: '#2196F3', is_default: true }
+{ name: 'Moradia', type: 'expense', color: '#673AB7', is_default: true }
+{ name: 'Saúde', type: 'expense', color: '#E91E63', is_default: true }
+{ name: 'Educação', type: 'expense', color: '#3F51B5', is_default: true }
+{ name: 'Lazer', type: 'expense', color: '#FF9800', is_default: true }
+{ name: 'Vestuário', type: 'expense', color: '#795548', is_default: true }
+{ name: 'Outros', type: 'expense', color: '#607D8B', is_default: true }
 ```
 
 ### Frontend
@@ -194,6 +242,71 @@ DELETE /api/fixed-accounts/:id
 Authorization: Bearer <token>
 ```
 
+### Endpoints de Categorias
+
+#### Listar Categorias (Padrão + Personalizadas)
+```http
+GET /api/categories
+Authorization: Bearer <token>
+```
+
+**Resposta:**
+```json
+[
+  {
+    "id": 1,
+    "name": "Salário",
+    "type": "income",
+    "color": "#4CAF50",
+    "is_default": true,
+    "user_id": null
+  },
+  {
+    "id": 13,
+    "name": "Viagens",
+    "type": "expense",
+    "color": "#FF6B6B",
+    "is_default": false,
+    "user_id": 1
+  }
+]
+```
+
+#### Criar Categoria Personalizada
+```http
+POST /api/categories
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Viagens",
+  "type": "expense",
+  "color": "#FF6B6B"
+}
+```
+
+#### Atualizar Categoria Personalizada
+```http
+PUT /api/categories/:id
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Viagens Internacionais",
+  "color": "#FF8E53"
+}
+```
+
+**⚠️ Restrição:** Não é possível editar categorias padrão (`is_default: true`)
+
+#### Excluir Categoria Personalizada
+```http
+DELETE /api/categories/:id
+Authorization: Bearer <token>
+```
+
+**⚠️ Restrição:** Não é possível excluir categorias padrão (`is_default: true`)
+
 ## 🧪 Testes
 
 ### Executar Todos os Testes
@@ -273,4 +386,17 @@ Desenvolvido com ❤️ para gestão financeira eficiente.
 
 ---
 
-**Status do Projeto**: ✅ Funcional e pronto para produção 
+**Status do Projeto**: ✅ Funcional e pronto para produção  
+**Versão**: 2.1.0  
+**Última Atualização**: Junho 2025  
+**Funcionalidades**: 
+- ✅ Sistema completo de autenticação
+- ✅ Gestão de contas e transações
+- ✅ Categorias padrão e personalizadas
+- ✅ Contas fixas e recorrentes
+- ✅ Sistema de investimentos
+- ✅ Financiamentos e parcelamentos
+- ✅ API RESTful documentada
+- ✅ Testes automatizados (618 testes)
+- ✅ Validações robustas com Zod
+- ✅ Documentação completa (JSDoc + OpenAPI) 

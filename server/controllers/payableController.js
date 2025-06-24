@@ -1,4 +1,5 @@
 const { Payable, Supplier, Payment, Category, Account, Transaction } = require('../models');
+const { createPayableSchema, updatePayableSchema, addPaymentSchema } = require('../utils/validators');
 const { Op } = require('sequelize');
 
 /**
@@ -30,37 +31,52 @@ class PayableController {
 
       const payables = await Payable.findAll({
         where,
+        attributes: [
+          'id', 'user_id', 'supplier_id', 'category_id', 'description', 
+          'amount', 'due_date', 'status', 'payment_date', 'payment_method', 
+          'notes', 'created_at', 'updated_at'
+        ],
         include: [
           {
             model: Supplier,
-            as: 'supplier'
+            as: 'supplier',
+            attributes: ['id', 'name', 'document_type', 'document_number', 'email', 'phone', 'address']
           },
           {
             model: Category,
             as: 'category',
-            attributes: ['id', 'name', 'color']
-          },
-          {
-            model: Payment,
-            as: 'payments'
+            attributes: ['id', 'name', 'color', 'is_default']
           }
         ],
         order: [['due_date', 'ASC']]
       });
 
-      // Calcula o valor restante para cada conta
-      const payablesWithRemaining = await Promise.all(payables.map(async (payable) => {
-        const remainingAmount = await payable.getRemainingAmount();
+      // Buscar pagamentos separadamente para evitar problemas com campos inexistentes
+      const payablesWithPayments = await Promise.all(payables.map(async (payable) => {
+        const payments = await Payment.findAll({
+          where: { payable_id: payable.id },
+          attributes: ['id', 'amount', 'payment_date', 'payment_method', 'description', 'created_at', 'updated_at'],
+          order: [['payment_date', 'DESC']]
+        });
+
+        // Calcular valor restante
+        const totalPaid = payments.reduce((sum, payment) => sum + parseFloat(payment.amount), 0);
+        const remainingAmount = parseFloat(payable.amount) - totalPaid;
+
         return {
           ...payable.toJSON(),
+          payments,
           remaining_amount: remainingAmount
         };
       }));
 
-      res.json(payablesWithRemaining);
+      res.json(payablesWithPayments);
     } catch (error) {
       console.error('Erro ao buscar contas a pagar:', error);
-      res.status(500).json({ error: 'Erro ao buscar contas a pagar' });
+      if (error && error.stack) {
+        console.error('Stack trace:', error.stack);
+      }
+      res.status(500).json({ error: 'Erro ao buscar contas a pagar', details: error.message });
     }
   }
 
@@ -75,26 +91,30 @@ class PayableController {
    * @example
    * // GET /api/payables/1
    * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { id: 1, description: 'Conta 1', amount: 1000, remaining_amount: 500, customer: {...}, payments: [...] }
+   * // Retorno: { id: 1, description: 'Conta 1', amount: 1000, remaining_amount: 500, payments: [...] }
    */
   async show(req, res) {
     try {
       const payable = await Payable.findOne({
-        where: { id: req.params.id },
+        where: { 
+          id: req.params.id,
+          user_id: req.user.id 
+        },
+        attributes: [
+          'id', 'user_id', 'supplier_id', 'category_id', 'description', 
+          'amount', 'due_date', 'status', 'payment_date', 'payment_method', 
+          'notes', 'created_at', 'updated_at'
+        ],
         include: [
           {
             model: Supplier,
-            as: 'supplier'
+            as: 'supplier',
+            attributes: ['id', 'name', 'document_type', 'document_number', 'email', 'phone', 'address']
           },
           {
             model: Category,
             as: 'category',
-            attributes: ['id', 'name', 'color']
-          },
-          {
-            model: Payment,
-            as: 'payments',
-            attributes: ['id', 'amount', 'payment_date', 'payment_method']
+            attributes: ['id', 'name', 'color', 'is_default']
           }
         ]
       });
@@ -103,17 +123,24 @@ class PayableController {
         return res.status(404).json({ error: 'Conta a pagar não encontrada' });
       }
 
-      if (payable.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
+      // Buscar pagamentos separadamente
+      const payments = await Payment.findAll({
+        where: { payable_id: req.params.id },
+        attributes: ['id', 'amount', 'payment_date', 'payment_method', 'description', 'created_at', 'updated_at'],
+        order: [['payment_date', 'DESC']]
+      });
 
-      const remainingAmount = await payable.getRemainingAmount();
-      const payableWithRemaining = {
+      // Calcular valor restante
+      const totalPaid = payments.reduce((sum, payment) => sum + parseFloat(payment.amount), 0);
+      const remainingAmount = parseFloat(payable.amount) - totalPaid;
+
+      const payableWithDetails = {
         ...payable.toJSON(),
+        payments,
         remaining_amount: remainingAmount
       };
 
-      res.json(payableWithRemaining);
+      res.json(payableWithDetails);
     } catch (error) {
       console.error('Erro ao buscar conta a pagar:', error);
       res.status(500).json({ error: 'Erro ao buscar conta a pagar' });
@@ -141,12 +168,9 @@ class PayableController {
    */
   async create(req, res) {
     try {
-      const { supplier_id, category_id, description, amount, due_date, notes } = req.body;
-
-      // Validação dos campos obrigatórios
-      if (!supplier_id || !description || !amount || !due_date) {
-        return res.status(400).json({ error: 'Fornecedor, descrição, valor e data de vencimento são obrigatórios' });
-      }
+      // Validar dados de entrada
+      const validatedData = createPayableSchema.parse(req.body);
+      const { supplier_id, category_id, description, amount, due_date, notes } = validatedData;
 
       // Verificar se o fornecedor existe
       const supplier = await Supplier.findOne({
@@ -165,7 +189,10 @@ class PayableController {
         const category = await Category.findOne({
           where: { 
             id: category_id,
-            user_id: req.user.id
+            [Op.or]: [
+              { user_id: req.user.id },
+              { user_id: null } // Categorias padrão do sistema
+            ]
           }
         });
 
@@ -187,6 +214,9 @@ class PayableController {
 
       res.status(201).json(payable);
     } catch (error) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Dados inválidos' });
+      }
       console.error('Erro ao criar conta a pagar:', error);
       res.status(500).json({ error: 'Erro ao criar conta a pagar' });
     }
@@ -212,21 +242,9 @@ class PayableController {
    */
   async update(req, res) {
     try {
-      const { description, amount, due_date, category_id, notes } = req.body;
-
-      // Validação dos campos obrigatórios
-      if (!description || !amount || !due_date) {
-        return res.status(400).json({ error: 'Descrição, valor e data de vencimento são obrigatórios' });
-      }
-
-      // Validação adicional dos dados
-      if (amount <= 0) {
-        return res.status(400).json({ error: 'Valor deve ser maior que zero' });
-      }
-
-      if (description.trim() === '') {
-        return res.status(400).json({ error: 'Descrição não pode estar vazia' });
-      }
+      // Validar dados de entrada
+      const validatedData = updatePayableSchema.parse(req.body);
+      const { description, amount, due_date, category_id, notes } = validatedData;
 
       const payable = await Payable.findOne({
         where: { id: req.params.id }
@@ -245,7 +263,10 @@ class PayableController {
         const category = await Category.findOne({
           where: { 
             id: category_id,
-            user_id: req.user.id
+            [Op.or]: [
+              { user_id: req.user.id },
+              { user_id: null } // Categorias padrão do sistema
+            ]
           }
         });
 
@@ -264,39 +285,43 @@ class PayableController {
 
       res.json(payable);
     } catch (error) {
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Dados inválidos' });
+      }
       console.error('Erro ao atualizar conta a pagar:', error);
       res.status(500).json({ error: 'Erro ao atualizar conta a pagar' });
     }
   }
 
   /**
-   * Exclui uma conta a pagar.
+   * Exclui uma conta a pagar específica do usuário autenticado.
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.user - Usuário autenticado (via JWT).
    * @param {string} req.params.id - ID da conta a pagar.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<void>} Resposta vazia com status 204.
-   * @throws {Error} Se a conta a pagar não for encontrada, não pertencer ao usuário ou tiver pagamentos.
+   * @throws {Error} Se a conta a pagar não for encontrada ou não pertencer ao usuário.
    * @example
    * // DELETE /api/payables/1
    * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: Status 204 (No Content) ou 400 se houver pagamentos
+   * // Retorno: Status 204 (No Content)
    */
   async delete(req, res) {
     try {
+      // Buscar apenas os campos essenciais para verificação
       const payable = await Payable.findOne({
-        where: { id: req.params.id }
+        where: { 
+          id: req.params.id,
+          user_id: req.user.id 
+        },
+        attributes: ['id', 'user_id', 'amount']
       });
 
       if (!payable) {
         return res.status(404).json({ error: 'Conta a pagar não encontrada' });
       }
 
-      if (payable.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      // Verificar se há pagamentos associados
+      // Verificar se há pagamentos associados usando uma query separada
       const paymentCount = await Payment.count({
         where: { payable_id: req.params.id }
       });
@@ -307,11 +332,30 @@ class PayableController {
         });
       }
 
-      await payable.destroy();
+      // Excluir usando uma query direta para evitar problemas com hooks
+      const deletedCount = await Payable.destroy({
+        where: { 
+          id: req.params.id,
+          user_id: req.user.id 
+        }
+      });
+
+      if (deletedCount === 0) {
+        return res.status(404).json({ error: 'Conta a pagar não encontrada' });
+      }
+
       res.status(204).send();
     } catch (error) {
       console.error('Erro ao excluir conta a pagar:', error);
-      res.status(500).json({ error: 'Erro ao excluir conta a pagar' });
+      if (error && error.stack) {
+        console.error('Stack trace:', error.stack);
+      }
+      if (error.name === 'SequelizeForeignKeyConstraintError') {
+        return res.status(400).json({ 
+          error: 'Não é possível excluir esta conta a pagar pois ela possui relacionamentos ativos' 
+        });
+      }
+      res.status(500).json({ error: 'Erro ao excluir conta a pagar', details: error.message });
     }
   }
 
@@ -367,113 +411,168 @@ class PayableController {
    * @throws {Error} Se os dados forem inválidos ou a conta a pagar não for encontrada.
    * @example
    * // POST /api/payables/1/payments
-   * // Body: { "amount": 500, "payment_date": "2024-01-15", "payment_method": "pix", "account_id": 1 }
-   * // Retorno: { payment: {...}, newBalance: 500 }
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Body: { "amount": 500, "payment_date": "2024-04-01", "payment_method": "pix", "account_id": 1 }
+   * // Retorno: { "payment": {...}, "new_balance": 1500 }
    */
   async addPayment(req, res) {
     try {
-      const { amount, payment_date, payment_method, description, account_id } = req.body;
-
-      if (!amount || !payment_date || !payment_method || !account_id) {
-        return res.status(400).json({ error: 'Valor, data do pagamento, método de pagamento e conta são obrigatórios' });
-      }
-
-      const payable = await Payable.findByPk(req.params.id);
-      if (!payable) {
-        return res.status(404).json({ error: 'Conta a pagar não encontrada' });
-      }
-
-      if (payable.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      // Verifica se o valor do pagamento é maior que o valor restante
-      const remainingAmount = await payable.getRemainingAmount();
-      if (parseFloat(amount) > remainingAmount) {
-        return res.status(400).json({ error: 'Valor do pagamento não pode ser maior que o valor restante' });
-      }
-
-      // Busca a conta
-      const account = await Account.findOne({
-        where: {
-          id: account_id,
-          user_id: req.user.id
-        }
+      console.log('🔍 [addPayment] Iniciando processo de adição de pagamento');
+      console.log('📋 [addPayment] Parâmetros recebidos:', {
+        payable_id: req.params.id,
+        user_id: req.user.id,
+        body: req.body
       });
 
-      if (!account) {
-        return res.status(404).json({ error: 'Conta não encontrada' });
-      }
+      const { id: payableId } = req.params;
+      const { amount, payment_date, payment_method, account_id, notes } = req.body;
 
-      // Busca a categoria da conta a pagar ou cria uma padrão
-      let category = null;
-      if (payable.category_id) {
-        category = await Category.findByPk(payable.category_id);
-      }
+      console.log('🔍 [addPayment] Validando dados de entrada...');
 
-      if (!category) {
-        // Busca a categoria padrão de pagamentos
-        category = await Category.findOne({
-          where: {
-            user_id: req.user.id,
-            type: 'expense',
-            name: 'Pagamentos'
-          }
-        });
-
-        if (!category) {
-          // Se não existir, cria a categoria padrão
-          category = await Category.create({
-            user_id: req.user.id,
-            name: 'Pagamentos',
-            type: 'expense',
-            color: '#F44336'
-          });
-        }
-      }
-
-      // Cria o pagamento
-      const payment = await Payment.create({
-        payable_id: payable.id,
+      // Validar dados de entrada
+      const validatedData = addPaymentSchema.parse({
         amount,
         payment_date,
         payment_method,
-        description: description || `Pagamento: ${payable.description}`
+        account_id,
+        notes
       });
 
-      // Atualiza o saldo da conta (reduz o valor)
-      const newBalance = Number(account.balance) - Number(amount);
+      console.log('✅ [addPayment] Dados validados com sucesso');
+
+      // Buscar a conta a pagar
+      console.log('🔍 [addPayment] Buscando conta a pagar...');
+      const payable = await Payable.findOne({
+        where: { 
+          id: payableId, 
+          user_id: req.user.id 
+        },
+        attributes: ['id', 'amount', 'status', 'description']
+      });
+
+      if (!payable) {
+        console.log('❌ [addPayment] Conta a pagar não encontrada');
+        return res.status(404).json({ error: 'Conta a pagar não encontrada' });
+      }
+
+      console.log('✅ [addPayment] Conta a pagar encontrada:', {
+        id: payable.id,
+        amount: payable.amount,
+        status: payable.status
+      });
+
+      // Verificar se a conta a pagar já foi paga
+      if (payable.status === 'paid') {
+        console.log('❌ [addPayment] Conta a pagar já foi paga');
+        return res.status(400).json({ error: 'Esta conta a pagar já foi paga' });
+      }
+
+      // Buscar a conta bancária
+      console.log('🔍 [addPayment] Buscando conta bancária...');
+      const account = await Account.findOne({
+        where: { 
+          id: account_id, 
+          user_id: req.user.id 
+        },
+        attributes: ['id', 'balance', 'bank_name']
+      });
+
+      if (!account) {
+        console.log('❌ [addPayment] Conta bancária não encontrada');
+        return res.status(404).json({ error: 'Conta bancária não encontrada' });
+      }
+
+      console.log('✅ [addPayment] Conta bancária encontrada:', {
+        id: account.id,
+        balance: account.balance,
+        bank_name: account.bank_name
+      });
+
+      // Verificar se há saldo suficiente
+      if (parseFloat(account.balance) < parseFloat(amount)) {
+        console.log('❌ [addPayment] Saldo insuficiente na conta bancária');
+        return res.status(400).json({ error: 'Saldo insuficiente na conta bancária' });
+      }
+
+      // Calcular valor restante da conta a pagar
+      console.log('🔍 [addPayment] Calculando valor restante...');
+      const remainingAmount = await payable.getRemainingAmount();
+      console.log('📊 [addPayment] Valor restante calculado:', remainingAmount);
+
+      // Verificar se o pagamento não excede o valor restante
+      if (parseFloat(amount) > remainingAmount) {
+        console.log('❌ [addPayment] Valor do pagamento excede o valor restante');
+        return res.status(400).json({ 
+          error: 'Valor do pagamento excede o valor restante da conta a pagar',
+          remaining_amount: remainingAmount
+        });
+      }
+
+      // Criar o pagamento
+      console.log('🔍 [addPayment] Criando pagamento...');
+      const payment = await Payment.create({
+        payable_id: payableId,
+        amount,
+        payment_date,
+        payment_method,
+        account_id,
+        notes: notes || null,
+        user_id: req.user.id
+      });
+
+      console.log('✅ [addPayment] Pagamento criado com sucesso:', {
+        id: payment.id,
+        amount: payment.amount
+      });
+
+      // Atualizar saldo da conta bancária
+      console.log('🔍 [addPayment] Atualizando saldo da conta bancária...');
+      const newBalance = parseFloat(account.balance) - parseFloat(amount);
       await account.update({ balance: newBalance });
 
-      // Atualiza o status da conta a pagar
-      const newRemainingAmount = remainingAmount - parseFloat(amount);
-      const newStatus = newRemainingAmount === 0 ? 'paid' : 'pending';
-
-      await payable.update({
-        status: newStatus,
-        payment_date: newStatus === 'paid' ? payment_date : null,
-        payment_method: newStatus === 'paid' ? payment_method : null
+      console.log('✅ [addPayment] Saldo da conta bancária atualizado:', {
+        old_balance: account.balance,
+        new_balance: newBalance
       });
 
-      // Registra a transação de saída
-      await Transaction.create({
-        user_id: req.user.id,
-        account_id,
-        type: 'expense',
-        amount,
-        description: `Pagamento: ${payable.description}`,
-        date: payment_date,
-        category_id: category.id,
-        payment_id: payment.id
-      });
+      // Verificar se a conta a pagar foi totalmente paga
+      console.log('🔍 [addPayment] Verificando se conta foi totalmente paga...');
+      const newRemainingAmount = await payable.getRemainingAmount();
+      
+      if (newRemainingAmount <= 0) {
+        console.log('✅ [addPayment] Conta a pagar totalmente paga, atualizando status...');
+        await payable.update({ 
+          status: 'paid',
+          payment_date: payment_date,
+          payment_method: payment_method
+        });
+      }
+
+      console.log('✅ [addPayment] Processo concluído com sucesso');
 
       res.status(201).json({
-        payment,
-        newBalance
+        payment: {
+          id: payment.id,
+          amount: payment.amount,
+          payment_date: payment.payment_date,
+          payment_method: payment.payment_method,
+          account_id: payment.account_id,
+          notes: payment.notes,
+          created_at: payment.created_at
+        },
+        new_balance: newBalance,
+        remaining_amount: newRemainingAmount
       });
+
     } catch (error) {
-      console.error('Erro ao adicionar pagamento:', error);
-      res.status(500).json({ error: 'Erro ao adicionar pagamento' });
+      console.error('❌ [addPayment] Erro durante o processo:', error);
+      console.error('❌ [addPayment] Stack trace:', error.stack);
+      
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({ error: 'Dados inválidos', details: error.errors });
+      }
+      
+      res.status(500).json({ error: 'Erro ao adicionar pagamento', details: error.message });
     }
   }
 
@@ -511,7 +610,7 @@ class PayableController {
           {
             model: Category,
             as: 'category',
-            attributes: ['id', 'name', 'color']
+            attributes: ['id', 'name', 'color', 'is_default']
           }
         ],
         order: [['due_date', 'ASC']]
@@ -556,7 +655,7 @@ class PayableController {
           {
             model: Category,
             as: 'category',
-            attributes: ['id', 'name', 'color']
+            attributes: ['id', 'name', 'color', 'is_default']
           }
         ],
         order: [['due_date', 'ASC']]

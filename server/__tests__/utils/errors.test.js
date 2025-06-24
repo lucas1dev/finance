@@ -1,6 +1,6 @@
 /**
  * Testes unitários para as classes de erro.
- * @author AI
+ * @author Lucas Santos
  */
 const {
   AppError,

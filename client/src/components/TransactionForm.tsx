@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,8 +55,45 @@ export default function TransactionForm({ accounts, categories, transaction, onS
     date: transaction?.date || new Date().toISOString().split('T')[0]
   });
 
+  // Filtrar categorias baseado no tipo selecionado
+  const filteredCategories = categories.filter((category) => category.type === formData.type);
+
+  // Verificar se a categoria selecionada é compatível com o tipo atual
+  const isCategoryCompatible = formData.category_id && 
+    categories.find(cat => cat.id === formData.category_id)?.type === formData.type;
+
+  // Limpar categoria se não há categorias disponíveis ou se não é compatível
+  useEffect(() => {
+    if (filteredCategories.length === 0 || !isCategoryCompatible) {
+      setFormData(prev => ({
+        ...prev,
+        category_id: ''
+      }));
+    }
+  }, [formData.type, filteredCategories.length, isCategoryCompatible]);
+
+  const handleTypeChange = (value: 'income' | 'expense') => {
+    setFormData(prev => {
+      // Se mudou o tipo e a categoria atual não é compatível, limpar a categoria
+      const newCategoryId = isCategoryCompatible ? prev.category_id : '';
+      
+      return {
+        ...prev,
+        type: value,
+        category_id: newCategoryId
+      };
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validação adicional
+    if (!isCategoryCompatible) {
+      toast.error('Selecione uma categoria compatível com o tipo de transação');
+      return;
+    }
+    
     try {
       if (transaction) {
         await api.put(`/transactions/${transaction.id}`, formData);
@@ -77,7 +114,7 @@ export default function TransactionForm({ accounts, categories, transaction, onS
         <Label htmlFor="type">Tipo</Label>
         <Select
           value={formData.type}
-          onValueChange={(value) => setFormData({ ...formData, type: value as 'income' | 'expense' })}
+          onValueChange={(value) => handleTypeChange(value as 'income' | 'expense')}
         >
           <SelectTrigger>
             <SelectValue placeholder="Selecione o tipo" />
@@ -99,7 +136,7 @@ export default function TransactionForm({ accounts, categories, transaction, onS
             <SelectValue placeholder="Selecione uma conta" />
           </SelectTrigger>
           <SelectContent>
-            {accounts.map((account) => (
+            {Array.isArray(accounts) && accounts.map((account) => (
               <SelectItem key={account.id} value={account.id.toString()}>
                 {account.bankName} - {account.accountType} (Saldo: {new Intl.NumberFormat('pt-BR', {
                   style: 'currency',
@@ -116,20 +153,33 @@ export default function TransactionForm({ accounts, categories, transaction, onS
         <Select
           value={formData.category_id.toString()}
           onValueChange={(value) => setFormData({ ...formData, category_id: parseInt(value) })}
+          disabled={filteredCategories.length === 0}
         >
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione uma categoria" />
+          <SelectTrigger className={!isCategoryCompatible && formData.category_id ? 'border-red-500' : ''}>
+            <SelectValue placeholder={
+              filteredCategories.length === 0 
+                ? `Nenhuma categoria de ${formData.type === 'income' ? 'receita' : 'despesa'} disponível`
+                : "Selecione uma categoria"
+            } />
           </SelectTrigger>
           <SelectContent>
-            {categories
-              .filter((category) => category.type === formData.type)
-              .map((category) => (
-                <SelectItem key={category.id} value={category.id.toString()}>
-                  {category.name}
-                </SelectItem>
-              ))}
+            {filteredCategories.map((category) => (
+              <SelectItem key={category.id} value={category.id.toString()}>
+                {category.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+        {!isCategoryCompatible && formData.category_id && (
+          <p className="text-sm text-red-500 mt-1">
+            A categoria selecionada não é compatível com o tipo de transação
+          </p>
+        )}
+        {filteredCategories.length === 0 && (
+          <p className="text-sm text-amber-600 mt-1">
+            Crie categorias de {formData.type === 'income' ? 'receita' : 'despesa'} na página de Categorias
+          </p>
+        )}
       </div>
 
       <div>
