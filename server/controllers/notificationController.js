@@ -549,6 +549,145 @@ const getJobStats = async (req, res) => {
   }
 };
 
+/**
+ * Reprocessa notificações específicas para um usuário.
+ * Permite recriar notificações de pagamentos vencidos, lembretes gerais, etc.
+ * @param {Object} req - Objeto de requisição Express.
+ * @param {string} req.userId - ID do usuário autenticado (admin).
+ * @param {Object} req.body - Dados da requisição.
+ * @param {number} req.body.targetUserId - ID do usuário alvo.
+ * @param {string} req.body.notificationType - Tipo de notificação a reprocessar (payment_check, general_reminders, all).
+ * @param {boolean} req.body.clearExisting - Se deve limpar notificações existentes antes de reprocessar.
+ * @param {Object} res - Objeto de resposta Express.
+ * @returns {Promise<Object>} Resultado do reprocessamento.
+ * @example
+ * // POST /notifications/reprocess
+ * // Body: { targetUserId: 123, notificationType: "payment_check", clearExisting: true }
+ * // Retorno: { message: "Notificações reprocessadas com sucesso", data: {...} }
+ */
+const reprocessNotifications = async (req, res) => {
+  try {
+    const { targetUserId, notificationType = 'all', clearExisting = false } = req.body;
+
+    // Validações
+    if (!targetUserId) {
+      throw new ValidationError('ID do usuário alvo é obrigatório');
+    }
+
+    if (!['payment_check', 'general_reminders', 'all'].includes(notificationType)) {
+      throw new ValidationError('Tipo de notificação deve ser: payment_check, general_reminders ou all');
+    }
+
+    // Verificar se o usuário alvo existe
+    const targetUser = await User.findByPk(targetUserId);
+    if (!targetUser) {
+      throw new NotFoundError('Usuário alvo não encontrado');
+    }
+
+    // Verificar se o usuário alvo está ativo
+    if (!targetUser.isActive) {
+      throw new ValidationError('Usuário alvo está inativo');
+    }
+
+    // Importar serviços necessários
+    const notificationJobs = require('../services/notificationJobs');
+    const { logger } = require('../utils/logger');
+
+    let result = {
+      targetUserId: parseInt(targetUserId),
+      notificationType,
+      clearExisting,
+      notificationsCreated: 0,
+      notificationsRemoved: 0,
+      jobsExecuted: []
+    };
+
+    // Limpar notificações existentes se solicitado
+    if (clearExisting) {
+      const whereClause = {
+        userId: targetUserId,
+        isActive: true
+      };
+
+      // Filtrar por tipo se não for 'all'
+      if (notificationType !== 'all') {
+        const typeMap = {
+          'payment_check': ['payment_overdue', 'payment_due_today', 'payment_due', 'payment_reminder'],
+          'general_reminders': ['general_reminder', 'financing_summary', 'account_balance']
+        };
+        whereClause.type = { [Op.in]: typeMap[notificationType] };
+      }
+
+      const removedCount = await Notification.update(
+        { isActive: false },
+        { where: whereClause }
+      );
+
+      result.notificationsRemoved = removedCount[0];
+      logger.info(`[REPROCESS] Removidas ${result.notificationsRemoved} notificações existentes para usuário ${targetUserId}`);
+    }
+
+    // Executar jobs específicos
+    if (notificationType === 'payment_check' || notificationType === 'all') {
+      logger.info(`[REPROCESS] Executando job de verificação de pagamentos para usuário ${targetUserId}`);
+      
+      // Executar job de verificação de pagamentos
+      await notificationJobs.createPaymentDueNotifications(targetUserId);
+      result.jobsExecuted.push('payment_check');
+    }
+
+    if (notificationType === 'general_reminders' || notificationType === 'all') {
+      logger.info(`[REPROCESS] Executando job de lembretes gerais para usuário ${targetUserId}`);
+      
+      // Executar job de lembretes gerais
+      await notificationJobs.createGeneralReminders(targetUserId);
+      result.jobsExecuted.push('general_reminders');
+    }
+
+    // Contar notificações criadas recentemente
+    const recentNotifications = await Notification.count({
+      where: {
+        userId: targetUserId,
+        isActive: true,
+        createdAt: {
+          [Op.gte]: new Date(Date.now() - 5 * 60 * 1000) // Últimos 5 minutos
+        }
+      }
+    });
+
+    result.notificationsCreated = recentNotifications;
+
+    // Log da operação
+    logger.info(`[REPROCESS] Reprocessamento concluído para usuário ${targetUserId}`, {
+      targetUserId,
+      notificationType,
+      clearExisting,
+      notificationsCreated: result.notificationsCreated,
+      notificationsRemoved: result.notificationsRemoved,
+      jobsExecuted: result.jobsExecuted,
+      adminUserId: req.userId
+    });
+
+    return successResponse(
+      res,
+      result,
+      `Notificações reprocessadas com sucesso para o usuário ${targetUser.name}`,
+      200
+    );
+
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return errorResponse(res, error.message, 400);
+    }
+    if (error instanceof NotFoundError) {
+      return errorResponse(res, error.message, 404);
+    }
+    
+    console.error('Erro ao reprocessar notificações:', error);
+    return errorResponse(res, 'Erro interno do servidor', 500);
+  }
+};
+
 module.exports = {
   listNotifications,
   markAsRead,
@@ -559,4 +698,5 @@ module.exports = {
   createPaymentDueNotifications,
   getJobHistory,
   getJobStats,
-}; 
+  reprocessNotifications,
+};

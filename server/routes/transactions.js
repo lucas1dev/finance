@@ -9,11 +9,8 @@ router.use(auth);
 // Rotas de transações
 router.post('/', transactionController.createTransaction);
 router.get('/', transactionController.getTransactions);
-router.get('/categories', transactionController.getCategories);
-router.get('/summary', transactionController.getSummary);
 router.get('/stats', transactionController.getStats);
 router.get('/charts', transactionController.getCharts);
-router.get('/balance', transactionController.getBalanceByPeriod);
 router.get('/:id', transactionController.getTransaction);
 router.put('/:id', transactionController.updateTransaction);
 router.delete('/:id', transactionController.deleteTransaction);

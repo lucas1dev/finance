@@ -1,7 +1,5 @@
-const { Customer, Receivable, sequelize } = require('../models');
-const { validateCPF, validateCNPJ } = require('../utils/documentValidator');
+const customerService = require('../services/customerService');
 const { createCustomerSchema, updateCustomerSchema } = require('../utils/validators');
-const { Op } = require('sequelize');
 
 class CustomerController {
   /**
@@ -15,22 +13,15 @@ class CustomerController {
    * @example
    * // GET /api/customers?type=customer
    * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: [{ id: 1, name: 'João', ... }]
+   * // Retorno: { "success": true, "data": [{ id: 1, name: 'João', ... }] }
    */
-  async index(req, res) {
+  async index(req, res, next) {
     try {
       const { type } = req.query;
-      const where = { user_id: req.user.id };
-
-      const customers = await Customer.findAll({
-        where,
-        order: [['name', 'ASC']]
-      });
-
-      res.json(customers);
+      const customers = await customerService.listCustomers(req.user.id, type);
+      res.json({ success: true, data: customers });
     } catch (error) {
-      console.error('Erro ao buscar clientes:', error);
-      res.status(500).json({ error: 'Erro ao buscar clientes' });
+      next(error);
     }
   }
 
@@ -45,33 +36,14 @@ class CustomerController {
    * @example
    * // GET /api/customers/1
    * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { id: 1, name: 'João', ... }
+   * // Retorno: { "success": true, "data": { customer: {...} } }
    */
-  async show(req, res) {
+  async show(req, res, next) {
     try {
-      const customer = await Customer.findOne({
-        where: { id: req.params.id },
-        include: [
-          {
-            model: Receivable,
-            as: 'receivables',
-            attributes: ['id', 'amount', 'due_date', 'status']
-          }
-        ]
-      });
-
-      if (!customer) {
-        return res.status(404).json({ error: 'Cliente não encontrado' });
-      }
-
-      if (customer.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      res.json(customer);
+      const customer = await customerService.getCustomer(req.user.id, req.params.id);
+      res.json({ success: true, data: { customer } });
     } catch (error) {
-      console.error('Erro ao buscar cliente:', error);
-      res.status(500).json({ error: 'Erro ao buscar cliente' });
+      next(error);
     }
   }
 
@@ -91,56 +63,15 @@ class CustomerController {
    * @example
    * // POST /customers
    * // Body: { "name": "João Silva", "documentType": "CPF", "document": "12345678900", "email": "joao@example.com" }
-   * // Retorno: { "id": 1, "message": "Cliente criado com sucesso" }
+   * // Retorno: { "success": true, "data": { customer: {...} } }
    */
-  async create(req, res) {
+  async create(req, res, next) {
     try {
-      // Validar dados de entrada
       const validatedData = createCustomerSchema.parse(req.body);
-      const { name, documentType, document, email, phone } = validatedData;
-
-      // Validação do documento
-      const isValidDocument = documentType === 'CPF' 
-        ? validateCPF(document)
-        : validateCNPJ(document);
-
-      if (!isValidDocument) {
-        return res.status(400).json({ error: 'Documento inválido' });
-      }
-
-      // Verificar se já existe cliente com o mesmo documento
-      const existingCustomer = await Customer.findOne({
-        where: { 
-          user_id: req.user.id,
-          document: document,
-          document_type: documentType
-        }
-      });
-
-      if (existingCustomer) {
-        return res.status(400).json({ error: 'Já existe um cliente com este documento' });
-      }
-
-      // Criar cliente
-      const customer = await Customer.create({
-        user_id: req.user.id,
-        name,
-        document_type: documentType,
-        document,
-        email: email || null,
-        phone: phone || null
-      });
-
-      res.status(201).json({
-        id: customer.id,
-        message: 'Cliente criado com sucesso'
-      });
+      const customer = await customerService.createCustomer(req.user.id, validatedData);
+      res.status(201).json({ success: true, data: { customer } });
     } catch (error) {
-      if (error.name === 'ZodError') {
-        return res.status(400).json({ error: 'Nome, tipo e número do documento são obrigatórios' });
-      }
-      console.error('Erro ao criar cliente:', error);
-      res.status(500).json({ error: 'Erro ao criar cliente' });
+      next(error);
     }
   }
 
@@ -161,151 +92,58 @@ class CustomerController {
    * @example
    * // PUT /customers/1
    * // Body: { "name": "João Silva Atualizado", "email": "joao.novo@example.com" }
-   * // Retorno: { "message": "Cliente atualizado com sucesso" }
+   * // Retorno: { "success": true, "data": { customer: {...} } }
    */
-  async update(req, res) {
+  async update(req, res, next) {
     try {
-      console.log('📝 Dados recebidos para atualização:', req.body);
-      
-      // Validar dados de entrada
       const validatedData = updateCustomerSchema.parse(req.body);
-      const { name, documentType, document, email, phone } = validatedData;
-
-      console.log('✅ Dados validados:', validatedData);
-
-      // Buscar cliente
-      const customer = await Customer.findOne({
-        where: { id: req.params.id }
-      });
-
-      if (!customer) {
-        return res.status(404).json({ error: 'Cliente não encontrado' });
-      }
-
-      if (customer.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      // Validação do documento se fornecido
-      if (document && documentType) {
-        const isValidDocument = documentType === 'CPF' 
-          ? validateCPF(document)
-          : validateCNPJ(document);
-
-        if (!isValidDocument) {
-          return res.status(400).json({ error: 'Documento inválido' });
-        }
-
-        // Verificar se o novo documento já existe em outro cliente
-        const existingCustomer = await Customer.findOne({
-          where: { 
-            user_id: req.user.id,
-            document: document,
-            document_type: documentType,
-            id: { [Op.ne]: customer.id }
-          }
-        });
-
-        if (existingCustomer) {
-          return res.status(400).json({ error: 'Já existe outro cliente com este documento' });
-        }
-      }
-
-      // Preparar dados para atualização
-      const updateData = {};
-      
-      if (name !== undefined) updateData.name = name;
-      if (documentType !== undefined) updateData.document_type = documentType;
-      if (document !== undefined) updateData.document = document;
-      if (email !== undefined) updateData.email = email || null;
-      if (phone !== undefined) updateData.phone = phone || null;
-
-      console.log('🔄 Dados para atualização:', updateData);
-
-      // Atualizar cliente
-      await customer.update(updateData);
-
-      console.log('✅ Cliente atualizado com sucesso');
-
-      res.json({ 
-        message: 'Cliente atualizado com sucesso',
-        customer: {
-          id: customer.id,
-          name: customer.name,
-          documentType: customer.document_type,
-          document: customer.document,
-          email: customer.email,
-          phone: customer.phone
-        }
-      });
+      const customer = await customerService.updateCustomer(req.user.id, req.params.id, validatedData);
+      res.json({ success: true, data: { customer } });
     } catch (error) {
-      console.error('❌ Erro ao atualizar cliente:', error);
-      
-      if (error.name === 'ZodError') {
-        return res.status(400).json({ 
-          error: 'Dados inválidos',
-          details: error.errors 
-        });
-      }
-      
-      res.status(500).json({ error: 'Erro ao atualizar cliente' });
+      next(error);
     }
   }
 
-  async delete(req, res) {
+  /**
+   * Exclui um cliente existente.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.params.id - ID do cliente.
+   * @param {Object} req.user - Usuário autenticado (via JWT).
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Mensagem de sucesso.
+   * @throws {Error} Se o cliente não for encontrado ou tiver contas a receber.
+   * @example
+   * // DELETE /customers/1
+   * // Retorno: { "success": true, "data": { "message": "Cliente excluído com sucesso" } }
+   */
+  async delete(req, res, next) {
     try {
-      const customer = await Customer.findOne({
-        where: { id: req.params.id }
-      });
-
-      if (!customer) {
-        return res.status(404).json({ error: 'Cliente não encontrado' });
-      }
-
-      if (customer.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      // Verificar se existem contas a receber associadas
-      const hasReceivables = await Receivable.findOne({
-        where: { customer_id: customer.id }
-      });
-
-      if (hasReceivables) {
-        return res.status(400).json({ error: 'Não é possível excluir um cliente com contas a receber' });
-      }
-
-      await customer.destroy();
-      res.json({ message: 'Cliente excluído com sucesso' });
+      await customerService.deleteCustomer(req.user.id, req.params.id);
+      res.json({ success: true, data: { message: 'Cliente excluído com sucesso' } });
     } catch (error) {
-      console.error('Erro ao excluir cliente:', error);
-      res.status(500).json({ error: 'Erro ao excluir cliente' });
+      next(error);
     }
   }
 
-  async getCustomerReceivables(req, res) {
+  /**
+   * Obtém as contas a receber de um cliente específico.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.params.id - ID do cliente.
+   * @param {Object} req.user - Usuário autenticado (via JWT).
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object[]>} Lista de contas a receber em formato JSON.
+   * @throws {Error} Se o cliente não for encontrado ou não pertencer ao usuário.
+   * @example
+   * // GET /api/customers/1/receivables
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Retorno: { "success": true, "data": { receivables: [...] } }
+   */
+  async getCustomerReceivables(req, res, next) {
     try {
-      const customer = await Customer.findOne({
-        where: { id: req.params.id }
-      });
-
-      if (!customer) {
-        return res.status(404).json({ error: 'Cliente não encontrado' });
-      }
-
-      if (customer.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      const receivables = await Receivable.findAll({
-        where: { customer_id: customer.id },
-        order: [['due_date', 'ASC']]
-      });
-
-      res.json(receivables);
+      const receivables = await customerService.getCustomerReceivables(req.user.id, req.params.id);
+      res.json({ success: true, data: { receivables } });
     } catch (error) {
-      console.error('Erro ao buscar contas a receber do cliente:', error);
-      res.status(500).json({ error: 'Erro ao buscar contas a receber do cliente' });
+      next(error);
     }
   }
 }

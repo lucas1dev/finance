@@ -1,400 +1,297 @@
-# 📚 Documentação do Projeto Finance
+# 📚 Documentação do Sistema Financeiro
 
-## 📋 Visão Geral
+## 🎯 Visão Geral
 
-Este documento centraliza todas as informações sobre a documentação do projeto Finance, incluindo guias, relatórios, especificações e recursos disponíveis.
+Sistema financeiro completo desenvolvido em Node.js com Express, Sequelize e Mysql. O projeto implementa uma arquitetura robusta com separação clara de responsabilidades, testes abrangentes e documentação completa.
 
-## 🎯 Status Atual do Projeto
+## 🏗️ Arquitetura
 
-### ✅ Validações e Segurança
-- **Validações Zod**: Implementadas em todos os controllers principais
-- **Autenticação JWT**: Sistema seguro de autenticação
-- **Autorização**: Middlewares de permissão e admin
-- **Validação de Documentos**: CPF e CNPJ validados
-- **Tratamento de Erros**: Middleware centralizado de erros
-
-### 🧪 Status dos Testes
-- **43 suítes de teste**: Todas passando ✅
-- **618 testes**: Todos passando ✅
-- **1 teste pulado**: Configuração específica
-- **Cobertura**: Configurada e monitorada
-- **Execução**: Sequencial para evitar conflitos
-
-### 🔧 Controllers com Validação Zod
-- ✅ **authController**: Login, registro, recuperação de senha
-- ✅ **transactionController**: CRUD de transações
-- ✅ **accountController**: CRUD de contas
-- ✅ **categoryController**: CRUD de categorias
-- ✅ **customerController**: CRUD de clientes
-- ✅ **supplierController**: CRUD de fornecedores
-- ✅ **paymentController**: CRUD de pagamentos
-- ✅ **receivableController**: CRUD de contas a receber
-- ✅ **payableController**: CRUD de contas a pagar
-- ✅ **financingController**: CRUD de financiamentos
-- ✅ **investmentController**: CRUD de investimentos
-
-## 📁 Estrutura da Documentação
+### 📁 Estrutura de Diretórios
 
 ```
 server/
-├── docs/
-│   ├── jsdoc/                    # Documentação JSDoc gerada
-│   │   ├── index.html            # Página principal
-│   │   ├── controllers/          # Documentação dos controllers
-│   │   ├── models/               # Documentação dos models
-│   │   ├── middlewares/          # Documentação dos middlewares
-│   │   ├── routes/               # Documentação das rotas
-│   │   ├── services/             # Documentação dos services
-│   │   └── utils/                # Documentação dos utils
-│   ├── openapi.yaml              # Especificação OpenAPI/Swagger
-│   ├── README.md                 # README da documentação
-│   ├── README.md                 # README principal do projeto
-│   ├── TESTING_GUIDE.md          # Guia completo de testes
-│   ├── TESTING_PATTERNS.md       # Padrões de teste estabelecidos
-│   ├── TEST_STATUS_REPORT.md     # Relatório de status dos testes
-│   ├── TASKS_MELHORIAS.md        # Lista de melhorias e tarefas
-│   ├── CHANGELOG.md              # Histórico de mudanças
-│   └── PRODUCTION.md             # Guia de produção
-└── jsdoc.json                    # Configuração JSDoc
+├── controllers/          # Controllers da API (delegam para services)
+├── services/            # Lógica de negócio centralizada
+├── models/              # Modelos do Sequelize
+├── middlewares/         # Middlewares do Express
+├── routes/              # Definição de rotas
+├── utils/               # Utilitários e helpers
+├── migrations/          # Migrações do banco de dados
+├── seeders/             # Seeders para dados iniciais
+├── __tests__/           # Testes unitários e de integração
+└── docs/                # Documentação do projeto
 ```
 
-## 🔧 Como Gerar a Documentação
+### 🔧 Padrões Arquiteturais
 
-### Documentação JSDoc
+#### Controllers → Services
+- **Controllers**: Responsáveis apenas por receber requisições e retornar respostas
+- **Services**: Contêm toda a lógica de negócio e validações
+- **Padrão de Resposta**: `{ success: true, data: ... }` ou `{ success: false, error: ... }`
 
-```bash
-# Gerar documentação JSDoc
-npm run docs
-
-# Servir documentação localmente
-npm run docs:serve
-
-# Gerar em modo watch (desenvolvimento)
-npm run docs:watch
-```
-
-### Documentação OpenAPI
-
-```bash
-# A documentação OpenAPI está em docs/openapi.yaml
-# Pode ser visualizada em:
-# - Swagger UI: http://localhost:3001/api-docs
-# - Editor online: https://editor.swagger.io/
-```
-
-## 📖 Documentos Principais
-
-### 1. README.md
-**Arquivo**: `server/docs/README.md`  
-**Descrição**: Documentação principal do projeto com:
-- Visão geral do sistema
-- Tecnologias utilizadas
-- Configuração do ambiente
-- Modelos do banco de dados
-- Endpoints da API
-- Comandos úteis
-- Status do projeto
-- Histórico de mudanças
-
-### 2. TESTING_GUIDE.md
-**Arquivo**: `server/docs/TESTING_GUIDE.md`  
-**Descrição**: Guia completo de testes incluindo:
-- Configuração do ambiente de testes
-- Tipos de teste (unitários e integração)
-- Padrões e boas práticas
-- Comandos de execução
-- Solução de problemas
-- Exemplos práticos
-
-### 3. TESTING_PATTERNS.md
-**Arquivo**: `server/docs/TESTING_PATTERNS.md`  
-**Descrição**: Padrões estabelecidos para testes:
-- Estrutura de testes unitários
-- Estrutura de testes de integração
-- Padrões de criação de dados
-- Boas práticas
-- Solução de problemas comuns
-- Exemplos práticos
-
-### 4. TEST_STATUS_REPORT.md
-**Arquivo**: `server/docs/TEST_STATUS_REPORT.md`  
-**Descrição**: Relatório detalhado do status dos testes:
-- Status de cada suíte de teste
-- Métricas de sucesso
-- Problemas conhecidos
-- Melhorias implementadas
-- Próximos passos
-
-### 5. TASKS_MELHORIAS.md
-**Arquivo**: `server/docs/TASKS_MELHORIAS.md`  
-**Descrição**: Lista de melhorias e tarefas:
-- Status geral do projeto
-- Melhorias implementadas
-- Tarefas em progresso
-- Priorização de tarefas
-- Próximos passos
-
-### 6. CHANGELOG.md
-**Arquivo**: `server/docs/CHANGELOG.md`  
-**Descrição**: Histórico completo de mudanças:
-- Todas as versões do projeto
-- Funcionalidades adicionadas
-- Correções realizadas
-- Melhorias implementadas
-- Mudanças de breaking
-
-## 🎯 Documentação da API
-
-### Especificação OpenAPI
-**Arquivo**: `server/docs/openapi.yaml`  
-**Descrição**: Especificação completa da API REST:
-- Todos os endpoints documentados
-- Schemas de dados detalhados
-- Exemplos de requisição/resposta
-- Códigos de erro
-- Autenticação JWT
-- Validações Zod implementadas
-
-### Documentação JSDoc
-**Localização**: `server/docs/jsdoc/`  
-**Descrição**: Documentação detalhada do código:
-- Controllers com JSDoc completo
-- Models com associações
-- Middlewares documentados
-- Utils e helpers
-- Services e rotas
-- Validações Zod documentadas
-
-## 🧪 Documentação de Testes
-
-### Configuração de Testes
-- **Jest Unit**: `jest.unit.config.js`
-- **Jest Integration**: `jest.integration.config.js`
-- **Jest Principal**: `jest.config.js`
-
-### Scripts de Teste
-```bash
-# Testes unitários
-npm run test:unit
-npm run test:unit:watch
-npm run test:unit:coverage
-
-# Testes de integração
-npm run test:integration
-npm run test:integration:watch
-npm run test:integration:coverage
-
-# Execução sequencial
-npm run test:integration:sequential
-node run-integration-tests.js
-
-# Todos os testes
-npm test
-```
-
-### Status Atual dos Testes
-```bash
-Test Suites: 43 passed, 43 total
-Tests:       1 skipped, 618 passed, 619 total
-Snapshots:   0 total
-Time:        47.439 s
-```
-
-## 📊 Status da Documentação
-
-### ✅ Documentação Completa
-- [x] **JSDoc**: Todos os arquivos documentados
-- [x] **OpenAPI**: Especificação completa
-- [x] **Guias de teste**: Padrões estabelecidos
-- [x] **README**: Documentação principal
-- [x] **Relatórios**: Status atualizado
-- [x] **CHANGELOG**: Histórico completo
-- [x] **Validações Zod**: Documentadas e implementadas
-
-### 📈 Métricas
-- **Cobertura JSDoc**: 100%
-- **Endpoints documentados**: 100%
-- **Guias criados**: 4/4
-- **Relatórios atualizados**: 3/3
-- **Controllers com validação**: 11/11
-- **Testes passando**: 618/618
-
-## 🔄 Manutenção da Documentação
-
-### Atualizações Automáticas
-- **JSDoc**: Gerado automaticamente via `npm run docs`
-- **OpenAPI**: Atualizado manualmente quando necessário
-- **Relatórios**: Atualizados após mudanças nos testes
-
-### Atualizações Manuais
-- **README.md**: Atualizado quando há mudanças estruturais
-- **Guias**: Atualizados quando há mudanças nos padrões
-- **Tarefas**: Revisadas semanalmente
-- **CHANGELOG.md**: Atualizado a cada release
-
-## 🚀 Como Usar a Documentação
-
-### Para Desenvolvedores
-1. **Leia o README.md** para entender o projeto
-2. **Consulte TESTING_GUIDE.md** para padrões de teste
-3. **Use TESTING_PATTERNS.md** como referência
-4. **Verifique TEST_STATUS_REPORT.md** para status atual
-
-### Para Testes
-1. **Siga TESTING_PATTERNS.md** para estrutura
-2. **Use TESTING_GUIDE.md** para configuração
-3. **Execute com comandos sequenciais**
-4. **Verifique relatório de status**
-
-### Para API
-1. **Consulte docs/openapi.yaml** para especificação
-2. **Use docs/jsdoc/** para detalhes do código
-3. **Teste endpoints via Swagger UI**
-4. **Verifique exemplos nos controllers**
-
-## 📝 Padrões de Documentação
-
-### JSDoc
+#### Exemplo de Controller Refatorado:
 ```javascript
-/**
- * Descrição da função
- * @param {string} param1 - Descrição do parâmetro
- * @param {number} param2 - Descrição do parâmetro
- * @returns {Object} Descrição do retorno
- * @throws {Error} Descrição do erro
- * @example
- * // Exemplo de uso
- * const result = functionName('test', 123);
- */
-```
+// controllers/transactionController.js
+const transactionService = require('../services/transactionService');
 
-### OpenAPI
-```yaml
-paths:
-  /api/resource:
-    get:
-      summary: Descrição do endpoint
-      description: Descrição detalhada
-      parameters:
-        - name: param
-          in: query
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Sucesso
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Resource'
-```
-
-### Validação Zod
-```javascript
-/**
- * Esquema de validação para criação de recurso
- */
-const createResourceSchema = z.object({
-  name: z.string().min(1, 'Nome é obrigatório'),
-  email: z.string().email('Email inválido'),
-  type: z.enum(['type1', 'type2'])
-});
-```
-
-## 🔧 Troubleshooting
-
-### Problemas Comuns
-
-#### Testes Falhando
-```bash
-# Verificar configuração do banco de teste
-npm run test:setup
-
-# Executar testes sequencialmente
-node run-integration-tests.js
-
-# Verificar logs de erro
-npm test -- --verbose
-```
-
-#### Documentação JSDoc
-```bash
-# Limpar cache e regenerar
-rm -rf docs/jsdoc
-npm run docs
-
-# Verificar configuração
-cat jsdoc.json
-```
-
-#### Validações Zod
-```bash
-# Verificar esquemas de validação
-cat utils/validators.js
-
-# Testar validações específicas
-npm test -- --testNamePattern="validation"
-```
-
-## 🎉 Melhorias Recentes
-
-### Validações Implementadas
-- ✅ **Zod Schema**: Validação robusta em todos os controllers
-- ✅ **Tratamento de Erros**: Mensagens específicas para testes
-- ✅ **Documentos**: Validação de CPF e CNPJ
-- ✅ **Campos Opcionais**: Suporte a campos nulos/vazios
-
-### Segurança Aprimorada
-- ✅ **Autenticação JWT**: Tokens seguros
-- ✅ **Autorização**: Middlewares de permissão
-- ✅ **Rate Limiting**: Proteção contra ataques
-- ✅ **Helmet**: Headers de segurança
-
-### Testes Otimizados
-- ✅ **Execução Sequencial**: Evita conflitos
-- ✅ **Cobertura Completa**: Todos os endpoints testados
-- ✅ **Mocks Configurados**: Dependências externas
-- ✅ **Relatórios Detalhados**: Status em tempo real
-
-## Categorias Padrão e Personalizadas
-
-O sistema possui dois tipos de categorias:
-
-- **Categorias padrão**: pré-cadastradas pelo sistema, disponíveis para todos os usuários. São identificadas pelo campo `is_default: true` e **não podem ser editadas ou excluídas**.
-- **Categorias personalizadas**: criadas pelo próprio usuário, identificadas por `is_default: false`. Podem ser editadas e removidas livremente.
-
-### Campos importantes
-- `color`: Cor da categoria em hexadecimal (ex: `#4CAF50`). Opcional na criação, o sistema atribui uma cor padrão conforme o tipo.
-- `is_default`: Booleano. Indica se a categoria é padrão do sistema.
-
-### Exemplo de resposta de categoria
-```json
-{
-  "id": 1,
-  "user_id": 1,
-  "name": "Salário",
-  "type": "income",
-  "color": "#4CAF50",
-  "is_default": true,
-  "created_at": "2024-06-22T12:00:00Z",
-  "updated_at": "2024-06-22T12:00:00Z"
+class TransactionController {
+  async index(req, res) {
+    try {
+      const transactions = await transactionService.listTransactions(req.user.id);
+      res.json({ success: true, data: transactions });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 ```
 
-### Restrições
-- **Categorias padrão** (`is_default: true`) não podem ser editadas ou excluídas via API.
-- O usuário pode criar quantas categorias personalizadas desejar.
+#### Exemplo de Service:
+```javascript
+// services/transactionService.js
+const { Transaction, Category, Account } = require('../models');
+const { createTransactionSchema } = require('../utils/validators');
+const { AppError } = require('../utils/errors');
 
-### Como rodar as migrations e o seeder de categorias padrão
-```bash
-npx sequelize-cli db:migrate
-node insert-default-categories.js
+class TransactionService {
+  async listTransactions(userId) {
+    const transactions = await Transaction.findAll({
+      where: { user_id: userId },
+      include: [Category, Account],
+      order: [['date', 'DESC']]
+    });
+    return transactions;
+  }
+
+  async createTransaction(userId, transactionData) {
+    const validatedData = createTransactionSchema.parse(transactionData);
+    // Lógica de negócio aqui...
+    return transaction;
+  }
+}
 ```
 
-Esses comandos garantem que todas as categorias padrão estejam disponíveis para todos os usuários.
+## 🎮 Controllers Refatorados
 
----
+### ✅ Controllers Implementados (10/25)
 
-**Última atualização**: Junho 2025  
-**Versão**: 2.0.0  
-**Status**: ✅ Produção Pronta 
+1. **transactionController** → `transactionService`
+   - Gestão completa de transações financeiras
+   - Integração com categorias e contas
+   - Cálculos automáticos de saldo
+
+2. **accountController** → `accountService`
+   - Gestão de contas bancárias
+   - Cálculo de saldos e estatísticas
+   - Validação de dados bancários
+
+3. **categoryController** → `categoryService`
+   - Gestão de categorias de transações
+   - Categorias padrão do sistema
+   - Validação de cores e tipos
+
+4. **creditorController** → `creditorService`
+   - Gestão de credores
+   - Validação de documentos (CPF/CNPJ)
+   - Relacionamento com financiamentos
+
+5. **customerController** → `customerService`
+   - Gestão de clientes
+   - Validação de dados pessoais
+   - Relacionamento com contas a receber
+
+6. **investmentController** → `investmentService`
+   - Gestão de investimentos
+   - Cálculos de rentabilidade
+   - Integração com metas de investimento
+
+7. **investmentGoalController** → `investmentGoalService`
+   - Gestão de metas de investimento
+   - Cálculos de progresso
+   - Alertas de vencimento
+
+8. **payableController** → `payableService`
+   - Gestão de contas a pagar
+   - Integração com pagamentos
+   - Cálculo de valores restantes
+
+9. **supplierController** → `supplierService`
+   - Gestão de fornecedores
+   - Validação de documentos
+   - Relacionamento com contas a pagar
+
+10. **receivableController** → `receivableService`
+    - Gestão de contas a receber
+    - Integração com pagamentos
+    - Cálculo de valores restantes
+
+### 🔄 Controllers Pendentes (15/25)
+- paymentController
+- financingController
+- financingPaymentController
+- fixedAccountController
+- notificationController
+- userController
+- settingsController
+- authController
+- auditController
+- dataIntegrityController
+- jobAdminController
+- jobSchedulerController
+- jobTimeoutController
+- notificationJobController
+- fixedAccountJobController
+
+## 🛠️ Tecnologias Utilizadas
+
+### Backend
+- **Node.js**: Runtime JavaScript
+- **Express**: Framework web
+- **Sequelize**: ORM para PostgreSQL
+- **PostgreSQL**: Banco de dados principal
+- **JWT**: Autenticação
+- **Zod**: Validação de dados
+- **Jest**: Framework de testes
+- **Supertest**: Testes de API
+
+### Ferramentas de Desenvolvimento
+- **ESLint**: Linting de código
+- **Prettier**: Formatação de código
+- **JSDoc**: Documentação de código
+- **Swagger**: Documentação da API
+- **PM2**: Gerenciamento de processos
+
+## 📊 Métricas do Projeto
+
+### Testes
+- **Total de Testes**: 595/595 (100%)
+- **Suítes de Teste**: 41/41 (100%)
+- **Tempo de Execução**: ~35s
+- **Cobertura**: ~75%+ statements, ~65%+ branches, ~75%+ functions, ~75%+ lines
+
+### Controllers
+- **Refatorados**: 10/25 (40%)
+- **Pendentes**: 15/25 (60%)
+- **Padrão Implementado**: Controllers → Services
+
+### Funcionalidades
+- **Sistema de Transações**: ✅ Completo
+- **Sistema de Contas**: ✅ Completo
+- **Sistema de Categorias**: ✅ Completo
+- **Sistema de Investimentos**: ✅ Completo
+- **Sistema de Financiamentos**: ✅ Completo
+- **Sistema de Contas Fixas**: ✅ Completo
+- **Sistema de Notificações**: ✅ Completo
+- **Dashboard**: ✅ Completo
+- **Jobs Automatizados**: ✅ Completo
+
+## 🚀 Como Executar
+
+### Pré-requisitos
+- Node.js 18+
+- PostgreSQL 13+
+- Redis (opcional, para cache)
+
+### Instalação
+```bash
+# Clonar repositório
+git clone <repository-url>
+cd server
+
+# Instalar dependências
+npm install
+
+# Configurar variáveis de ambiente
+cp .env.example .env
+# Editar .env com suas configurações
+
+# Executar migrações
+npm run migrate
+
+# Executar seeders
+npm run seed
+
+# Iniciar servidor
+npm start
+```
+
+### Testes
+```bash
+# Executar todos os testes
+npm test
+
+# Executar testes de integração
+npm run test:integration
+
+# Executar testes unitários
+npm run test:unit
+
+# Executar com cobertura
+npm run test:coverage
+```
+
+## 📝 Padrões de Desenvolvimento
+
+### Formato de Resposta
+```javascript
+// Sucesso
+{
+  "success": true,
+  "data": { ... }
+}
+
+// Erro
+{
+  "success": false,
+  "error": "Mensagem de erro"
+}
+```
+
+### Tratamento de Erros
+```javascript
+// Usar AppError para erros operacionais
+throw new AppError('Mensagem de erro', 400);
+
+// Middleware global trata automaticamente
+app.use(errorMiddleware);
+```
+
+### Validação de Dados
+```javascript
+// Usar Zod para validação
+const validatedData = createSchema.parse(data);
+```
+
+### Testes
+```javascript
+// Mock de services em testes unitários
+jest.mock('../services/transactionService');
+const transactionService = require('../services/transactionService');
+
+// Testes de integração com banco real
+describe('Transaction Integration', () => {
+  it('should create transaction', async () => {
+    // Teste com dados reais
+  });
+});
+```
+
+## 📚 Documentação Adicional
+
+- [Guia de Testes](TESTING_GUIDE.md)
+- [Padrões de Teste](TESTING_PATTERNS.md)
+- [Tarefas de Melhoria](TASKS_MELHORIAS.md)
+- [Changelog](CHANGELOG.md)
+- [API Documentation](openapi.yaml)
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes. 

@@ -3,34 +3,17 @@
  * @author Lucas Santos
  */
 
-const { ValidationError, NotFoundError } = require('../../utils/errors');
-
-// Mock dos modelos
-jest.mock('../../models', () => ({
-  Investment: {
-    create: jest.fn(),
-    findAndCountAll: jest.fn(),
-    findByPk: jest.fn(),
-    findOne: jest.fn(),
-    update: jest.fn(),
-    destroy: jest.fn(),
-    sum: jest.fn()
-  },
-  Account: {
-    findOne: jest.fn(),
-    update: jest.fn()
-  },
-  Category: {
-    findOne: jest.fn()
-  },
-  Transaction: {
-    create: jest.fn(),
-    count: jest.fn(),
-    findOne: jest.fn()
-  },
-  InvestmentContribution: {
-    findOne: jest.fn()
-  }
+// Mock do service
+jest.mock('../../services/investmentService', () => ({
+  createInvestment: jest.fn(),
+  getInvestments: jest.fn(),
+  getInvestment: jest.fn(),
+  updateInvestment: jest.fn(),
+  deleteInvestment: jest.fn(),
+  getInvestmentStatistics: jest.fn(),
+  getActivePositions: jest.fn(),
+  getAssetPosition: jest.fn(),
+  sellAsset: jest.fn()
 }));
 
 // Mock das validações
@@ -50,16 +33,15 @@ jest.mock('../../utils/investmentValidators', () => ({
 }));
 
 describe('InvestmentController', () => {
-  let mockReq, mockRes, investmentController;
-  let { Investment, Account, Category, Transaction } = require('../../models');
-  let { createInvestmentSchema, updateInvestmentSchema } = require('../../utils/investmentValidators');
+  let mockReq, mockRes, mockNext, investmentController, investmentService;
+  let createInvestmentSchema, updateInvestmentSchema, sellAssetSchema, listPositionsSchema;
 
   beforeEach(() => {
-    // Importa o controller dentro do beforeEach para garantir que os mocks sejam aplicados
     jest.resetModules();
+    
     investmentController = require('../../controllers/investmentController');
-    ({ Investment, Account, Category, Transaction } = require('../../models'));
-    ({ createInvestmentSchema, updateInvestmentSchema } = require('../../utils/investmentValidators'));
+    investmentService = require('../../services/investmentService');
+    ({ createInvestmentSchema, updateInvestmentSchema, sellAssetSchema, listPositionsSchema } = require('../../utils/investmentValidators'));
 
     mockReq = {
       user: { id: 1 },
@@ -74,80 +56,65 @@ describe('InvestmentController', () => {
       json: jest.fn().mockReturnThis()
     };
 
-    // Reset completo dos mocks
+    mockNext = jest.fn();
+
     jest.clearAllMocks();
   });
 
   describe('createInvestment', () => {
-    it('should create an investment with valid data', async () => {
+    it('deve criar um investimento com dados válidos', async () => {
       const investmentData = {
         investment_type: 'acoes',
         asset_name: 'Petrobras',
-        ticker: 'PETR4',
         invested_amount: 1000.00,
         quantity: 100,
         operation_date: '2024-01-15',
         operation_type: 'compra',
-        broker: 'XP Investimentos',
-        observations: 'Compra de ações Petrobras',
         account_id: 1,
+        source_account_id: 1,
+        destination_account_id: 2,
         category_id: 1
       };
 
-      const mockAccount = { 
-        id: 1, 
-        balance: 5000.00,
-        update: jest.fn().mockResolvedValue(true)
-      };
-      const mockCategory = { id: 1, name: 'Ações' };
-      const mockInvestment = { 
-        id: 1, 
-        ...investmentData, 
-        user_id: 1 
-      };
-      const mockTransaction = { 
-        id: 1, 
-        type: 'expense',
-        amount: 1000.00,
-        description: 'Compra de Petrobras'
+      const mockResult = {
+        investment: { id: 1, ...investmentData },
+        transactions: [
+          { id: 1, type: 'expense', amount: 1000.00 },
+          { id: 2, type: 'income', amount: 1000.00 }
+        ]
       };
 
-      // Mock das validações e modelos
       createInvestmentSchema.parse.mockReturnValue(investmentData);
-      Account.findOne.mockResolvedValue(mockAccount);
-      Category.findOne.mockResolvedValue(mockCategory);
-      Investment.create.mockResolvedValue(mockInvestment);
-      Investment.findByPk.mockResolvedValue({
-        ...mockInvestment,
-        account: mockAccount,
-        category: mockCategory
-      });
-      Transaction.create.mockResolvedValue(mockTransaction);
+      investmentService.createInvestment.mockResolvedValue(mockResult);
 
       mockReq.body = investmentData;
 
-      await investmentController.createInvestment(mockReq, mockRes);
+      await investmentController.createInvestment(mockReq, mockRes, mockNext);
 
       expect(createInvestmentSchema.parse).toHaveBeenCalledWith(investmentData);
-      expect(Account.findOne).toHaveBeenCalledWith({
-        where: { id: investmentData.account_id, user_id: mockReq.userId }
-      });
-      expect(Category.findOne).toHaveBeenCalledWith({
-        where: { id: investmentData.category_id, user_id: mockReq.userId }
-      });
-      expect(Investment.create).toHaveBeenCalledWith({
-        ...investmentData,
-        user_id: mockReq.userId
-      });
+      expect(investmentService.createInvestment).toHaveBeenCalledWith(1, investmentData);
       expect(mockRes.status).toHaveBeenCalledWith(201);
       expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Investimento criado com sucesso',
-        investment: expect.any(Object),
-        transaction: mockTransaction
+        success: true,
+        data: {
+          message: 'Investimento criado com sucesso',
+          investment: mockResult.investment,
+          transactions: mockResult.transactions
+        }
       });
     });
 
-    it('should handle validation errors', async () => {
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Erro no service');
+      createInvestmentSchema.parse.mockReturnValue({});
+      investmentService.createInvestment.mockRejectedValue(error);
+
+      await investmentController.createInvestment(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(error);
+    });
+
+    it('deve lidar com erro de validação', async () => {
       const zodError = new Error('Validation failed');
       zodError.name = 'ZodError';
       zodError.errors = [{ message: 'Invalid data' }];
@@ -158,315 +125,284 @@ describe('InvestmentController', () => {
 
       mockReq.body = {};
 
-      try {
-        await investmentController.createInvestment(mockReq, mockRes);
-        throw new Error('Should have thrown');
-      } catch (error) {
-        expect(error.message).toBe('Dados inválidos');
-      }
-    });
+      await investmentController.createInvestment(mockReq, mockRes, mockNext);
 
-    it('should handle account not found', async () => {
-      const investmentData = {
-        investment_type: 'acoes',
-        asset_name: 'Petrobras',
-        invested_amount: 1000.00,
-        account_id: 999,
-        operation_date: '2024-01-15',
-        operation_type: 'compra'
-      };
-
-      createInvestmentSchema.parse.mockReturnValue(investmentData);
-      Account.findOne.mockResolvedValue(null);
-
-      mockReq.body = investmentData;
-
-      try {
-        await investmentController.createInvestment(mockReq, mockRes);
-        throw new Error('Should have thrown');
-      } catch (error) {
-        expect(error.message).toBe('Conta não encontrada');
-      }
-    });
-
-    it('should handle category not found', async () => {
-      const investmentData = {
-        investment_type: 'acoes',
-        asset_name: 'Petrobras',
-        invested_amount: 1000.00,
-        account_id: 1,
-        category_id: 999,
-        operation_date: '2024-01-15',
-        operation_type: 'compra'
-      };
-
-      const mockAccount = { id: 1, balance: 5000.00 };
-
-      createInvestmentSchema.parse.mockReturnValue(investmentData);
-      Account.findOne.mockResolvedValue(mockAccount);
-      Category.findOne.mockResolvedValue(null);
-
-      mockReq.body = investmentData;
-
-      try {
-        await investmentController.createInvestment(mockReq, mockRes);
-        throw new Error('Should have thrown');
-      } catch (error) {
-        expect(error.message).toBe('Categoria não encontrada');
-      }
-    });
-
-    it('should handle insufficient balance for purchase', async () => {
-      const investmentData = {
-        investment_type: 'acoes',
-        asset_name: 'Petrobras',
-        invested_amount: 10000.00,
-        account_id: 1,
-        operation_date: '2024-01-15',
-        operation_type: 'compra'
-      };
-
-      const mockAccount = { id: 1, balance: 1000.00 };
-
-      createInvestmentSchema.parse.mockReturnValue(investmentData);
-      Account.findOne.mockResolvedValue(mockAccount);
-
-      mockReq.body = investmentData;
-
-      try {
-        await investmentController.createInvestment(mockReq, mockRes);
-        throw new Error('Should have thrown');
-      } catch (error) {
-        expect(error.message).toBe('Saldo insuficiente na conta');
-      }
+      expect(mockNext).toHaveBeenCalledWith(zodError);
     });
   });
 
   describe('getInvestments', () => {
-    it('should return all investments for user', async () => {
-      const mockInvestments = [
-        { id: 1, investment_type: 'acoes', asset_name: 'Petrobras', invested_amount: 1000.00 },
-        { id: 2, investment_type: 'renda_fixa', asset_name: 'Tesouro Direto', invested_amount: 500.00 }
-      ];
-
-      const mockResult = {
-        count: 2,
-        rows: mockInvestments
+    it('deve listar investimentos com filtros', async () => {
+      const filters = {
+        investment_type: 'acoes',
+        page: 1,
+        limit: 10
       };
 
-      Investment.findAndCountAll.mockResolvedValue(mockResult);
-      Investment.sum
-        .mockResolvedValueOnce(1500.00) // totalInvested
-        .mockResolvedValueOnce(200.00); // totalSold
+      const mockResult = {
+        investments: [{ id: 1, investment_type: 'acoes' }],
+        pagination: { total: 1, page: 1, limit: 10, totalPages: 1 },
+        statistics: { totalInvested: 1000, totalSold: 0, netInvestment: 1000 }
+      };
 
-      await investmentController.getInvestments(mockReq, mockRes);
+      investmentService.getInvestments.mockResolvedValue(mockResult);
 
-      expect(Investment.findAndCountAll).toHaveBeenCalledWith({
-        where: { user_id: mockReq.userId },
-        include: [
-          { model: Account, as: 'account' },
-          { model: Category, as: 'category' }
-        ],
-        order: [['operation_date', 'DESC']],
-        limit: 10,
-        offset: 0
+      mockReq.query = filters;
+
+      await investmentController.getInvestments(mockReq, mockRes, mockNext);
+
+      expect(investmentService.getInvestments).toHaveBeenCalledWith(1, {
+        investment_type: 'acoes',
+        operation_type: undefined,
+        status: undefined,
+        broker: undefined,
+        page: 1,
+        limit: 10
       });
       expect(mockRes.json).toHaveBeenCalledWith({
-        investments: mockInvestments,
-        pagination: {
-          total: 2,
-          page: 1,
-          limit: 10,
-          totalPages: 1
-        },
-        statistics: {
-          totalInvested: 1500.00,
-          totalSold: 200.00,
-          netInvestment: 1300.00
-        }
+        success: true,
+        data: mockResult
       });
     });
 
-    it('should apply filters correctly', async () => {
-      mockReq.query = {
-        investment_type: 'acoes',
-        operation_type: 'compra',
-        status: 'ativo',
-        broker: 'XP',
-        page: 2,
-        limit: 5
-      };
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Erro ao buscar investimentos');
+      investmentService.getInvestments.mockRejectedValue(error);
 
-      const mockResult = { count: 0, rows: [] };
-      Investment.findAndCountAll.mockResolvedValue(mockResult);
-      Investment.sum.mockResolvedValue(0);
+      await investmentController.getInvestments(mockReq, mockRes, mockNext);
 
-      await investmentController.getInvestments(mockReq, mockRes);
-
-      expect(Investment.findAndCountAll).toHaveBeenCalledWith({
-        where: {
-          user_id: 1,
-          investment_type: 'acoes',
-          operation_type: 'compra',
-          status: 'ativo',
-          broker: 'XP'
-        },
-        include: expect.any(Array),
-        order: [['operation_date', 'DESC']],
-        limit: 5,
-        offset: 5
-      });
+      expect(mockNext).toHaveBeenCalledWith(error);
     });
   });
 
   describe('getInvestment', () => {
-    it('should return a specific investment', async () => {
-      const mockInvestment = {
-        id: 1,
-        investment_type: 'acoes',
-        asset_name: 'Petrobras',
-        invested_amount: 1000.00,
-        account: { id: 1, name: 'Conta Principal' },
-        category: { id: 1, name: 'Ações' },
-        toJSON: () => ({
-          id: 1,
-          investment_type: 'acoes',
-          asset_name: 'Petrobras',
-          invested_amount: 1000.00,
-          account: { id: 1, name: 'Conta Principal' },
-          category: { id: 1, name: 'Ações' }
-        })
-      };
+    it('deve retornar um investimento específico', async () => {
+      const mockInvestment = { id: 1, investment_type: 'acoes', asset_name: 'Petrobras' };
+      
+      investmentService.getInvestment.mockResolvedValue(mockInvestment);
+      mockReq.params.id = '1';
 
-      Investment.findOne.mockResolvedValue(mockInvestment);
+      await investmentController.getInvestment(mockReq, mockRes, mockNext);
 
-      mockReq.params = { id: 1 };
-
-      await investmentController.getInvestment(mockReq, mockRes);
-
-      expect(Investment.findOne).toHaveBeenCalledWith({
-        where: { id: 1, user_id: 1 },
-        include: [
-          { model: Account, as: 'account' },
-          { model: Category, as: 'category' },
-          { model: require('../../models').InvestmentContribution, as: 'contributions' }
-        ]
+      expect(investmentService.getInvestment).toHaveBeenCalledWith(1, '1');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: { investment: mockInvestment }
       });
-      expect(mockRes.json).toHaveBeenCalledWith(mockInvestment);
     });
 
-    it('should return error when investment is not found', async () => {
-      Investment.findByPk.mockResolvedValue(null);
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Investimento não encontrado');
+      investmentService.getInvestment.mockRejectedValue(error);
+      mockReq.params.id = '999';
 
-      mockReq.params = { id: 999 };
+      await investmentController.getInvestment(mockReq, mockRes, mockNext);
 
-      try {
-        await investmentController.getInvestment(mockReq, mockRes);
-        throw new Error('Should have thrown');
-      } catch (error) {
-        expect(error.message).toBe('Investimento não encontrado');
-      }
+      expect(mockNext).toHaveBeenCalledWith(error);
     });
   });
 
   describe('updateInvestment', () => {
-    it('should update an investment with valid data', async () => {
-      const updateData = {
-        asset_name: 'Petrobras Atualizada',
-        invested_amount: 1500.00
-      };
-
-      const mockInvestment = {
-        id: 1,
-        investment_type: 'acoes',
-        asset_name: 'Petrobras',
-        invested_amount: 1000.00,
-        account_id: 1,
-        update: jest.fn().mockResolvedValue(true),
-        toJSON: () => ({
-          id: 1,
-          investment_type: 'acoes',
-          asset_name: 'Petrobras Atualizada',
-          invested_amount: 1500.00,
-          account_id: 1
-        })
-      };
+    it('deve atualizar um investimento', async () => {
+      const updateData = { observations: 'Nova observação' };
+      const mockInvestment = { id: 1, observations: 'Nova observação' };
 
       updateInvestmentSchema.parse.mockReturnValue(updateData);
-      Investment.findOne.mockResolvedValue(mockInvestment);
-      Investment.findByPk.mockResolvedValue(mockInvestment);
-
-      mockReq.params = { id: 1 };
+      investmentService.updateInvestment.mockResolvedValue(mockInvestment);
+      mockReq.params.id = '1';
       mockReq.body = updateData;
 
-      await investmentController.updateInvestment(mockReq, mockRes);
+      await investmentController.updateInvestment(mockReq, mockRes, mockNext);
 
       expect(updateInvestmentSchema.parse).toHaveBeenCalledWith(updateData);
-      expect(Investment.findOne).toHaveBeenCalledWith({
-        where: { id: 1, user_id: 1 }
-      });
-      expect(mockInvestment.update).toHaveBeenCalledWith(updateData);
+      expect(investmentService.updateInvestment).toHaveBeenCalledWith(1, '1', updateData);
       expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Investimento atualizado com sucesso',
-        investment: mockInvestment
+        success: true,
+        data: {
+          message: 'Investimento atualizado com sucesso',
+          investment: mockInvestment
+        }
       });
     });
 
-    it('should return error when investment is not found', async () => {
-      Investment.findByPk.mockResolvedValue(null);
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Erro ao atualizar');
+      updateInvestmentSchema.parse.mockReturnValue({});
+      investmentService.updateInvestment.mockRejectedValue(error);
 
-      mockReq.params = { id: 999 };
+      await investmentController.updateInvestment(mockReq, mockRes, mockNext);
 
-      try {
-        await investmentController.updateInvestment(mockReq, mockRes);
-        throw new Error('Should have thrown');
-      } catch (error) {
-        expect(error.message).toBe('Investimento não encontrado');
-      }
+      expect(mockNext).toHaveBeenCalledWith(error);
     });
   });
 
   describe('deleteInvestment', () => {
-    it('should delete an investment', async () => {
-      const mockInvestment = {
-        id: 1,
-        investment_type: 'acoes',
-        asset_name: 'Petrobras',
-        invested_amount: 1000.00,
-        account_id: 1,
-        destroy: jest.fn().mockResolvedValue(true)
-      };
+    it('deve excluir um investimento', async () => {
+      investmentService.deleteInvestment.mockResolvedValue(true);
+      mockReq.params.id = '1';
 
-      Investment.findOne.mockResolvedValue(mockInvestment);
-      Transaction.findOne.mockResolvedValue(null);
+      await investmentController.deleteInvestment(mockReq, mockRes, mockNext);
 
-      mockReq.params = { id: 1 };
-
-      await investmentController.deleteInvestment(mockReq, mockRes);
-
-      expect(Investment.findOne).toHaveBeenCalledWith({
-        where: { id: 1, user_id: 1 }
-      });
-      expect(Transaction.findOne).toHaveBeenCalledWith({
-        where: { investment_id: 1 }
-      });
-      expect(mockInvestment.destroy).toHaveBeenCalled();
+      expect(investmentService.deleteInvestment).toHaveBeenCalledWith(1, '1');
       expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Investimento excluído com sucesso'
+        success: true,
+        data: { message: 'Investimento excluído com sucesso' }
       });
     });
 
-    it('should return error when investment is not found', async () => {
-      Investment.findByPk.mockResolvedValue(null);
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Erro ao excluir');
+      investmentService.deleteInvestment.mockRejectedValue(error);
+      mockReq.params.id = '1';
 
-      mockReq.params = { id: 999 };
+      await investmentController.deleteInvestment(mockReq, mockRes, mockNext);
 
-      try {
-        await investmentController.deleteInvestment(mockReq, mockRes);
-        throw new Error('Should have thrown');
-      } catch (error) {
-        expect(error.message).toBe('Investimento não encontrado');
-      }
+      expect(mockNext).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('getInvestmentStatistics', () => {
+    it('deve retornar estatísticas dos investimentos', async () => {
+      const mockStatistics = {
+        general: { totalInvested: 5000, totalSold: 1000, netInvestment: 4000 },
+        byType: [{ investment_type: 'acoes', total_amount: 3000 }],
+        byBroker: [{ broker: 'XP', total_amount: 2000 }],
+        recentInvestments: [{ id: 1, investment_type: 'acoes' }]
+      };
+
+      investmentService.getInvestmentStatistics.mockResolvedValue(mockStatistics);
+
+      await investmentController.getInvestmentStatistics(mockReq, mockRes, mockNext);
+
+      expect(investmentService.getInvestmentStatistics).toHaveBeenCalledWith(1);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockStatistics
+      });
+    });
+
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Erro ao buscar estatísticas');
+      investmentService.getInvestmentStatistics.mockRejectedValue(error);
+
+      await investmentController.getInvestmentStatistics(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('getActivePositions', () => {
+    it('deve listar posições ativas com filtros', async () => {
+      const filters = {
+        investment_type: 'acoes',
+        page: 1,
+        limit: 10
+      };
+
+      const mockResult = {
+        positions: [{ assetName: 'Petrobras', totalQuantity: 100 }],
+        pagination: { total: 1, page: 1, limit: 10, totalPages: 1 }
+      };
+
+      listPositionsSchema.parse.mockReturnValue(filters);
+      investmentService.getActivePositions.mockResolvedValue(mockResult);
+
+      mockReq.query = filters;
+
+      await investmentController.getActivePositions(mockReq, mockRes, mockNext);
+
+      expect(listPositionsSchema.parse).toHaveBeenCalledWith(filters);
+      expect(investmentService.getActivePositions).toHaveBeenCalledWith(1, filters);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockResult
+      });
+    });
+
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Erro ao buscar posições');
+      listPositionsSchema.parse.mockReturnValue({});
+      investmentService.getActivePositions.mockRejectedValue(error);
+
+      await investmentController.getActivePositions(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('getAssetPosition', () => {
+    it('deve retornar posição de um ativo específico', async () => {
+      const mockResult = {
+        position: { assetName: 'Petrobras', totalQuantity: 100 },
+        operations: [{ id: 1, operation_type: 'compra' }]
+      };
+
+      investmentService.getAssetPosition.mockResolvedValue(mockResult);
+      mockReq.params = { assetName: 'Petrobras', ticker: 'PETR4' };
+
+      await investmentController.getAssetPosition(mockReq, mockRes, mockNext);
+
+      expect(investmentService.getAssetPosition).toHaveBeenCalledWith(1, 'Petrobras', 'PETR4');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockResult
+      });
+    });
+
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Posição não encontrada');
+      investmentService.getAssetPosition.mockRejectedValue(error);
+      mockReq.params = { assetName: 'Inexistente' };
+
+      await investmentController.getAssetPosition(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('sellAsset', () => {
+    it('deve realizar venda de ativo', async () => {
+      const sellData = {
+        quantity: 10,
+        unit_price: 30,
+        operation_date: '2024-01-15',
+        account_id: 1,
+        broker: 'XP'
+      };
+
+      const mockResult = {
+        investment: { id: 1, operation_type: 'venda' },
+        transaction: { id: 1, type: 'income', amount: 300 }
+      };
+
+      sellAssetSchema.parse.mockReturnValue(sellData);
+      investmentService.sellAsset.mockResolvedValue(mockResult);
+      mockReq.params = { assetName: 'Petrobras', ticker: 'PETR4' };
+      mockReq.body = sellData;
+
+      await investmentController.sellAsset(mockReq, mockRes, mockNext);
+
+      expect(sellAssetSchema.parse).toHaveBeenCalledWith(sellData);
+      expect(investmentService.sellAsset).toHaveBeenCalledWith(1, 'Petrobras', 'PETR4', sellData);
+      expect(mockRes.status).toHaveBeenCalledWith(201);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: {
+          message: 'Venda registrada com sucesso',
+          investment: mockResult.investment,
+          transaction: mockResult.transaction
+        }
+      });
+    });
+
+    it('deve lidar com erro do service', async () => {
+      const error = new Error('Quantidade insuficiente');
+      sellAssetSchema.parse.mockReturnValue({});
+      investmentService.sellAsset.mockRejectedValue(error);
+
+      await investmentController.sellAsset(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(error);
     });
   });
 }); 

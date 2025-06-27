@@ -192,28 +192,127 @@ async function getJobHistory(jobName, limit = 10) {
 }
 
 /**
- * Obtém o histórico de execuções com paginação e filtros.
+ * Obtém o histórico de execuções com paginação e filtros avançados.
  * @param {Object} options - Opções de consulta.
  * @param {number} options.page - Página atual (padrão: 1).
  * @param {number} options.limit - Limite por página (padrão: 20).
  * @param {number} options.offset - Offset para paginação.
  * @param {string} options.jobType - Tipo de job para filtrar.
- * @returns {Promise<Object>} Histórico paginado.
+ * @param {string} options.status - Status para filtrar (success, error, running).
+ * @param {string} options.startDate - Data de início para filtrar (YYYY-MM-DD).
+ * @param {string} options.endDate - Data de fim para filtrar (YYYY-MM-DD).
+ * @param {string} options.sortBy - Campo para ordenação (startedAt, duration, notificationsCreated).
+ * @param {string} options.sortOrder - Ordem de classificação (ASC, DESC).
+ * @param {number} options.minDuration - Duração mínima em ms.
+ * @param {number} options.maxDuration - Duração máxima em ms.
+ * @param {number} options.minNotifications - Número mínimo de notificações criadas.
+ * @param {boolean} options.hasError - Filtrar apenas execuções com erro.
+ * @returns {Promise<Object>} Histórico paginado com filtros.
  * @example
- * const history = await getJobHistory({ page: 1, limit: 10, jobType: 'payment_check' });
+ * const history = await getJobHistoryWithPagination({ 
+ *   page: 1, 
+ *   limit: 10, 
+ *   jobType: 'payment_check',
+ *   status: 'success',
+ *   startDate: '2024-01-01',
+ *   endDate: '2024-01-31',
+ *   sortBy: 'duration',
+ *   sortOrder: 'DESC'
+ * });
  */
 async function getJobHistoryWithPagination(options = {}) {
   try {
-    const { page = 1, limit = 20, offset = 0, jobType } = options;
+    const { 
+      page = 1, 
+      limit = 20, 
+      offset = 0, 
+      jobType,
+      status,
+      startDate,
+      endDate,
+      sortBy = 'startedAt',
+      sortOrder = 'DESC',
+      minDuration,
+      maxDuration,
+      minNotifications,
+      hasError
+    } = options;
     
-    const whereClause = jobType ? { jobName: jobType } : {};
+    // Construir cláusula WHERE
+    const whereClause = {};
     
+    if (jobType) {
+      whereClause.jobName = jobType;
+    }
+    
+    if (status) {
+      whereClause.status = status;
+    }
+    
+    if (hasError) {
+      whereClause.status = 'error';
+    }
+    
+    // Filtros de data
+    if (startDate || endDate) {
+      whereClause.startedAt = {};
+      if (startDate) {
+        whereClause.startedAt[JobExecution.sequelize.Op.gte] = new Date(startDate);
+      }
+      if (endDate) {
+        whereClause.startedAt[JobExecution.sequelize.Op.lte] = new Date(endDate + ' 23:59:59');
+      }
+    }
+    
+    // Filtros de duração
+    if (minDuration || maxDuration) {
+      whereClause.duration = {};
+      if (minDuration) {
+        whereClause.duration[JobExecution.sequelize.Op.gte] = parseInt(minDuration);
+      }
+      if (maxDuration) {
+        whereClause.duration[JobExecution.sequelize.Op.lte] = parseInt(maxDuration);
+      }
+    }
+    
+    // Filtro de notificações mínimas
+    if (minNotifications) {
+      whereClause.notificationsCreated = {
+        [JobExecution.sequelize.Op.gte]: parseInt(minNotifications)
+      };
+    }
+    
+    // Validar e configurar ordenação
+    const validSortFields = ['startedAt', 'finishedAt', 'duration', 'notificationsCreated', 'notificationsUpdated', 'status'];
+    const validSortOrders = ['ASC', 'DESC'];
+    
+    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'startedAt';
+    const finalSortOrder = validSortOrders.includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
+    
+    // Executar consulta
     const { count, rows } = await JobExecution.findAndCountAll({
       where: whereClause,
-      order: [['startedAt', 'DESC']],
+      order: [[finalSortBy, finalSortOrder]],
       limit: parseInt(limit),
       offset: parseInt(offset),
+      attributes: [
+        'id',
+        'jobName',
+        'status',
+        'startedAt',
+        'finishedAt',
+        'duration',
+        'notificationsCreated',
+        'notificationsUpdated',
+        'errorMessage',
+        'metadata',
+        'createdAt',
+        'updatedAt'
+      ]
     });
+
+    // Calcular estatísticas dos resultados filtrados
+    const stats = await calculateFilteredStats(whereClause);
 
     return {
       history: rows,
@@ -222,11 +321,132 @@ async function getJobHistoryWithPagination(options = {}) {
         limit: parseInt(limit),
         total: count,
         totalPages: Math.ceil(count / limit),
+        hasNextPage: parseInt(page) < Math.ceil(count / limit),
+        hasPrevPage: parseInt(page) > 1,
+        nextPage: parseInt(page) < Math.ceil(count / limit) ? parseInt(page) + 1 : null,
+        prevPage: parseInt(page) > 1 ? parseInt(page) - 1 : null
       },
+      filters: {
+        applied: {
+          jobType,
+          status,
+          startDate,
+          endDate,
+          sortBy: finalSortBy,
+          sortOrder: finalSortOrder,
+          minDuration,
+          maxDuration,
+          minNotifications,
+          hasError
+        },
+        available: {
+          jobTypes: await getAvailableJobTypes(),
+          dateRange: await getAvailableDateRange()
+        }
+      },
+      stats
     };
   } catch (error) {
     logger.error('Erro ao buscar histórico paginado dos jobs:', error);
     throw error;
+  }
+}
+
+/**
+ * Calcula estatísticas dos resultados filtrados.
+ * @param {Object} whereClause - Cláusula WHERE aplicada.
+ * @returns {Promise<Object>} Estatísticas dos resultados.
+ */
+async function calculateFilteredStats(whereClause) {
+  try {
+    const [totalCount, successCount, errorCount, runningCount, avgDuration] = await Promise.all([
+      JobExecution.count({ where: whereClause }),
+      JobExecution.count({ where: { ...whereClause, status: 'success' } }),
+      JobExecution.count({ where: { ...whereClause, status: 'error' } }),
+      JobExecution.count({ where: { ...whereClause, status: 'running' } }),
+      JobExecution.findOne({
+        where: { ...whereClause, status: 'success' },
+        attributes: [[JobExecution.sequelize.fn('AVG', JobExecution.sequelize.col('duration')), 'avgDuration']]
+      })
+    ]);
+
+    const successRate = totalCount > 0 ? (successCount / totalCount) * 100 : 0;
+    const avgDurationValue = avgDuration ? Math.round(avgDuration.getDataValue('avgDuration') || 0) : 0;
+
+    return {
+      totalCount,
+      successCount,
+      errorCount,
+      runningCount,
+      successRate: Math.round(successRate * 100) / 100,
+      avgDuration: avgDurationValue,
+      distribution: {
+        success: totalCount > 0 ? Math.round((successCount / totalCount) * 100) : 0,
+        error: totalCount > 0 ? Math.round((errorCount / totalCount) * 100) : 0,
+        running: totalCount > 0 ? Math.round((runningCount / totalCount) * 100) : 0
+      }
+    };
+  } catch (error) {
+    logger.error('Erro ao calcular estatísticas filtradas:', error);
+    return {
+      totalCount: 0,
+      successCount: 0,
+      errorCount: 0,
+      runningCount: 0,
+      successRate: 0,
+      avgDuration: 0,
+      distribution: { success: 0, error: 0, running: 0 }
+    };
+  }
+}
+
+/**
+ * Obtém os tipos de jobs disponíveis.
+ * @returns {Promise<Array>} Lista de tipos de jobs.
+ */
+async function getAvailableJobTypes() {
+  try {
+    const jobTypes = await JobExecution.findAll({
+      attributes: [
+        [JobExecution.sequelize.fn('DISTINCT', JobExecution.sequelize.col('jobName')), 'jobName']
+      ],
+      raw: true
+    });
+    
+    return jobTypes.map(jt => jt.jobName).sort();
+  } catch (error) {
+    logger.error('Erro ao buscar tipos de jobs disponíveis:', error);
+    return [];
+  }
+}
+
+/**
+ * Obtém o range de datas disponível.
+ * @returns {Promise<Object>} Range de datas.
+ */
+async function getAvailableDateRange() {
+  try {
+    const [minDate, maxDate] = await Promise.all([
+      JobExecution.findOne({
+        attributes: [[JobExecution.sequelize.fn('MIN', JobExecution.sequelize.col('startedAt')), 'minDate']],
+        raw: true
+      }),
+      JobExecution.findOne({
+        attributes: [[JobExecution.sequelize.fn('MAX', JobExecution.sequelize.col('startedAt')), 'maxDate']],
+        raw: true
+      })
+    ]);
+
+    return {
+      minDate: minDate?.minDate || new Date(),
+      maxDate: maxDate?.maxDate || new Date()
+    };
+  } catch (error) {
+    logger.error('Erro ao buscar range de datas disponível:', error);
+    return {
+      minDate: new Date(),
+      maxDate: new Date()
+    };
   }
 }
 

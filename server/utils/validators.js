@@ -330,6 +330,7 @@ const createPaymentSchema = z.object({
   amount: z.number().positive('Valor deve ser positivo'),
   payment_date: z.string().optional(),
   payment_method: z.string().min(1, 'Método de pagamento é obrigatório'),
+  account_id: z.number().int().positive('ID da conta bancária deve ser um número positivo'),
   description: z.string().max(255, 'Descrição muito longa').optional().or(z.literal(''))
 });
 
@@ -394,6 +395,58 @@ const addPaymentSchema = z.object({
   notes: z.string().max(500, 'Observações muito longas').optional().or(z.literal(''))
 });
 
+/**
+ * Valida dados de pagamento de lançamentos de conta fixa
+ * @param {Object} paymentData - Dados do pagamento
+ * @returns {Object} Resultado da validação
+ */
+const validateFixedAccountTransactionPayment = (paymentData) => {
+  const errors = [];
+
+  // Validar transaction_ids
+  if (!paymentData.transaction_ids || !Array.isArray(paymentData.transaction_ids) || paymentData.transaction_ids.length === 0) {
+    errors.push('IDs dos lançamentos são obrigatórios e devem ser um array não vazio');
+  } else {
+    for (let i = 0; i < paymentData.transaction_ids.length; i++) {
+      const id = paymentData.transaction_ids[i];
+      if (!Number.isInteger(id) || id <= 0) {
+        errors.push(`ID do lançamento ${i + 1} deve ser um número inteiro positivo`);
+      }
+    }
+  }
+
+  // Validar payment_date
+  if (!paymentData.payment_date) {
+    errors.push('Data do pagamento é obrigatória');
+  } else if (!isValidDate(paymentData.payment_date)) {
+    errors.push('Data do pagamento deve estar no formato YYYY-MM-DD');
+  }
+
+  // Validar account_id
+  if (!paymentData.account_id) {
+    errors.push('ID da conta bancária é obrigatório');
+  } else if (!Number.isInteger(paymentData.account_id) || paymentData.account_id <= 0) {
+    errors.push('ID da conta bancária deve ser um número inteiro positivo');
+  }
+
+  // Validar payment_method (opcional)
+  if (paymentData.payment_method && !['card', 'boleto', 'automatic_debit', 'pix', 'transfer'].includes(paymentData.payment_method)) {
+    errors.push('Método de pagamento deve ser: card, boleto, automatic_debit, pix ou transfer');
+  }
+
+  // Validar observations (opcional)
+  if (paymentData.observations && typeof paymentData.observations !== 'string') {
+    errors.push('Observações devem ser uma string');
+  } else if (paymentData.observations && paymentData.observations.length > 1000) {
+    errors.push('Observações não podem ter mais de 1000 caracteres');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
 module.exports = {
   isValidEmail,
   isValidPassword,
@@ -425,5 +478,6 @@ module.exports = {
   updateReceivableSchema,
   createPayableSchema,
   updatePayableSchema,
-  addPaymentSchema
+  addPaymentSchema,
+  validateFixedAccountTransactionPayment
 }; 

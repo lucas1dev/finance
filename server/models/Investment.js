@@ -217,6 +217,38 @@ module.exports = (sequelize) => {
     },
 
     /**
+     * ID da conta bancária de origem (de onde sai o dinheiro).
+     * @type {number}
+     */
+    source_account_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'accounts',
+        key: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'Conta bancária de origem (de onde sai o dinheiro)'
+    },
+
+    /**
+     * ID da conta bancária de destino (onde fica o investimento).
+     * @type {number}
+     */
+    destination_account_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'accounts',
+        key: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'Conta bancária de destino (onde fica o investimento)'
+    },
+
+    /**
      * ID da categoria do investimento.
      * @type {number}
      */
@@ -248,6 +280,12 @@ module.exports = (sequelize) => {
       },
       {
         fields: ['account_id']
+      },
+      {
+        fields: ['source_account_id']
+      },
+      {
+        fields: ['destination_account_id']
       },
       {
         fields: ['investment_type']
@@ -293,10 +331,22 @@ module.exports = (sequelize) => {
       as: 'user'
     });
 
-    // Associação com conta (N:1)
+    // Associação com conta principal (N:1) - mantida para compatibilidade
     Investment.belongsTo(models.Account, {
       foreignKey: 'account_id',
       as: 'account'
+    });
+
+    // Associação com conta de origem (N:1)
+    Investment.belongsTo(models.Account, {
+      foreignKey: 'source_account_id',
+      as: 'sourceAccount'
+    });
+
+    // Associação com conta de destino (N:1)
+    Investment.belongsTo(models.Account, {
+      foreignKey: 'destination_account_id',
+      as: 'destinationAccount'
     });
 
     // Associação com categoria (N:1)

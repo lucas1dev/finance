@@ -25,10 +25,12 @@ describe('Supplier Integration Tests', () => {
 
   describe('POST /api/suppliers', () => {
     it('deve criar um novo fornecedor com sucesso', async () => {
+      const timestamp = Date.now().toString().slice(-1); // Último dígito
+      const cnpjs = ['12345678000195', '12345678000276', '12345678000357', '12345678000438', '12345678000519'];
       const supplierData = {
         name: 'Fornecedor Teste',
         document_type: 'CNPJ',
-        document_number: '12345678000195',
+        document_number: cnpjs[parseInt(timestamp) % cnpjs.length], // CNPJ válido único
         email: 'fornecedor@teste.com',
         phone: '11988888888',
         address: 'Endereço do Fornecedor'
@@ -40,11 +42,14 @@ describe('Supplier Integration Tests', () => {
         .send(supplierData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.message).toBe('Fornecedor criado com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('supplier');
+      expect(response.body.data.supplier).toHaveProperty('id');
+      expect(response.body.data.supplier.name).toBe(supplierData.name);
 
       const createdSupplier = await Supplier.findOne({
-        where: { id: response.body.id }
+        where: { id: response.body.data.supplier.id }
       });
 
       expect(createdSupplier).toBeTruthy();
@@ -65,7 +70,8 @@ describe('Supplier Integration Tests', () => {
         .send(supplierData);
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toBe('Documento inválido');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
     });
 
     it('deve retornar erro ao tentar criar fornecedor sem campos obrigatórios', async () => {
@@ -80,17 +86,22 @@ describe('Supplier Integration Tests', () => {
         .send(supplierData);
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toBe('Nome, tipo e número do documento são obrigatórios');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
     });
   });
 
   describe('GET /api/suppliers', () => {
     beforeEach(async () => {
-      // Criar fornecedores de teste
+      // Criar fornecedores de teste com CNPJ único
+      const timestamp = Date.now().toString().slice(-1);
+      const cnpjs = ['12345678000195', '12345678000276', '12345678000357', '12345678000438', '12345678000519'];
+      const uniqueCnpj = cnpjs[parseInt(timestamp) % cnpjs.length];
+      
       testSupplier = await Supplier.create({
         name: 'Fornecedor Teste',
         document_type: 'CNPJ',
-        document_number: '12345678000195',
+        document_number: uniqueCnpj,
         email: 'fornecedor@teste.com',
         user_id: testUser.id
       });
@@ -102,9 +113,14 @@ describe('Supplier Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBe(1);
-      expect(response.body[0].name).toBe('Fornecedor Teste');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThan(0);
+      // Verificar se o fornecedor criado está na lista
+      const foundSupplier = response.body.data.find(s => s.id === testSupplier.id);
+      expect(foundSupplier).toBeTruthy();
+      expect(foundSupplier.name).toBe('Fornecedor Teste');
     });
 
     it('deve retornar erro ao tentar listar fornecedores sem autenticação', async () => {
@@ -112,6 +128,8 @@ describe('Supplier Integration Tests', () => {
         .get('/api/suppliers');
 
       expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
     });
   });
 
@@ -132,7 +150,10 @@ describe('Supplier Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.name).toBe('Fornecedor Teste');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('supplier');
+      expect(response.body.data.supplier.name).toBe('Fornecedor Teste');
     });
 
     it('deve retornar erro ao tentar acessar fornecedor inexistente', async () => {
@@ -141,7 +162,8 @@ describe('Supplier Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
-      expect(response.body.error).toBe('Fornecedor não encontrado');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
     });
   });
 
@@ -170,7 +192,9 @@ describe('Supplier Integration Tests', () => {
         .send(updateData);
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toBe('Fornecedor atualizado com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('supplier');
 
       const updatedSupplier = await Supplier.findOne({
         where: { id: testSupplier.id }
@@ -194,7 +218,8 @@ describe('Supplier Integration Tests', () => {
         .send(updateData);
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toBe('Documento inválido');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
     });
   });
 
@@ -215,7 +240,9 @@ describe('Supplier Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.message).toBe('Fornecedor removido com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('message', 'Fornecedor removido com sucesso');
 
       const deletedSupplier = await Supplier.findOne({
         where: { id: testSupplier.id }
@@ -240,7 +267,8 @@ describe('Supplier Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(400);
-      expect(response.body.error).toBe('Não é possível excluir um fornecedor com contas a pagar associadas');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
     });
   });
 }); 

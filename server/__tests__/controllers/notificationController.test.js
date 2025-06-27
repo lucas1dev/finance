@@ -10,9 +10,15 @@
  * // npm test __tests__/controllers/notificationController.test.js
  */
 
+const request = require('supertest');
+const app = require('../../app');
+const { User, Notification, Financing, FinancingPayment } = require('../../models');
+const { createTestUser, createAdminUser } = require('../integration/factories');
+
 describe('NotificationController', () => {
   let notificationController;
   let mockModels, mockErrors, mockResponse, mockOp;
+  let user, admin, userToken, adminToken;
 
   beforeEach(() => {
     jest.resetModules();
@@ -87,6 +93,34 @@ describe('NotificationController', () => {
 
     // Importar controller
     notificationController = require('../../controllers/notificationController');
+  });
+
+  beforeAll(async () => {
+    // Criar usuários de teste
+    user = await createTestUser();
+    admin = await createAdminUser();
+    
+    // Fazer login para obter tokens
+    const userLogin = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: user.email,
+        password: 'password123'
+      });
+    userToken = userLogin.body.data.token;
+
+    const adminLogin = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: admin.email,
+        password: 'password123'
+      });
+    adminToken = adminLogin.body.data.token;
+  });
+
+  afterAll(async () => {
+    // Limpar dados de teste
+    await User.destroy({ where: { id: [user.id, admin.id] } });
   });
 
   describe('listNotifications', () => {
@@ -674,6 +708,109 @@ describe('NotificationController', () => {
       await notificationController.getJobStats(req, res);
 
       expect(mockResponse.errorResponse).toHaveBeenCalledWith(res, 'Erro interno do servidor', 500);
+    });
+  });
+
+  describe('POST /api/notifications/reprocess', () => {
+    it('should reprocess notifications for a specific user', async () => {
+      const response = await request(app)
+        .post('/api/notifications/reprocess')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          targetUserId: user.id,
+          notificationType: 'payment_check',
+          clearExisting: true
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('targetUserId', user.id);
+      expect(response.body.data).toHaveProperty('notificationType', 'payment_check');
+      expect(response.body.data).toHaveProperty('clearExisting', true);
+      expect(response.body.data).toHaveProperty('notificationsCreated');
+      expect(response.body.data).toHaveProperty('notificationsRemoved');
+      expect(response.body.data).toHaveProperty('jobsExecuted');
+      expect(response.body.data.jobsExecuted).toContain('payment_check');
+    });
+
+    it('should reprocess all notification types when type is "all"', async () => {
+      const response = await request(app)
+        .post('/api/notifications/reprocess')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          targetUserId: user.id,
+          notificationType: 'all',
+          clearExisting: false
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('notificationType', 'all');
+      expect(response.body.data.jobsExecuted).toContain('payment_check');
+      expect(response.body.data.jobsExecuted).toContain('general_reminders');
+    });
+
+    it('should return 400 when targetUserId is missing', async () => {
+      const response = await request(app)
+        .post('/api/notifications/reprocess')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          notificationType: 'payment_check'
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toContain('ID do usuário alvo é obrigatório');
+    });
+
+    it('should return 400 when notificationType is invalid', async () => {
+      const response = await request(app)
+        .post('/api/notifications/reprocess')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          targetUserId: user.id,
+          notificationType: 'invalid_type'
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should return 404 when target user does not exist', async () => {
+      const response = await request(app)
+        .post('/api/notifications/reprocess')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          targetUserId: 99999,
+          notificationType: 'payment_check'
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toContain('Usuário alvo não encontrado');
+    });
+
+    it('should return 401 when user is not admin', async () => {
+      const response = await request(app)
+        .post('/api/notifications/reprocess')
+        .set('Authorization', `Bearer ${userToken}`)
+        .send({
+          targetUserId: user.id,
+          notificationType: 'payment_check'
+        });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should return 401 when no token is provided', async () => {
+      const response = await request(app)
+        .post('/api/notifications/reprocess')
+        .send({
+          targetUserId: user.id,
+          notificationType: 'payment_check'
+        });
+
+      expect(response.status).toBe(401);
     });
   });
 }); 

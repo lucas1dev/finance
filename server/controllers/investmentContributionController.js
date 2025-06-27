@@ -40,6 +40,7 @@ class InvestmentContributionController {
     try {
       // Validar dados de entrada
       const validatedData = createContributionSchema.parse(req.body);
+
       // Verificar se o investimento existe e pertence ao usuário
       const investment = await Investment.findOne({
         where: { id: validatedData.investment_id, user_id: req.userId }
@@ -47,45 +48,74 @@ class InvestmentContributionController {
       if (!investment) {
         throw new NotFoundError('Investimento não encontrado');
       }
-      // Verificar se a conta tem saldo suficiente
-      const account = await Account.findOne({
-        where: { id: investment.account_id, user_id: req.userId }
+
+      // Verificar se a conta de origem existe e pertence ao usuário
+      const sourceAccount = await Account.findOne({
+        where: { id: validatedData.source_account_id, user_id: req.userId }
       });
-      if (!account) {
-        throw new NotFoundError('Conta não encontrada');
+      if (!sourceAccount) {
+        throw new NotFoundError('Conta de origem não encontrada');
       }
-      if (account.balance < validatedData.amount) {
-        throw new ValidationError('Saldo insuficiente na conta para realizar o aporte');
+
+      // Verificar se a conta de destino existe e pertence ao usuário
+      const destinationAccount = await Account.findOne({
+        where: { id: validatedData.destination_account_id, user_id: req.userId }
+      });
+      if (!destinationAccount) {
+        throw new NotFoundError('Conta de destino não encontrada');
       }
-      // Criar o aporte
-      const contribution = await InvestmentContribution.create({
-        ...validatedData,
-        user_id: req.userId
+
+      // Verificar se há saldo suficiente na conta de origem
+      if (parseFloat(sourceAccount.balance) < validatedData.amount) {
+        throw new ValidationError('Saldo insuficiente na conta de origem para realizar o aporte');
+      }
+
+      // Inicia transação do banco de dados
+      const { sequelize } = require('../config/database');
+      const result = await sequelize.transaction(async (t) => {
+        // Criar o aporte
+        const contribution = await InvestmentContribution.create({
+          ...validatedData,
+          user_id: req.userId
+        }, { transaction: t });
+
+        // Atualizar o saldo da conta de origem (débito)
+        await sourceAccount.update({
+          balance: parseFloat(sourceAccount.balance) - validatedData.amount
+        }, { transaction: t });
+
+        // Atualizar o saldo da conta de destino (crédito)
+        await destinationAccount.update({
+          balance: parseFloat(destinationAccount.balance) + validatedData.amount
+        }, { transaction: t });
+
+        // Criar duas transações usando o TransactionService
+        const TransactionService = require('../services/transactionService');
+        const contributionWithInvestment = {
+          ...contribution.toJSON(),
+          investment: investment
+        };
+        const transactions = await TransactionService.createFromInvestmentContribution(
+          contributionWithInvestment, 
+          { transaction: t }
+        );
+
+        return { contribution, transactions };
       });
-      // Atualizar o saldo da conta
-      await account.update({
-        balance: account.balance - validatedData.amount
-      });
-      // Criar transação
-      await Transaction.create({
-        type: 'expense',
-        amount: validatedData.amount,
-        description: `Aporte em ${investment.asset_name}`,
-        date: validatedData.contribution_date,
-        account_id: investment.account_id,
-        category_id: investment.category_id,
-        user_id: req.userId,
-        investment_id: investment.id
-      });
+
       // Buscar o aporte criado com dados do investimento
-      const createdContribution = await InvestmentContribution.findByPk(contribution.id, {
+      const createdContribution = await InvestmentContribution.findByPk(result.contribution.id, {
         include: [
-          { model: Investment, as: 'investment' }
+          { model: Investment, as: 'investment' },
+          { model: Account, as: 'sourceAccount' },
+          { model: Account, as: 'destinationAccount' }
         ]
       });
+
       return res.status(201).json({
         message: 'Aporte criado com sucesso',
-        contribution: createdContribution
+        contribution: createdContribution,
+        transactions: result.transactions
       });
     } catch (error) {
       return sendErrorResponse(res, error);

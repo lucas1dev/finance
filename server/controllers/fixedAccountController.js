@@ -2,12 +2,16 @@ const { FixedAccount, Category, Supplier, Transaction, Account } = require('../m
 const { ValidationError, NotFoundError } = require('../utils/errors');
 const { z } = require('zod');
 const { Op } = require('sequelize');
+const FixedAccountService = require('../services/fixedAccountService');
 
 /**
  * Esquema de validação para criação de conta fixa
  */
 const createFixedAccountSchema = z.object({
   description: z.string().min(1, 'Descrição é obrigatória').max(255, 'Descrição deve ter no máximo 255 caracteres'),
+  type: z.enum(['expense', 'income'], {
+    errorMap: () => ({ message: 'Tipo deve ser: expense ou income' })
+  }).optional(),
   amount: z.number().positive('Valor deve ser positivo'),
   periodicity: z.enum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly'], {
     errorMap: () => ({ message: 'Periodicidade deve ser: daily, weekly, monthly, quarterly, yearly' })
@@ -34,6 +38,7 @@ const updateFixedAccountSchema = createFixedAccountSchema.partial();
  * @param {Object} req - Objeto de requisição Express.
  * @param {Object} req.body - Dados da conta fixa.
  * @param {string} req.body.description - Descrição da conta fixa.
+ * @param {string} [req.body.type] - Tipo da conta fixa (expense/income).
  * @param {number} req.body.amount - Valor da conta fixa.
  * @param {string} req.body.periodicity - Periodicidade (daily, weekly, monthly, quarterly, yearly).
  * @param {string} req.body.start_date - Data de início (YYYY-MM-DD).
@@ -50,8 +55,8 @@ const updateFixedAccountSchema = createFixedAccountSchema.partial();
  * @throws {NotFoundError} Se a categoria ou fornecedor não forem encontrados.
  * @example
  * // POST /fixed-accounts
- * // Body: { "description": "Aluguel", "amount": 1500.00, "periodicity": "monthly", "start_date": "2024-01-01", "category_id": 1 }
- * // Retorno: { "id": 1, "description": "Aluguel", "amount": "1500.00", ... }
+ * // Body: { "description": "Aluguel", "type": "expense", "amount": 1500.00, "periodicity": "monthly", "start_date": "2024-01-01", "category_id": 1 }
+ * // Retorno: { "id": 1, "description": "Aluguel", "type": "expense", "amount": "1500.00", ... }
  */
 async function createFixedAccount(req, res) {
   try {
@@ -94,14 +99,14 @@ async function createFixedAccount(req, res) {
       }
     }
     
-    const fixedAccount = await FixedAccount.create({
+    // Usar o novo FixedAccountService para criar a conta fixa
+    const result = await FixedAccountService.createFixedAccount({
       ...validatedData,
-      user_id: req.userId,
-      next_due_date: validatedData.start_date
+      user_id: req.userId
     });
     
     // Carrega as associações para retornar dados completos
-    await fixedAccount.reload({
+    await result.fixedAccount.reload({
       include: [
         { model: Category, as: 'category' },
         { model: Supplier, as: 'supplier' },
@@ -111,7 +116,8 @@ async function createFixedAccount(req, res) {
     
     res.status(201).json({
       success: true,
-      data: fixedAccount
+      data: result.fixedAccount,
+      firstTransaction: result.firstTransaction
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

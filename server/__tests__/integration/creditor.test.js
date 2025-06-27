@@ -44,11 +44,12 @@ describe('Creditor Routes Integration', () => {
         .send(creditorData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('message', 'Credor criado com sucesso');
-      expect(response.body).toHaveProperty('creditor');
-      expect(response.body.creditor.name).toBe(creditorData.name);
-      expect(response.body.creditor.document_number).toBe(creditorData.document_number);
-      expect(response.body.creditor.user_id).toBe(testUser.id);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('creditor');
+      expect(response.body.data.creditor.name).toBe(creditorData.name);
+      expect(response.body.data.creditor.document_number).toBe(creditorData.document_number);
+      expect(response.body.data.creditor.user_id).toBe(testUser.id);
     }, 30000);
 
     it('deve retornar erro 400 para dados inválidos', async () => {
@@ -65,8 +66,8 @@ describe('Creditor Routes Integration', () => {
         .send(invalidData);
 
       expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error');
-      expect(response.body).toHaveProperty('errors');
     }, 30000);
 
     it('deve retornar erro 401 sem autenticação', async () => {
@@ -82,6 +83,7 @@ describe('Creditor Routes Integration', () => {
         .send(creditorData);
 
       expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('success', false);
     });
   });
 
@@ -111,10 +113,12 @@ describe('Creditor Routes Integration', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('creditors');
-      expect(response.body).toHaveProperty('pagination');
-      expect(response.body.creditors).toHaveLength(2);
-      expect(response.body.pagination.total).toBe(2);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('creditors');
+      expect(response.body.data).toHaveProperty('pagination');
+      expect(response.body.data.creditors).toHaveLength(2);
+      expect(response.body.data.pagination.total).toBe(2);
     }, 10000);
 
     it('deve aplicar filtros corretamente', async () => {
@@ -123,8 +127,9 @@ describe('Creditor Routes Integration', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.creditors).toHaveLength(1);
-      expect(response.body.creditors[0].name).toBe('Banco A');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data.creditors).toHaveLength(1);
+      expect(response.body.data.creditors[0].name).toBe('Banco A');
     });
 
     it('deve retornar erro 401 sem autenticação', async () => {
@@ -132,6 +137,7 @@ describe('Creditor Routes Integration', () => {
         .get('/api/creditors');
 
       expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('success', false);
     });
   });
 
@@ -148,31 +154,34 @@ describe('Creditor Routes Integration', () => {
 
     it('deve buscar credores por termo', async () => {
       const response = await request(app)
-        .get('/api/creditors/search?q=Teste')
+        .get('/api/creditors/search?term=Teste')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('creditors');
-      expect(response.body.creditors).toHaveLength(1);
-      expect(response.body.creditors[0].name).toBe('Banco Teste');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('creditors');
+      expect(response.body.data.creditors).toHaveLength(1);
+      expect(response.body.data.creditors[0].name).toBe('Banco Teste');
     });
 
     it('deve retornar lista vazia para termo não encontrado', async () => {
       const response = await request(app)
-        .get('/api/creditors/search?q=Inexistente')
+        .get('/api/creditors/search?term=Inexistente')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.creditors).toHaveLength(0);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data.creditors).toHaveLength(0);
     });
 
     it('deve retornar lista vazia para termo muito curto', async () => {
       const response = await request(app)
-        .get('/api/creditors/search?q=a')
+        .get('/api/creditors/search?term=a')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.creditors).toHaveLength(0);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data.creditors).toHaveLength(0);
     });
   });
 
@@ -193,9 +202,10 @@ describe('Creditor Routes Integration', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('creditor');
-      expect(response.body.creditor.id).toBe(testCreditor.id);
-      expect(response.body.creditor.name).toBe('Banco Teste');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('creditor');
+      expect(response.body.data.creditor.id).toBe(testCreditor.id);
+      expect(response.body.data.creditor.name).toBe('Banco Teste');
     });
 
     it('deve retornar erro 404 para credor inexistente', async () => {
@@ -204,6 +214,7 @@ describe('Creditor Routes Integration', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Credor não encontrado');
     });
 
@@ -212,6 +223,7 @@ describe('Creditor Routes Integration', () => {
         .get(`/api/creditors/${testCreditor.id}`);
 
       expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('success', false);
     });
   });
 
@@ -239,11 +251,11 @@ describe('Creditor Routes Integration', () => {
         .send(updateData);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Credor atualizado com sucesso');
-      expect(response.body).toHaveProperty('creditor');
-      expect(response.body.creditor.name).toBe(updateData.name);
-      expect(response.body.creditor.address).toBe(updateData.address);
-      expect(response.body.creditor.phone).toBe(updateData.phone);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('creditor');
+      expect(response.body.data.creditor.name).toBe(updateData.name);
+      expect(response.body.data.creditor.address).toBe(updateData.address);
+      expect(response.body.data.creditor.phone).toBe(updateData.phone);
     });
 
     it('deve retornar erro 400 para dados inválidos', async () => {
@@ -258,8 +270,8 @@ describe('Creditor Routes Integration', () => {
         .send(invalidData);
 
       expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error');
-      expect(response.body).toHaveProperty('errors');
     });
 
     it('deve retornar erro 404 para credor inexistente', async () => {
@@ -273,6 +285,7 @@ describe('Creditor Routes Integration', () => {
         .send(updateData);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Credor não encontrado');
     });
 
@@ -286,6 +299,7 @@ describe('Creditor Routes Integration', () => {
         .send(updateData);
 
       expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('success', false);
     });
   });
 
@@ -306,7 +320,8 @@ describe('Creditor Routes Integration', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Credor removido com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('message', 'Credor excluído com sucesso');
 
       // Verificar se foi realmente deletado
       const deletedCreditor = await Creditor.findByPk(testCreditor.id);
@@ -319,6 +334,7 @@ describe('Creditor Routes Integration', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Credor não encontrado');
     });
 
@@ -327,6 +343,7 @@ describe('Creditor Routes Integration', () => {
         .delete(`/api/creditors/${testCreditor.id}`);
 
       expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('success', false);
     });
   });
 }); 

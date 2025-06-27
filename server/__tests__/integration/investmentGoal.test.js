@@ -49,12 +49,13 @@ describe('Investment Goal Routes', () => {
         .send(goalData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('message', 'Meta de investimento criada com sucesso');
-      expect(response.body).toHaveProperty('goal');
-      expect(response.body.goal.title).toBe('Aposentadoria');
-      expect(response.body.goal.target_amount).toBe('500000.00');
-      expect(response.body.goal.progress).toBe(0);
-      expect(response.body.goal).toHaveProperty('category');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('message', 'Meta de investimento criada com sucesso');
+      expect(response.body.data).toHaveProperty('goal');
+      expect(response.body.data.goal.title).toBe('Aposentadoria');
+      expect(response.body.data.goal.target_amount).toBe('500000.00');
+      expect(response.body.data.goal.progress).toBe(0);
+      expect(response.body.data.goal).toHaveProperty('category');
     });
 
     it('should return 400 for invalid goal data', async () => {
@@ -70,6 +71,7 @@ describe('Investment Goal Routes', () => {
         .send(invalidData);
 
       expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error');
       expect(response.body).toHaveProperty('errors');
     });
@@ -89,6 +91,7 @@ describe('Investment Goal Routes', () => {
         .send(goalData);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Categoria não encontrada');
     });
 
@@ -133,13 +136,14 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('goals');
-      expect(response.body).toHaveProperty('pagination');
-      expect(response.body).toHaveProperty('statistics');
-      expect(response.body.goals).toHaveLength(2);
-      expect(response.body.statistics.totalGoals).toBe(2);
-      expect(response.body.statistics.activeGoals).toBe(2);
-      expect(response.body.statistics.completedGoals).toBe(0);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('goals');
+      expect(response.body.data).toHaveProperty('pagination');
+      expect(response.body.data).toHaveProperty('statistics');
+      expect(response.body.data.goals).toHaveLength(2);
+      expect(response.body.data.statistics.totalGoals).toBe(2);
+      expect(response.body.data.statistics.activeGoals).toBe(2);
+      expect(response.body.data.statistics.completedGoals).toBe(0);
     });
 
     it('should apply status filter correctly', async () => {
@@ -148,7 +152,8 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.goals).toHaveLength(2);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data.goals).toHaveLength(2);
     });
 
     it('should return paginated results', async () => {
@@ -157,10 +162,11 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.goals).toHaveLength(1);
-      expect(response.body.pagination.total).toBe(2);
-      expect(response.body.pagination.page).toBe(1);
-      expect(response.body.pagination.limit).toBe(1);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data.goals).toHaveLength(1);
+      expect(response.body.data.pagination.total).toBe(2);
+      expect(response.body.data.pagination.page).toBe(1);
+      expect(response.body.data.pagination.limit).toBe(1);
     });
 
     it('should include progress, isOverdue, and isCompleted properties', async () => {
@@ -169,12 +175,13 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.goals[0]).toHaveProperty('progress');
-      expect(response.body.goals[0]).toHaveProperty('isOverdue');
-      expect(response.body.goals[0]).toHaveProperty('isCompleted');
-      expect(typeof response.body.goals[0].progress).toBe('number');
-      expect(typeof response.body.goals[0].isOverdue).toBe('boolean');
-      expect(typeof response.body.goals[0].isCompleted).toBe('boolean');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data.goals[0]).toHaveProperty('progress');
+      expect(response.body.data.goals[0]).toHaveProperty('isOverdue');
+      expect(response.body.data.goals[0]).toHaveProperty('isCompleted');
+      expect(typeof response.body.data.goals[0].progress).toBe('number');
+      expect(typeof response.body.data.goals[0].isOverdue).toBe('boolean');
+      expect(typeof response.body.data.goals[0].isCompleted).toBe('boolean');
     });
   });
 
@@ -200,12 +207,13 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.id).toBe(goal.id);
-      expect(response.body.title).toBe('Casa Própria');
-      expect(response.body).toHaveProperty('progress');
-      expect(response.body).toHaveProperty('isOverdue');
-      expect(response.body).toHaveProperty('isCompleted');
-      expect(response.body).toHaveProperty('category');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data.id).toBe(goal.id);
+      expect(response.body.data.title).toBe('Casa Própria');
+      expect(response.body.data).toHaveProperty('progress');
+      expect(response.body.data).toHaveProperty('isOverdue');
+      expect(response.body.data).toHaveProperty('isCompleted');
+      expect(response.body.data).toHaveProperty('category');
     });
 
     it('should return 404 for non-existent goal', async () => {
@@ -214,6 +222,7 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
 
@@ -239,6 +248,7 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
@@ -273,11 +283,11 @@ describe('Investment Goal Routes', () => {
         .send(updateData);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Meta de investimento atualizada com sucesso');
-      expect(response.body).toHaveProperty('goal');
-      expect(response.body.goal.title).toBe('Educação Superior');
-      expect(response.body.goal.target_amount).toBe(120000);
-      expect(response.body.goal.color).toBe('#EC4899');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('message', 'Meta de investimento atualizada com sucesso');
+      expect(response.body.data.goal.title).toBe('Educação Superior');
+      expect(response.body.data.goal.target_amount).toBe(120000);
+      expect(response.body.data.goal.color).toBe('#EC4899');
     });
 
     it('should return 404 for non-existent goal', async () => {
@@ -287,6 +297,7 @@ describe('Investment Goal Routes', () => {
         .send({ title: 'Updated' });
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
@@ -318,9 +329,9 @@ describe('Investment Goal Routes', () => {
         .send(updateData);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Valor atual da meta atualizado com sucesso');
-      expect(response.body).toHaveProperty('goal');
-      expect(response.body.goal.current_amount).toBe(35000);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('message', 'Valor atual da meta atualizado com sucesso');
+      expect(response.body.data.goal.current_amount).toBe(35000);
     });
 
     it('should return 404 for non-existent goal', async () => {
@@ -330,6 +341,7 @@ describe('Investment Goal Routes', () => {
         .send({ current_amount: 10000 });
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
@@ -391,9 +403,11 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Valor atual da meta calculado com sucesso');
-      expect(response.body).toHaveProperty('goal');
-      expect(response.body.goal.current_amount).toBe(43000); // 16000 + 27000
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('message', 'Valor da meta calculado com sucesso');
+      expect(response.body.data).toHaveProperty('goal');
+      expect(response.body.data).toHaveProperty('calculatedAmount');
+      expect(response.body.data).toHaveProperty('investmentsCount');
     });
 
     it('should return 404 for non-existent goal', async () => {
@@ -402,6 +416,7 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
@@ -428,7 +443,8 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Meta de investimento excluída com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('message', 'Meta de investimento excluída com sucesso');
 
       // Verificar se foi realmente excluída
       const deletedGoal = await InvestmentGoal.findByPk(goal.id);
@@ -441,6 +457,7 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Meta de investimento não encontrada');
     });
   });
@@ -479,14 +496,15 @@ describe('Investment Goal Routes', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('totalGoals');
-      expect(response.body).toHaveProperty('activeGoals');
-      expect(response.body).toHaveProperty('completedGoals');
-      expect(response.body).toHaveProperty('completionRate');
-      expect(response.body.totalGoals).toBe(2);
-      expect(response.body.activeGoals).toBe(1);
-      expect(response.body.completedGoals).toBe(1);
-      expect(response.body.completionRate).toBe(50);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('summary');
+      expect(response.body.data).toHaveProperty('amounts');
+      expect(response.body.data).toHaveProperty('progressByCategory');
+      expect(response.body.data.summary.totalGoals).toBe(2);
+      expect(response.body.data.summary.activeGoals).toBe(1);
+      expect(response.body.data.summary.completedGoals).toBe(1);
+      expect(response.body.data.amounts.totalTargetAmount).toBe(150000);
+      expect(response.body.data.amounts.totalCurrentAmount).toBe(100000);
     });
   });
 }); 

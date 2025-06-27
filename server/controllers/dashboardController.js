@@ -2,6 +2,7 @@ const { Transaction, Account, Category, FixedAccount, Notification, InvestmentGo
 const { Op } = require('sequelize');
 const { AppError } = require('../utils/errors');
 const { successResponse } = require('../utils/response');
+const cacheService = require('../services/cacheService');
 
 /**
  * Controller para endpoints do Dashboard Principal
@@ -22,158 +23,16 @@ class DashboardController {
   async getMetrics(req, res) {
     try {
       const userId = req.userId;
-      const currentDate = new Date();
-      const currentMonth = currentDate.getMonth();
-      const currentYear = currentDate.getFullYear();
-      
-      // Data de início e fim do mês atual
-      const startOfMonth = new Date(currentYear, currentMonth, 1);
-      const endOfMonth = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
-      
-      // Data de início e fim do mês anterior
-      const startOfPreviousMonth = new Date(currentYear, currentMonth - 1, 1);
-      const endOfPreviousMonth = new Date(currentYear, currentMonth, 0, 23, 59, 59);
-
-      // Buscar saldo total atual
-      const accounts = await Account.findAll({
-        where: { user_id: userId },
-        attributes: ['id', 'balance', 'description']
-      });
-      
-      const totalBalance = accounts.reduce((sum, account) => sum + parseFloat(account.balance || 0), 0);
-
-      // Buscar transações do mês atual
-      const currentMonthTransactions = await Transaction.findAll({
-        where: {
-          user_id: userId,
-          date: {
-            [Op.between]: [startOfMonth, endOfMonth]
-          }
-        },
-        include: [{
-          model: Category,
-          as: 'category',
-          attributes: ['name', 'type', 'color', 'is_default']
-        }]
-      });
-
-      // Buscar transações do mês anterior
-      const previousMonthTransactions = await Transaction.findAll({
-        where: {
-          user_id: userId,
-          date: {
-            [Op.between]: [startOfPreviousMonth, endOfPreviousMonth]
-          }
-        }
-      });
-
-      // Calcular receitas e despesas do mês atual
-      const currentMonthIncome = currentMonthTransactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
-      
-      const currentMonthExpenses = currentMonthTransactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
-
-      // Calcular receitas e despesas do mês anterior
-      const previousMonthIncome = previousMonthTransactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
-      
-      const previousMonthExpenses = previousMonthTransactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
-
-      // Calcular variações percentuais
-      const incomeVariation = previousMonthIncome > 0 
-        ? ((currentMonthIncome - previousMonthIncome) / previousMonthIncome) * 100 
-        : 0;
-      
-      const expensesVariation = previousMonthExpenses > 0 
-        ? ((currentMonthExpenses - previousMonthExpenses) / previousMonthExpenses) * 100 
-        : 0;
-
-      // Top 5 categorias de gastos
-      const expenseCategories = currentMonthTransactions
-        .filter(t => t.type === 'expense' && t.category)
-        .reduce((acc, t) => {
-          const categoryName = t.category.name;
-          acc[categoryName] = (acc[categoryName] || 0) + parseFloat(t.amount || 0);
-          return acc;
-        }, {});
-
-      const topExpenseCategories = Object.entries(expenseCategories)
-        .map(([name, amount]) => ({ name, amount }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5);
-
-      // Buscar contas vencidas
-      const overdueFixedAccounts = await FixedAccount.findAll({
-        where: {
-          user_id: userId,
-          next_due_date: {
-            [Op.lt]: currentDate
-          },
-          is_paid: false
-        },
-        attributes: ['id', 'description', 'amount', 'next_due_date']
-      });
-
-      const overdueAmount = overdueFixedAccounts.reduce((sum, account) => 
-        sum + parseFloat(account.amount || 0), 0
-      );
-
-      // Projeção para o próximo mês (baseada na média dos últimos 3 meses)
-      const threeMonthsAgo = new Date(currentYear, currentMonth - 3, 1);
-      const threeMonthsTransactions = await Transaction.findAll({
-        where: {
-          user_id: userId,
-          date: {
-            [Op.gte]: threeMonthsAgo
-          }
-        }
-      });
-
-      const monthlyAverages = threeMonthsTransactions.reduce((acc, t) => {
-        const month = t.date.getMonth();
-        if (!acc[month]) {
-          acc[month] = { income: 0, expenses: 0, count: 0 };
-        }
-        if (t.type === 'income') {
-          acc[month].income += parseFloat(t.amount || 0);
-        } else {
-          acc[month].expenses += parseFloat(t.amount || 0);
-        }
-        acc[month].count++;
-        return acc;
-      }, {});
-
-      const averageIncome = Object.values(monthlyAverages).length > 0
-        ? Object.values(monthlyAverages).reduce((sum, month) => sum + month.income, 0) / Object.values(monthlyAverages).length
-        : 0;
-      
-      const averageExpenses = Object.values(monthlyAverages).length > 0
-        ? Object.values(monthlyAverages).reduce((sum, month) => sum + month.expenses, 0) / Object.values(monthlyAverages).length
-        : 0;
-
-      const projectedBalance = totalBalance + averageIncome - averageExpenses;
-
-      const metrics = {
-        totalBalance: Math.round(totalBalance * 100) / 100,
-        monthlyIncome: Math.round(currentMonthIncome * 100) / 100,
-        monthlyExpenses: Math.round(currentMonthExpenses * 100) / 100,
-        monthlyNet: Math.round((currentMonthIncome - currentMonthExpenses) * 100) / 100,
-        incomeVariation: Math.round(incomeVariation * 100) / 100,
-        expensesVariation: Math.round(expensesVariation * 100) / 100,
-        topExpenseCategories,
-        overdueAccounts: overdueFixedAccounts.length,
-        overdueAmount: Math.round(overdueAmount * 100) / 100,
-        projectedBalance: Math.round(projectedBalance * 100) / 100,
-        accountsCount: accounts.length,
-        lastUpdated: new Date().toISOString()
-      };
-
+      // Chave de cache única por usuário
+      const cacheKey = `dashboard:metrics:${userId}`;
+      // Busca do cache, fallback para getMetricsData
+      const metrics = await cacheService.getStats(cacheKey, async () => {
+        const data = await this.getMetricsData(userId);
+        return {
+          ...data,
+          lastUpdated: new Date().toISOString()
+        };
+      }, 600); // 10 minutos
       return successResponse(res, metrics, 'Métricas do dashboard obtidas com sucesso');
     } catch (error) {
       console.error('Erro ao obter métricas do dashboard:', error);

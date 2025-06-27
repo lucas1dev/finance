@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 const YAML = require('yamljs');
@@ -142,67 +141,34 @@ app.use('/docs-root', express.static(__dirname, {
   }
 }));
 
-// Rate limiting específico para autenticação (mais restritivo)
-const authRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 5, // 5 tentativas por 15 minutos
-  message: {
-    error: 'Muitas tentativas de login. Tente novamente em 15 minutos.',
-    status: 429
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true, // Não conta tentativas bem-sucedidas
-  keyGenerator: (req) => {
-    return `${req.ip}-auth`;
-  }
-});
+// Importa middlewares de rate limiting inteligente
+const { 
+  createRateLimiter, 
+  authRateLimiter, 
+  criticalRateLimiter, 
+  dashboardRateLimiter, 
+  apiRateLimiter 
+} = require('./middlewares/rateLimiter');
 
-// Rate limiting para dashboard (mais permissivo)
-const dashboardRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: parseInt(process.env.DASHBOARD_RATE_LIMIT_MAX) || 500, // 500 requisições por 15 minutos
-  message: {
-    error: 'Muitas requisições do dashboard. Tente novamente mais tarde.',
-    status: 429
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const userId = req.user?.id || 'anonymous';
-    return `${req.ip}-${userId}-dashboard`;
-  }
-});
-
-// Rate limiting para APIs gerais (moderado)
-const apiRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: parseInt(process.env.API_RATE_LIMIT_MAX) || 300, // 300 requisições por 15 minutos
-  message: {
-    error: 'Muitas requisições. Tente novamente mais tarde.',
-    status: 429
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const userId = req.user?.id || 'anonymous';
-    return `${req.ip}-${userId}-api`;
-  }
-});
+// Middleware de rate limiting inteligente global
+const intelligentRateLimiter = createRateLimiter();
 
 // Rotas da API com rate limiting específico
 app.use('/api/auth', authRateLimiter, require('./routes/auth'));
 app.use('/api/dashboard', dashboardRateLimiter, require('./routes/dashboard'));
 
+// Rotas de operações críticas (transações, pagamentos, recebimentos)
+app.use('/api/transactions', criticalRateLimiter, require('./routes/transactions'));
+app.use('/api/payments', criticalRateLimiter, require('./routes/payments'));
+app.use('/api/receivables', criticalRateLimiter, require('./routes/receivables'));
+app.use('/api/payables', criticalRateLimiter, require('./routes/payableRoutes'));
+app.use('/api/financing-payments', criticalRateLimiter, require('./routes/financingPayments'));
+
 // Rotas da API com rate limiting padrão
 app.use('/api/accounts', apiRateLimiter, require('./routes/accounts'));
 app.use('/api/categories', apiRateLimiter, require('./routes/categories'));
 app.use('/api/customers', apiRateLimiter, require('./routes/customers'));
-app.use('/api/receivables', apiRateLimiter, require('./routes/receivables'));
-app.use('/api/transactions', apiRateLimiter, require('./routes/transactions'));
 app.use('/api/suppliers', apiRateLimiter, require('./routes/supplierRoutes'));
-app.use('/api/payables', apiRateLimiter, require('./routes/payableRoutes'));
-app.use('/api/payments', apiRateLimiter, require('./routes/payments'));
 app.use('/api/fixed-accounts', apiRateLimiter, require('./routes/fixedAccounts'));
 app.use('/api/investments', apiRateLimiter, require('./routes/investments'));
 app.use('/api/investment-goals', apiRateLimiter, require('./routes/investmentGoals'));
@@ -211,7 +177,6 @@ app.use('/api/investment-contributions', apiRateLimiter, require('./routes/inves
 // Rotas de Financiamentos
 app.use('/api/creditors', apiRateLimiter, require('./routes/creditors'));
 app.use('/api/financings', apiRateLimiter, require('./routes/financings'));
-app.use('/api/financing-payments', apiRateLimiter, require('./routes/financingPayments'));
 
 // Rotas de Notificações
 app.use('/api/notifications', apiRateLimiter, require('./routes/notifications'));
@@ -241,12 +206,19 @@ app.use('/api/admin/users', apiRateLimiter, require('./routes/adminUsers'));
 // Rotas de Configurações
 app.use('/api/settings', apiRateLimiter, require('./routes/settings'));
 
+// Rotas de Cache (Administrativas)
+app.use('/api/cache', apiRateLimiter, require('./routes/cache'));
+
 // Rotas de Jobs de Contas Fixas
 app.use('/api/fixed-account-jobs', apiRateLimiter, require('./routes/fixedAccountJobs'));
+
+// Rotas de Lançamentos de Contas Fixas
+app.use('/api/fixed-account-transactions', apiRateLimiter, require('./routes/fixedAccountTransactions'));
 
 // Middleware para rotas não encontradas
 app.use('*', (req, res) => {
   res.status(404).json({
+    success: false,
     error: 'Endpoint não encontrado',
     message: `A rota ${req.originalUrl} não existe`,
     status: 404
@@ -275,6 +247,10 @@ async function initializeServices() {
     // Inicializar jobs de contas fixas
     const { initializeFixedAccountJobs } = require('./services/fixedAccountJobs');
     initializeFixedAccountJobs();
+    
+    // Inicializar serviço de cache
+    const cacheService = require('./services/cacheService');
+    await cacheService.connect();
     
     console.log('✅ Serviços inicializados com sucesso');
   } catch (error) {

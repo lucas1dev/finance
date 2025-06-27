@@ -95,12 +95,13 @@ describe('PayableController', () => {
         .send(payableData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.description).toBe('Nova compra');
-      expect(Number(response.body.amount)).toBeCloseTo(1200.00, 1);
-      expect(response.body.supplier_id).toBe(testSupplier.id);
-      expect(response.body.category_id).toBe(testCategory.id);
-      expect(response.body.status).toBe('pending');
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('id');
+      expect(response.body.data.description).toBe('Nova compra');
+      expect(Number(response.body.data.amount)).toBeCloseTo(1200.00, 1);
+      expect(response.body.data.supplier_id).toBe(testSupplier.id);
+      expect(response.body.data.category_id).toBe(testCategory.id);
+      expect(response.body.data.status).toBe('pending');
     });
 
     it('deve criar conta a pagar sem categoria', async () => {
@@ -117,8 +118,9 @@ describe('PayableController', () => {
         .send(payableData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body.category_id).toBeNull();
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('id');
+      expect(response.body.data.category_id).toBeNull();
     });
 
     it('deve retornar erro para dados inválidos', async () => {
@@ -134,6 +136,7 @@ describe('PayableController', () => {
         .send(invalidData);
 
       expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
 
@@ -151,6 +154,7 @@ describe('PayableController', () => {
         .send(payableData);
 
       expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
 
@@ -169,6 +173,7 @@ describe('PayableController', () => {
         .send(payableData);
 
       expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
   });
@@ -180,10 +185,11 @@ describe('PayableController', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBeGreaterThan(0);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThan(0);
       
-      const payable = response.body[0];
+      const payable = response.body.data[0];
       expect(payable).toHaveProperty('id');
       expect(payable).toHaveProperty('description');
       expect(payable).toHaveProperty('amount');
@@ -199,9 +205,10 @@ describe('PayableController', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
       
-      response.body.forEach(payable => {
+      response.body.data.forEach(payable => {
         expect(payable.status).toBe('pending');
       });
     });
@@ -212,7 +219,8 @@ describe('PayableController', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
     });
 
     it('deve filtrar por fornecedor', async () => {
@@ -221,9 +229,10 @@ describe('PayableController', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
       
-      response.body.forEach(payable => {
+      response.body.data.forEach(payable => {
         expect(payable.supplier_id).toBe(testSupplier.id);
       });
     });
@@ -236,11 +245,12 @@ describe('PayableController', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.id).toBe(testPayable.id);
-      expect(response.body.description).toBe('Compra de produtos');
-      expect(response.body).toHaveProperty('supplier');
-      expect(response.body).toHaveProperty('category');
-      expect(response.body).toHaveProperty('payments');
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.id).toBe(testPayable.id);
+      expect(response.body.data.description).toBe('Compra de produtos');
+      expect(response.body.data).toHaveProperty('supplier');
+      expect(response.body.data).toHaveProperty('category');
+      expect(response.body.data).toHaveProperty('payments');
     });
 
     it('deve retornar erro para ID inexistente', async () => {
@@ -249,6 +259,7 @@ describe('PayableController', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
 
@@ -258,6 +269,7 @@ describe('PayableController', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
   });
@@ -293,47 +305,31 @@ describe('PayableController', () => {
         .send(updateData);
 
       expect(response.status).toBe(200);
-      expect(response.body.description).toBe('Compra atualizada');
-      expect(Number(response.body.amount)).toBeCloseTo(1000.00, 1);
-      expect(response.body.notes).toBe('Notas atualizadas');
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.description).toBe('Compra atualizada');
+      expect(Number(response.body.data.amount)).toBeCloseTo(1000.00, 1);
+      expect(response.body.data.notes).toBe('Notas atualizadas');
     });
 
     it('deve retornar erro para atualização com dados inválidos', async () => {
-      // Criar um payable novo para garantir existência
-      const novoPayable = await Payable.create({
-        user_id: testUser.id,
-        supplier_id: testSupplier.id,
-        category_id: testCategory.id,
-        description: 'Update Test Inválido',
-        amount: 500.00,
-        due_date: '2024-06-01',
-        status: 'pending',
-      });
-
-      // Verificar se foi criado corretamente
-      const payableCriado = await Payable.findByPk(novoPayable.id);
-      expect(payableCriado).toBeTruthy();
-      expect(payableCriado.user_id).toBe(testUser.id);
-
       const invalidData = {
         amount: -100 // Valor negativo
       };
 
       const response = await request(app)
-        .patch(`/api/payables/${novoPayable.id}`)
+        .patch(`/api/payables/${testPayable.id}`)
         .set('Authorization', `Bearer ${authToken}`)
         .send(invalidData);
 
       expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
 
     it('deve retornar erro para ID inexistente', async () => {
       const updateData = {
-        description: 'Compra inexistente',
-        amount: 1000.00,
-        due_date: '2024-05-15',
-        notes: 'Notas atualizadas'
+        description: 'Teste inexistente',
+        amount: 1000.00
       };
 
       const response = await request(app)
@@ -342,31 +338,33 @@ describe('PayableController', () => {
         .send(updateData);
 
       expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
   });
 
   describe('DELETE /api/payables/:id', () => {
     it('deve deletar uma conta a pagar com sucesso', async () => {
-      // Criar uma conta a pagar para deletar
-      const payableToDelete = await Payable.create({
+      // Criar um payable novo para deletar
+      const payableParaDeletar = await Payable.create({
         user_id: testUser.id,
         supplier_id: testSupplier.id,
-        description: 'Compra para deletar',
-        amount: 400.00,
+        category_id: testCategory.id,
+        description: 'Delete Test',
+        amount: 300.00,
         due_date: '2024-06-01',
-        status: 'pending'
+        status: 'pending',
       });
 
       const response = await request(app)
-        .delete(`/api/payables/${payableToDelete.id}`)
+        .delete(`/api/payables/${payableParaDeletar.id}`)
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(204);
 
-      // Verificar se foi realmente deletada
-      const deletedPayable = await Payable.findByPk(payableToDelete.id);
-      expect(deletedPayable).toBeNull();
+      // Verificar se foi realmente deletado
+      const payableDeletado = await Payable.findByPk(payableParaDeletar.id);
+      expect(payableDeletado).toBeNull();
     });
 
     it('deve retornar erro para ID inexistente', async () => {
@@ -375,32 +373,38 @@ describe('PayableController', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
 
     it('deve retornar erro para conta a pagar com pagamentos', async () => {
-      // Criar um payable novo
+      // Criar um payable com pagamento
       const payableComPagamento = await Payable.create({
         user_id: testUser.id,
         supplier_id: testSupplier.id,
         category_id: testCategory.id,
-        description: 'Com Pagamento',
-        amount: 300.00,
+        description: 'Payable com Pagamento',
+        amount: 500.00,
         due_date: '2024-06-01',
         status: 'pending',
       });
-      // Criar um pagamento para esse payable
+
+      // Criar um pagamento para este payable
       await Payment.create({
         payable_id: payableComPagamento.id,
-        amount: 100.00,
-        payment_date: '2024-06-01',
+        amount: 200.00,
+        payment_date: '2024-04-01',
         payment_method: 'pix',
-        description: 'Teste pagamento'
+        account_id: testAccount.id,
+        user_id: testUser.id
       });
+
       const response = await request(app)
         .delete(`/api/payables/${payableComPagamento.id}`)
         .set('Authorization', `Bearer ${authToken}`);
+
       expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
   });
@@ -408,11 +412,11 @@ describe('PayableController', () => {
   describe('POST /api/payables/:id/payments', () => {
     it('deve registrar um pagamento com sucesso', async () => {
       const paymentData = {
-        account_id: testAccount.id,
         amount: 400.00,
         payment_date: '2024-04-01',
         payment_method: 'pix',
-        notes: 'Pagamento parcial'
+        account_id: testAccount.id,
+        notes: 'Pagamento teste'
       };
 
       const response = await request(app)
@@ -421,20 +425,21 @@ describe('PayableController', () => {
         .send(paymentData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('payment');
-      expect(response.body.payment).toHaveProperty('id');
-      expect(Number(response.body.payment.amount)).toBeCloseTo(400.00, 1);
-      expect(response.body.payment.payment_method).toBe('pix');
-      expect(response.body.payment.payable_id).toBe(testPayable.id);
-      expect(response.body).toHaveProperty('newBalance');
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toHaveProperty('payment');
+      expect(response.body.data.payment).toHaveProperty('id');
+      expect(Number(response.body.data.payment.amount)).toBeCloseTo(400.00, 1);
+      expect(response.body.data.payment.payment_method).toBe('pix');
+      expect(response.body.data).toHaveProperty('new_balance');
+      expect(response.body.data).toHaveProperty('remaining_amount');
     });
 
     it('deve retornar erro para pagamento maior que o valor restante', async () => {
       const paymentData = {
-        account_id: testAccount.id,
-        amount: 2000.00, // Maior que o valor da conta
+        amount: 2000.00, // Valor maior que o payable (800.00)
         payment_date: '2024-04-01',
-        payment_method: 'pix'
+        payment_method: 'pix',
+        account_id: testAccount.id
       };
 
       const response = await request(app)
@@ -443,40 +448,34 @@ describe('PayableController', () => {
         .send(paymentData);
 
       expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
 
     it('deve retornar erro para dados inválidos', async () => {
-      // Criar um payable novo para garantir existência
-      const novoPayable = await Payable.create({
-        user_id: testUser.id,
-        supplier_id: testSupplier.id,
-        category_id: testCategory.id,
-        description: 'Pagamento Inválido',
-        amount: 500.00,
-        due_date: '2024-06-01',
-        status: 'pending',
-      });
       const invalidData = {
         amount: -100, // Valor negativo
         payment_date: '', // Data vazia
         payment_method: '', // Método vazio
-        account_id: null // Conta nula
+        account_id: null // ID nulo
       };
+
       const response = await request(app)
-        .post(`/api/payables/${novoPayable.id}/payments`)
+        .post(`/api/payables/${testPayable.id}/payments`)
         .set('Authorization', `Bearer ${authToken}`)
         .send(invalidData);
+
       expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
 
     it('deve retornar erro para conta inexistente', async () => {
       const paymentData = {
-        account_id: 99999, // Conta inexistente
-        amount: 400.00,
+        amount: 100.00,
         payment_date: '2024-04-01',
-        payment_method: 'pix'
+        payment_method: 'pix',
+        account_id: 99999 // Conta inexistente
       };
 
       const response = await request(app)
@@ -485,6 +484,7 @@ describe('PayableController', () => {
         .send(paymentData);
 
       expect(response.status).toBe(404);
+      expect(response.body.success).toBe(false);
       expect(response.body).toHaveProperty('error');
     });
   });

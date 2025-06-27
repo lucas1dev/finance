@@ -2,10 +2,66 @@ const { Model, DataTypes } = require('sequelize');
 
 /**
  * Modelo para contas fixas do sistema financeiro.
- * Representa despesas recorrentes com periodicidade definida.
+ * Representa despesas ou receitas recorrentes com periodicidade definida.
  */
 module.exports = (sequelize) => {
-  class FixedAccount extends Model {}
+  class FixedAccount extends Model {
+    /**
+     * Calcula a próxima data de vencimento baseada na periodicidade
+     * @param {string} currentDate - Data atual (YYYY-MM-DD)
+     * @param {string} periodicity - Periodicidade
+     * @returns {string} Próxima data de vencimento (YYYY-MM-DD)
+     */
+    static calculateNextDueDate(currentDate, periodicity) {
+      const date = new Date(currentDate);
+      
+      switch (periodicity) {
+        case 'daily':
+          date.setDate(date.getDate() + 1);
+          break;
+        case 'weekly':
+          date.setDate(date.getDate() + 7);
+          break;
+        case 'monthly':
+          date.setMonth(date.getMonth() + 1);
+          break;
+        case 'quarterly':
+          date.setMonth(date.getMonth() + 3);
+          break;
+        case 'yearly':
+          date.setFullYear(date.getFullYear() + 1);
+          break;
+        default:
+          date.setMonth(date.getMonth() + 1);
+      }
+      
+      return date.toISOString().split('T')[0];
+    }
+
+    /**
+     * Verifica se a conta fixa está vencida
+     * @returns {boolean}
+     */
+    isOverdue() {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dueDate = new Date(this.next_due_date);
+      return dueDate < today && !this.is_paid;
+    }
+
+    /**
+     * Verifica se a conta fixa vence em breve (baseado no reminder_days)
+     * @returns {boolean}
+     */
+    isDueSoon() {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dueDate = new Date(this.next_due_date);
+      const reminderDate = new Date(dueDate);
+      reminderDate.setDate(reminderDate.getDate() - this.reminder_days);
+      return reminderDate <= today && !this.is_paid;
+    }
+  }
 
   FixedAccount.init(
     {
@@ -28,6 +84,14 @@ module.exports = (sequelize) => {
         validate: {
           notEmpty: true,
           len: [1, 255]
+        }
+      },
+      type: {
+        type: DataTypes.ENUM('expense', 'income'),
+        allowNull: false,
+        defaultValue: 'expense',
+        validate: {
+          isIn: [['expense', 'income']]
         }
       },
       amount: {
@@ -161,6 +225,12 @@ module.exports = (sequelize) => {
     FixedAccount.hasMany(models.Transaction, {
       foreignKey: 'fixed_account_id',
       as: 'transactions'
+    });
+
+    // Relacionamento com os lançamentos de conta fixa
+    FixedAccount.hasMany(models.FixedAccountTransaction, {
+      foreignKey: 'fixed_account_id',
+      as: 'fixedAccountTransactions'
     });
   };
 

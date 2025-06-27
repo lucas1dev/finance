@@ -3,6 +3,11 @@
  * Testa operações administrativas de gerenciamento de usuários
  */
 
+let User, Transaction, Account, Notification;
+let createUserSchema, updateUserSchema;
+let successResponse, AppError;
+let userController;
+
 // Mock dos models Sequelize
 jest.mock('../../models', () => ({
   User: {
@@ -45,17 +50,17 @@ jest.mock('../../utils/errors', () => ({
   AppError: jest.fn()
 }));
 
-// Importar o controller DEPOIS de todos os mocks
-const { User, Transaction, Account, Notification } = require('../../models');
-const { createUserSchema, updateUserSchema } = require('../../utils/validators');
-const { successResponse } = require('../../utils/response');
-const { AppError } = require('../../utils/errors');
-const userController = require('../../controllers/userController');
-
 describe('UserController', () => {
   let mockReq, mockRes;
 
   beforeEach(() => {
+    // Importar após os mocks
+    userController = require('../../controllers/userController');
+    ({ User, Transaction, Account, Notification } = require('../../models'));
+    ({ createUserSchema, updateUserSchema } = require('../../utils/validators'));
+    ({ successResponse } = require('../../utils/response'));
+    ({ AppError } = require('../../utils/errors'));
+    
     // Limpar todos os mocks
     jest.clearAllMocks();
     

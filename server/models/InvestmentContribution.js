@@ -74,6 +74,36 @@ module.exports = (sequelize) => {
       },
       onUpdate: 'CASCADE',
       onDelete: 'CASCADE'
+    },
+    /**
+     * ID da conta bancária de origem do aporte.
+     * @type {number}
+     */
+    source_account_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'accounts',
+        key: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'Conta bancária de origem do aporte'
+    },
+    /**
+     * ID da conta bancária de destino do aporte.
+     * @type {number}
+     */
+    destination_account_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'accounts',
+        key: 'id'
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+      comment: 'Conta bancária de destino do aporte'
     }
   }, {
     sequelize,
@@ -88,6 +118,12 @@ module.exports = (sequelize) => {
       },
       {
         fields: ['user_id']
+      },
+      {
+        fields: ['source_account_id']
+      },
+      {
+        fields: ['destination_account_id']
       },
       {
         fields: ['contribution_date']
@@ -106,6 +142,18 @@ module.exports = (sequelize) => {
     InvestmentContribution.belongsTo(models.User, {
       foreignKey: 'user_id',
       as: 'user'
+    });
+
+    // Associação com conta de origem (N:1)
+    InvestmentContribution.belongsTo(models.Account, {
+      foreignKey: 'source_account_id',
+      as: 'sourceAccount'
+    });
+
+    // Associação com conta de destino (N:1)
+    InvestmentContribution.belongsTo(models.Account, {
+      foreignKey: 'destination_account_id',
+      as: 'destinationAccount'
     });
   };
 

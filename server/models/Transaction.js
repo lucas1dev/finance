@@ -60,6 +60,14 @@ module.exports = (sequelize) => {
           key: 'id',
         },
       },
+      investment_contribution_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'investment_contributions',
+          key: 'id',
+        },
+      },
       type: {
         type: DataTypes.ENUM('income', 'expense'),
         allowNull: false,
@@ -166,6 +174,10 @@ module.exports = (sequelize) => {
     Transaction.belongsTo(models.Investment, {
       foreignKey: 'investment_id',
       as: 'investment'
+    });
+    Transaction.belongsTo(models.InvestmentContribution, {
+      foreignKey: 'investment_contribution_id',
+      as: 'investmentContribution'
     });
   };
 

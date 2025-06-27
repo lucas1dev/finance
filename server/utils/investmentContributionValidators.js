@@ -54,7 +54,29 @@ const createContributionSchema = z.object({
 
   observations: z.string({
     invalid_type_error: 'Observações devem ser um texto'
-  }).max(1000, 'Observações não podem exceder 1000 caracteres').optional()
+  }).max(1000, 'Observações não podem exceder 1000 caracteres').optional(),
+
+  /**
+   * ID da conta bancária de origem do aporte.
+   * @type {number}
+   */
+  source_account_id: z.number({
+    required_error: 'ID da conta de origem é obrigatório',
+    invalid_type_error: 'ID da conta de origem deve ser um número'
+  })
+    .int('ID da conta de origem deve ser um número inteiro')
+    .positive('ID da conta de origem deve ser positivo'),
+
+  /**
+   * ID da conta bancária de destino do aporte.
+   * @type {number}
+   */
+  destination_account_id: z.number({
+    required_error: 'ID da conta de destino é obrigatório',
+    invalid_type_error: 'ID da conta de destino deve ser um número'
+  })
+    .int('ID da conta de destino deve ser um número inteiro')
+    .positive('ID da conta de destino deve ser positivo')
 });
 
 /**
@@ -98,7 +120,29 @@ const updateContributionSchema = z.object({
 
   observations: z.string({
     invalid_type_error: 'Observações devem ser um texto'
-  }).max(1000, 'Observações não podem exceder 1000 caracteres').optional()
+  }).max(1000, 'Observações não podem exceder 1000 caracteres').optional(),
+
+  /**
+   * ID da conta bancária de origem do aporte.
+   * @type {number}
+   */
+  source_account_id: z.number({
+    required_error: 'ID da conta de origem é obrigatório',
+    invalid_type_error: 'ID da conta de origem deve ser um número'
+  })
+    .int('ID da conta de origem deve ser um número inteiro')
+    .positive('ID da conta de origem deve ser positivo'),
+
+  /**
+   * ID da conta bancária de destino do aporte.
+   * @type {number}
+   */
+  destination_account_id: z.number({
+    required_error: 'ID da conta de destino é obrigatório',
+    invalid_type_error: 'ID da conta de destino deve ser um número'
+  })
+    .int('ID da conta de destino deve ser um número inteiro')
+    .positive('ID da conta de destino deve ser positivo')
 });
 
 /**

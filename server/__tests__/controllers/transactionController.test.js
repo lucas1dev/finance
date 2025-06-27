@@ -3,7 +3,17 @@
  * @author Lucas Santos
  */
 
-const { ValidationError, NotFoundError } = require('../../utils/errors');
+// Mock do service antes de importar o controller
+jest.mock('../../services/transactionService', () => ({
+  createTransaction: jest.fn(),
+  getTransactions: jest.fn(),
+  getTransaction: jest.fn(),
+  updateTransaction: jest.fn(),
+  deleteTransaction: jest.fn(),
+  getTransactionStats: jest.fn(),
+  getTimelineData: jest.fn(),
+  getCategoryChartData: jest.fn()
+}));
 
 // Mock dos modelos
 jest.mock('../../models', () => ({
@@ -12,7 +22,10 @@ jest.mock('../../models', () => ({
     findAll: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
-    destroy: jest.fn()
+    destroy: jest.fn(),
+    count: jest.fn(),
+    sum: jest.fn(),
+    findAndCountAll: jest.fn()
   },
   Account: {
     findOne: jest.fn(),
@@ -33,20 +46,66 @@ jest.mock('../../utils/validators', () => ({
   }
 }));
 
-describe('TransactionController', () => {
-  let mockReq, mockRes, transactionController;
-  let { Transaction, Account, Category } = require('../../models');
-  let { createTransactionSchema, updateTransactionSchema } = require('../../utils/validators');
+// Mock dos erros
+jest.mock('../../utils/errors', () => ({
+  AppError: class AppError extends Error {
+    constructor(message, statusCode) {
+      super(message);
+      this.name = 'AppError';
+      this.statusCode = statusCode;
+    }
+  },
+  ValidationError: class ValidationError extends Error {
+    constructor(message, errors) {
+      super(message);
+      this.name = 'ValidationError';
+      this.errors = errors;
+    }
+  },
+  NotFoundError: class NotFoundError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = 'NotFoundError';
+    }
+  }
+}));
 
+// Mock do logger
+jest.mock('../../utils/logger', () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn()
+  }
+}));
+
+let transactionController;
+let transactionService;
+let createTransactionSchema, updateTransactionSchema;
+let AppError;
+
+describe('TransactionController', () => {
   beforeEach(() => {
-    // Importa o controller dentro do beforeEach para garantir que os mocks sejam aplicados
+    jest.clearAllMocks();
+    // Reimportar para garantir mocks limpos
     jest.resetModules();
     transactionController = require('../../controllers/transactionController');
-    ({ Transaction, Account, Category } = require('../../models'));
+    transactionService = require('../../services/transactionService');
     ({ createTransactionSchema, updateTransactionSchema } = require('../../utils/validators'));
+    ({ AppError } = require('../../utils/errors'));
+
+    // Resetar todos os métodos do service
+    Object.values(transactionService).forEach(fn => {
+      if (fn && fn.mockClear) fn.mockClear();
+    });
+    // Resetar métodos dos schemas
+    if (createTransactionSchema.parse.mockClear) createTransactionSchema.parse.mockClear();
+    if (updateTransactionSchema.parse.mockClear) updateTransactionSchema.parse.mockClear();
 
     mockReq = {
       user: { id: 1 },
+      userId: 1,
       body: {},
       params: {},
       query: {}
@@ -56,13 +115,10 @@ describe('TransactionController', () => {
       status: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis()
     };
-
-    // Reset completo dos mocks
-    jest.clearAllMocks();
   });
 
   describe('createTransaction', () => {
-    it('should create a transaction with valid data', async () => {
+    it('deve criar uma transação com dados válidos', async () => {
       const transactionData = {
         account_id: 1,
         category_id: 1,
@@ -71,410 +127,264 @@ describe('TransactionController', () => {
         description: 'Salário',
         date: '2024-01-15'
       };
-
-      const mockAccount = {
-        id: 1,
-        balance: 5000.00,
-        update: jest.fn().mockResolvedValue(true)
-      };
-
       const mockTransaction = {
         id: 1,
         ...transactionData,
-        user_id: 1
-      };
-
-      createTransactionSchema.parse.mockReturnValue(transactionData);
-      Account.findOne.mockResolvedValue(mockAccount);
-      Transaction.create.mockResolvedValue(mockTransaction);
-
-      mockReq.body = transactionData;
-
-      await transactionController.createTransaction(mockReq, mockRes);
-
-      expect(createTransactionSchema.parse).toHaveBeenCalledWith(transactionData);
-      expect(Account.findOne).toHaveBeenCalledWith({
-        where: {
-          id: transactionData.account_id,
-          user_id: mockReq.user.id
-        }
-      });
-      expect(mockAccount.update).toHaveBeenCalledWith({ balance: 6000.00 });
-      expect(Transaction.create).toHaveBeenCalledWith({
         user_id: 1,
-        account_id: 1,
-        category_id: 1,
-        type: 'income',
-        amount: 1000.00,
-        description: 'Salário',
         date: '2024-01-15'
-      });
+      };
+      const newBalance = 6000.00;
+      createTransactionSchema.parse.mockReturnValue(transactionData);
+      transactionService.createTransaction.mockResolvedValue({ transaction: mockTransaction, newBalance });
+      mockReq.body = transactionData;
+      const next = jest.fn();
+      await transactionController.createTransaction(mockReq, mockRes, next);
+      expect(createTransactionSchema.parse).toHaveBeenCalledWith(transactionData);
+      expect(transactionService.createTransaction).toHaveBeenCalledWith(1, transactionData);
       expect(mockRes.status).toHaveBeenCalledWith(201);
       expect(mockRes.json).toHaveBeenCalledWith({
         message: 'Transação criada com sucesso',
         transactionId: 1,
-        newBalance: 6000.00
-      });
-    });
-
-    it('should create an expense transaction and decrease balance', async () => {
-      const transactionData = {
-        account_id: 1,
-        type: 'expense',
-        amount: 500.00,
-        description: 'Compras',
-        date: '2024-01-15'
-      };
-
-      const mockAccount = {
-        id: 1,
-        balance: 1000.00,
-        update: jest.fn().mockResolvedValue(true)
-      };
-
-      const mockTransaction = {
-        id: 1,
-        ...transactionData,
-        user_id: 1
-      };
-
-      createTransactionSchema.parse.mockReturnValue(transactionData);
-      Account.findOne.mockResolvedValue(mockAccount);
-      Transaction.create.mockResolvedValue(mockTransaction);
-
-      mockReq.body = transactionData;
-
-      await transactionController.createTransaction(mockReq, mockRes);
-
-      expect(mockAccount.update).toHaveBeenCalledWith({ balance: 500.00 });
-      expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Transação criada com sucesso',
-        transactionId: 1,
-        newBalance: 500.00
-      });
-    });
-
-    it('should handle account not found', async () => {
-      const transactionData = {
-        account_id: 999,
-        type: 'income',
-        amount: 1000.00,
-        description: 'Salário'
-      };
-
-      createTransactionSchema.parse.mockReturnValue(transactionData);
-      Account.findOne.mockResolvedValue(null);
-
-      mockReq.body = transactionData;
-
-      await transactionController.createTransaction(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Conta não encontrada' });
-    });
-
-    it('should handle validation errors', async () => {
-      const zodError = new Error('Validation failed');
-      zodError.name = 'ZodError';
-      zodError.errors = [{ message: 'Invalid data' }];
-      
-      createTransactionSchema.parse.mockImplementation(() => { 
-        throw zodError; 
-      });
-
-      mockReq.body = {};
-
-      await transactionController.createTransaction(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Erro ao criar transação' });
-    });
-
-    it('should handle database errors', async () => {
-      const transactionData = {
-        account_id: 1,
-        type: 'income',
-        amount: 1000.00,
-        description: 'Salário'
-      };
-
-      createTransactionSchema.parse.mockReturnValue(transactionData);
-      Account.findOne.mockRejectedValue(new Error('Database error'));
-
-      mockReq.body = transactionData;
-
-      await transactionController.createTransaction(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Erro ao criar transação' });
-    });
-  });
-
-  describe('getTransactions', () => {
-    it('should return all transactions for user', async () => {
-      const mockTransactions = [
-        {
+        newBalance,
+        transaction: {
           id: 1,
           type: 'income',
           amount: 1000.00,
           description: 'Salário',
-          account: { bank_name: 'Banco A', account_type: 'checking' },
-          category: { name: 'Salário' }
-        },
-        {
-          id: 2,
-          type: 'expense',
-          amount: 500.00,
-          description: 'Compras',
-          account: { bank_name: 'Banco A', account_type: 'checking' },
-          category: { name: 'Alimentação' }
+          date: '2024-01-15'
         }
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('deve chamar next em caso de erro de validação', async () => {
+      const zodError = new Error('Validation failed');
+      createTransactionSchema.parse.mockImplementation(() => { throw zodError; });
+      mockReq.body = { account_id: 1 };
+      const next = jest.fn();
+      await transactionController.createTransaction(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(zodError);
+    });
+
+    it('deve chamar next em caso de erro do service', async () => {
+      const transactionData = { account_id: 1, type: 'income', amount: 100 };
+      createTransactionSchema.parse.mockReturnValue(transactionData);
+      const serviceError = new Error('Erro no service');
+      transactionService.createTransaction.mockRejectedValue(serviceError);
+      mockReq.body = transactionData;
+      const next = jest.fn();
+      await transactionController.createTransaction(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(serviceError);
+    });
+  });
+
+  describe('getTransactions', () => {
+    it('deve retornar transações com sucesso', async () => {
+      const mockTransactions = [
+        { id: 1, description: 'Transação 1', amount: 100 },
+        { id: 2, description: 'Transação 2', amount: 200 }
       ];
-
-      Transaction.findAll.mockResolvedValue(mockTransactions);
-
-      await transactionController.getTransactions(mockReq, mockRes);
-
-      expect(Transaction.findAll).toHaveBeenCalledWith({
-        where: { user_id: 1 },
-        include: [
-          {
-            model: Account,
-            as: 'account',
-            attributes: ['bank_name', 'account_type']
-          },
-          {
-            model: Category,
-            as: 'category',
-            attributes: ['name', 'color', 'is_default']
-          }
-        ],
-        order: [['date', 'DESC']]
+      transactionService.getTransactions.mockResolvedValue(mockTransactions);
+      const next = jest.fn();
+      await transactionController.getTransactions(mockReq, mockRes, next);
+      expect(transactionService.getTransactions).toHaveBeenCalledWith(1, {});
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockTransactions,
+        count: 2
       });
-      expect(mockRes.json).toHaveBeenCalledWith(mockTransactions);
+      expect(next).not.toHaveBeenCalled();
     });
 
-    it('should apply filters correctly', async () => {
-      mockReq.query = {
-        startDate: '2024-01-01',
-        endDate: '2024-12-31',
-        type: 'income',
-        category_id: 1,
-        account_id: 1
-      };
-
-      const mockTransactions = [];
-      Transaction.findAll.mockResolvedValue(mockTransactions);
-
-      await transactionController.getTransactions(mockReq, mockRes);
-
-      expect(Transaction.findAll).toHaveBeenCalledWith({
-        where: {
-          user_id: 1,
-          date: {
-            [require('sequelize').Op.gte]: '2024-01-01',
-            [require('sequelize').Op.lte]: '2024-12-31'
-          },
-          type: 'income',
-          category_id: 1,
-          account_id: 1
-        },
-        include: expect.any(Array),
-        order: [['date', 'DESC']]
-      });
+    it('deve aplicar filtros corretamente', async () => {
+      const filters = { type: 'income', startDate: '2024-01-01', endDate: '2024-01-31' };
+      transactionService.getTransactions.mockResolvedValue([]);
+      mockReq.query = filters;
+      const next = jest.fn();
+      await transactionController.getTransactions(mockReq, mockRes, next);
+      expect(transactionService.getTransactions).toHaveBeenCalledWith(1, filters);
     });
 
-    it('should handle database errors', async () => {
-      Transaction.findAll.mockRejectedValue(new Error('Database error'));
-
-      await transactionController.getTransactions(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Erro ao buscar transações' });
+    it('deve chamar next em caso de erro do service', async () => {
+      const serviceError = new Error('Erro no service');
+      transactionService.getTransactions.mockRejectedValue(serviceError);
+      const next = jest.fn();
+      await transactionController.getTransactions(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(serviceError);
     });
   });
 
   describe('getTransaction', () => {
-    it('should return a specific transaction', async () => {
+    it('deve retornar uma transação específica', async () => {
       const mockTransaction = {
         id: 1,
-        type: 'income',
-        amount: 1000.00,
-        description: 'Salário',
-        user_id: 1
+        description: 'Transação teste',
+        amount: 100
       };
-
-      Transaction.findOne.mockResolvedValue(mockTransaction);
-
+      transactionService.getTransaction.mockResolvedValue(mockTransaction);
       mockReq.params = { id: 1 };
-
-      await transactionController.getTransaction(mockReq, mockRes);
-
-      expect(Transaction.findOne).toHaveBeenCalledWith({
-        where: {
-          id: 1,
-          user_id: 1
-        }
+      const next = jest.fn();
+      await transactionController.getTransaction(mockReq, mockRes, next);
+      expect(transactionService.getTransaction).toHaveBeenCalledWith(1, 1);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockTransaction
       });
-      expect(mockRes.json).toHaveBeenCalledWith(mockTransaction);
+      expect(next).not.toHaveBeenCalled();
     });
 
-    it('should return error when transaction is not found', async () => {
-      Transaction.findOne.mockResolvedValue(null);
-
+    it('deve chamar next quando transação não encontrada', async () => {
+      transactionService.getTransaction.mockResolvedValue(null);
       mockReq.params = { id: 999 };
-
-      await transactionController.getTransaction(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Transação não encontrada' });
-    });
-
-    it('should handle database errors', async () => {
-      Transaction.findOne.mockRejectedValue(new Error('Database error'));
-
-      mockReq.params = { id: 1 };
-
-      await transactionController.getTransaction(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Erro ao buscar transação' });
+      const next = jest.fn();
+      await transactionController.getTransaction(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 
   describe('updateTransaction', () => {
-    it('should update a transaction with valid data', async () => {
-      const updateData = {
-        type: 'income',
-        amount: 1500.00,
-        description: 'Salário atualizado'
-      };
-
+    it('deve atualizar uma transação com sucesso', async () => {
+      const updateData = { description: 'Transação atualizada' };
       const mockTransaction = {
         id: 1,
         type: 'income',
-        amount: 1000.00,
-        description: 'Salário',
-        user_id: 1,
-        account_id: 1,
-        update: jest.fn().mockResolvedValue(true)
+        amount: 100,
+        description: 'Transação atualizada',
+        date: '2024-01-15'
       };
-
-      const mockAccount = {
-        id: 1,
-        balance: 5000.00,
-        update: jest.fn().mockResolvedValue(true)
-      };
-
+      const newBalance = 1100;
       updateTransactionSchema.parse.mockReturnValue(updateData);
-      Transaction.findOne.mockResolvedValue(mockTransaction);
-      Account.findOne.mockResolvedValue(mockAccount);
-
+      transactionService.updateTransaction.mockResolvedValue({ transaction: mockTransaction, newBalance });
       mockReq.params = { id: 1 };
       mockReq.body = updateData;
-
-      await transactionController.updateTransaction(mockReq, mockRes);
-
+      const next = jest.fn();
+      await transactionController.updateTransaction(mockReq, mockRes, next);
       expect(updateTransactionSchema.parse).toHaveBeenCalledWith(updateData);
-      expect(Transaction.findOne).toHaveBeenCalledWith({
-        where: {
-          id: 1,
-          user_id: 1
-        }
-      });
-      expect(mockTransaction.update).toHaveBeenCalledWith(updateData);
+      expect(transactionService.updateTransaction).toHaveBeenCalledWith(1, 1, updateData);
       expect(mockRes.json).toHaveBeenCalledWith({
         message: 'Transação atualizada com sucesso',
-        newBalance: 5500.00
+        newBalance,
+        transaction: {
+          id: 1,
+          type: 'income',
+          amount: 100,
+          description: 'Transação atualizada',
+          date: '2024-01-15'
+        }
       });
+      expect(next).not.toHaveBeenCalled();
     });
 
-    it('should return error when transaction is not found', async () => {
-      updateTransactionSchema.parse.mockReturnValue({});
-      Transaction.findOne.mockResolvedValue(null);
-
-      mockReq.params = { id: 999 };
-
-      await transactionController.updateTransaction(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Transação não encontrada' });
-    });
-
-    it('should handle validation errors', async () => {
-      const zodError = new Error('Validation failed');
-      zodError.name = 'ZodError';
-      
-      updateTransactionSchema.parse.mockImplementation(() => { 
-        throw zodError; 
-      });
-
+    it('deve chamar next em caso de erro do service', async () => {
+      const updateData = { description: 'Transação atualizada' };
+      updateTransactionSchema.parse.mockReturnValue(updateData);
+      const serviceError = new Error('Erro no service');
+      transactionService.updateTransaction.mockRejectedValue(serviceError);
       mockReq.params = { id: 1 };
-
-      await transactionController.updateTransaction(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Erro ao atualizar transação' });
+      mockReq.body = updateData;
+      const next = jest.fn();
+      await transactionController.updateTransaction(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(serviceError);
     });
   });
 
   describe('deleteTransaction', () => {
-    it('should delete a transaction successfully', async () => {
-      const mockTransaction = {
-        id: 1,
-        type: 'income',
-        amount: 1000.00,
-        user_id: 1,
-        account_id: 1,
-        destroy: jest.fn().mockResolvedValue(true)
-      };
-
-      const mockAccount = {
-        id: 1,
-        balance: 5000.00,
-        update: jest.fn().mockResolvedValue(true)
-      };
-
-      Transaction.findOne.mockResolvedValue(mockTransaction);
-      Account.findOne.mockResolvedValue(mockAccount);
-
+    it('deve remover uma transação com sucesso', async () => {
+      const newBalance = 900;
+      transactionService.deleteTransaction.mockResolvedValue({ newBalance });
       mockReq.params = { id: 1 };
-
-      await transactionController.deleteTransaction(mockReq, mockRes);
-
-      expect(Transaction.findOne).toHaveBeenCalledWith({
-        where: {
-          id: 1,
-          user_id: 1
-        }
-      });
-      expect(mockTransaction.destroy).toHaveBeenCalled();
+      const next = jest.fn();
+      await transactionController.deleteTransaction(mockReq, mockRes, next);
+      expect(transactionService.deleteTransaction).toHaveBeenCalledWith(1, 1);
       expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Transação excluída com sucesso',
-        newBalance: 4000.00
+        message: 'Transação removida com sucesso',
+        newBalance
       });
+      expect(next).not.toHaveBeenCalled();
     });
 
-    it('should return error when transaction is not found', async () => {
-      Transaction.findOne.mockResolvedValue(null);
-
-      mockReq.params = { id: 999 };
-
-      await transactionController.deleteTransaction(mockReq, mockRes);
-
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Transação não encontrada' });
-    });
-
-    it('should handle database errors', async () => {
-      Transaction.findOne.mockRejectedValue(new Error('Database error'));
-
+    it('deve chamar next em caso de erro do service', async () => {
+      const serviceError = new Error('Erro no service');
+      transactionService.deleteTransaction.mockRejectedValue(serviceError);
       mockReq.params = { id: 1 };
+      const next = jest.fn();
+      await transactionController.deleteTransaction(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(serviceError);
+    });
+  });
 
-      await transactionController.deleteTransaction(mockReq, mockRes);
+  describe('getStats', () => {
+    it('deve retornar estatísticas de transações', async () => {
+      const mockStats = {
+        totalIncome: 1000,
+        totalExpenses: 500,
+        netAmount: 500,
+        transactionCount: 10,
+        period: 'month'
+      };
+      transactionService.getTransactionStats.mockResolvedValue(mockStats);
+      const next = jest.fn();
+      await transactionController.getStats(mockReq, mockRes, next);
+      expect(transactionService.getTransactionStats).toHaveBeenCalledWith(1, 'month');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockStats
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
 
-      expect(mockRes.status).toHaveBeenCalledWith(500);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Erro ao excluir transação' });
+    it('deve chamar next em caso de erro do service', async () => {
+      const serviceError = new Error('Erro no service');
+      transactionService.getTransactionStats.mockRejectedValue(serviceError);
+      const next = jest.fn();
+      await transactionController.getStats(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(serviceError);
+    });
+  });
+
+  describe('getCharts', () => {
+    it('deve retornar dados de timeline', async () => {
+      const mockChartData = { timeline: [{ label: '01/01', income: 100, expenses: 50 }] };
+      transactionService.getTimelineData.mockResolvedValue(mockChartData);
+      mockReq.query = { chart: 'timeline', period: 'month' };
+      const next = jest.fn();
+      await transactionController.getCharts(mockReq, mockRes, next);
+      expect(transactionService.getTimelineData).toHaveBeenCalledWith(1, 'month');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockChartData
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar dados de categorias', async () => {
+      const mockChartData = { income: [], expenses: [] };
+      transactionService.getCategoryChartData.mockResolvedValue(mockChartData);
+      mockReq.query = { chart: 'categories', period: 'month' };
+      const next = jest.fn();
+      await transactionController.getCharts(mockReq, mockRes, next);
+      expect(transactionService.getCategoryChartData).toHaveBeenCalledWith(1, 'month');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockChartData
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('deve chamar next para tipo de gráfico não suportado', async () => {
+      mockReq.query = { chart: 'invalid' };
+      const next = jest.fn();
+      await transactionController.getCharts(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('deve chamar next em caso de erro do service', async () => {
+      const serviceError = new Error('Erro no service');
+      transactionService.getTimelineData.mockRejectedValue(serviceError);
+      mockReq.query = { chart: 'timeline' };
+      const next = jest.fn();
+      await transactionController.getCharts(mockReq, mockRes, next);
+      expect(next).toHaveBeenCalledWith(serviceError);
     });
   });
 }); 

@@ -3,27 +3,60 @@
  * @author Lucas Santos
  */
 
-// Mock do controller inteiro
-const mockCreateAccount = jest.fn();
-const mockGetAccounts = jest.fn();
-const mockGetAccount = jest.fn();
-const mockUpdateAccount = jest.fn();
-const mockDeleteAccount = jest.fn();
-
-jest.mock('../../controllers/accountController', () => ({
-  createAccount: mockCreateAccount,
-  getAccounts: mockGetAccounts,
-  getAccount: mockGetAccount,
-  updateAccount: mockUpdateAccount,
-  deleteAccount: mockDeleteAccount
+// Mock do service
+jest.mock('../../services/accountService', () => ({
+  createAccount: jest.fn(),
+  getAccounts: jest.fn(),
+  getAccount: jest.fn(),
+  updateAccount: jest.fn(),
+  deleteAccount: jest.fn()
 }));
 
+// Mock dos schemas de validação
+jest.mock('../../utils/validators', () => ({
+  createAccountSchema: {
+    parse: jest.fn()
+  },
+  updateAccountSchema: {
+    parse: jest.fn()
+  }
+}));
+
+// Mock dos erros
+jest.mock('../../utils/errors', () => ({
+  AppError: jest.fn()
+}));
+
+let accountService;
+let createAccountSchema, updateAccountSchema;
+let AppError;
+
 describe('Account Controller', () => {
-  let mockReq, mockRes, mockNext;
+  let mockReq, mockRes, mockNext, accountController;
 
   beforeEach(() => {
+    // Limpar cache do require para garantir mocks limpos
+    jest.resetModules();
+    delete require.cache[require.resolve('../../controllers/accountController')];
+    delete require.cache[require.resolve('../../utils/validators')];
+    delete require.cache[require.resolve('../../services/accountService')];
+    delete require.cache[require.resolve('../../utils/errors')];
+    
+    // Reimportar módulos com mocks limpos
+    accountController = require('../../controllers/accountController');
+    accountService = require('../../services/accountService');
+    const validators = require('../../utils/validators');
+    const errors = require('../../utils/errors');
+    
+    createAccountSchema = validators.createAccountSchema;
+    updateAccountSchema = validators.updateAccountSchema;
+    AppError = errors.AppError;
+
+    // Limpar todos os mocks
+    jest.clearAllMocks();
+
     mockReq = {
-      userId: 1,
+      user: { id: 1 },
       body: {},
       params: {},
       query: {}
@@ -35,79 +68,96 @@ describe('Account Controller', () => {
     };
 
     mockNext = jest.fn();
-
-    jest.clearAllMocks();
   });
 
   describe('createAccount', () => {
     it('deve criar uma nova conta com sucesso', async () => {
-      // Arrange
+      const accountData = {
+        bank_name: 'Banco Teste',
+        account_type: 'corrente',
+        balance: 1000,
+        description: 'Conta teste'
+      };
+
       const mockAccount = {
         id: 1,
         user_id: 1,
-        bank_name: 'Banco Teste',
-        account_type: 'corrente',
-        balance: 1000,
-        description: 'Conta teste'
+        ...accountData
       };
 
-      mockReq.body = {
-        bank_name: 'Banco Teste',
-        account_type: 'corrente',
-        balance: 1000,
-        description: 'Conta teste'
-      };
+      mockReq.body = accountData;
+      createAccountSchema.parse.mockReturnValue(accountData);
+      accountService.createAccount.mockResolvedValue(mockAccount);
 
-      // Simular comportamento do controller
-      mockCreateAccount.mockImplementation(async (req, res) => {
-        res.status(201).json({
-          message: 'Conta criada com sucesso',
-          accountId: mockAccount.id
-        });
-      });
+      await accountController.createAccount(mockReq, mockRes, mockNext);
 
-      // Act
-      await mockCreateAccount(mockReq, mockRes);
-
-      // Assert
+      expect(createAccountSchema.parse).toHaveBeenCalledWith(accountData);
+      expect(accountService.createAccount).toHaveBeenCalledWith(1, accountData);
       expect(mockRes.status).toHaveBeenCalledWith(201);
       expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Conta criada com sucesso',
-        accountId: mockAccount.id
+        success: true,
+        data: { accountId: mockAccount.id }
       });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar erro de validação', async () => {
+      const accountData = { bank_name: '' };
+      mockReq.body = accountData;
+      createAccountSchema.parse.mockImplementation(() => {
+        throw new Error('Nome do banco é obrigatório');
+      });
+
+      await accountController.createAccount(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
+      expect(mockRes.json).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar erro do service', async () => {
+      const accountData = { bank_name: 'Banco Teste' };
+      mockReq.body = accountData;
+      createAccountSchema.parse.mockReturnValue(accountData);
+      accountService.createAccount.mockRejectedValue(new Error('Erro interno'));
+
+      await accountController.createAccount(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
+      expect(mockRes.json).not.toHaveBeenCalled();
     });
   });
 
   describe('getAccounts', () => {
     it('deve retornar todas as contas do usuário', async () => {
-      // Arrange
       const mockAccounts = [
         { id: 1, bank_name: 'Banco A', balance: 1000 },
         { id: 2, bank_name: 'Banco B', balance: 2000 }
       ];
 
-      // Simular comportamento do controller
-      mockGetAccounts.mockImplementation(async (req, res) => {
-        res.json({
-          accounts: mockAccounts,
-          totalBalance: 3000
-        });
-      });
+      accountService.getAccounts.mockResolvedValue(mockAccounts);
 
-      // Act
-      await mockGetAccounts(mockReq, mockRes);
+      await accountController.getAccounts(mockReq, mockRes, mockNext);
 
-      // Assert
+      expect(accountService.getAccounts).toHaveBeenCalledWith(1);
       expect(mockRes.json).toHaveBeenCalledWith({
-        accounts: mockAccounts,
-        totalBalance: 3000
+        success: true,
+        data: mockAccounts
       });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar erro do service', async () => {
+      accountService.getAccounts.mockRejectedValue(new Error('Erro interno'));
+
+      await accountController.getAccounts(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
+      expect(mockRes.json).not.toHaveBeenCalled();
     });
   });
 
   describe('getAccount', () => {
     it('deve retornar uma conta específica', async () => {
-      // Arrange
       const mockAccount = {
         id: 1,
         user_id: 1,
@@ -116,160 +166,104 @@ describe('Account Controller', () => {
       };
 
       mockReq.params = { id: 1 };
+      accountService.getAccount.mockResolvedValue(mockAccount);
 
-      // Simular comportamento do controller
-      mockGetAccount.mockImplementation(async (req, res) => {
-        res.json(mockAccount);
+      await accountController.getAccount(mockReq, mockRes, mockNext);
+
+      expect(accountService.getAccount).toHaveBeenCalledWith(1, 1);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockAccount
       });
-
-      // Act
-      await mockGetAccount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith(mockAccount);
+      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('deve retornar 404 quando conta não é encontrada', async () => {
-      // Arrange
+    it('deve retornar erro quando conta não é encontrada', async () => {
       mockReq.params = { id: 999 };
+      accountService.getAccount.mockRejectedValue(new AppError('Conta não encontrada', 404));
 
-      // Simular comportamento do controller
-      mockGetAccount.mockImplementation(async (req, res) => {
-        res.status(404).json({ error: 'Conta não encontrada' });
-      });
+      await accountController.getAccount(mockReq, mockRes, mockNext);
 
-      // Act
-      await mockGetAccount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Conta não encontrada' });
-    });
-
-    it('deve retornar 403 quando usuário não é dono da conta', async () => {
-      // Arrange
-      mockReq.params = { id: 1 };
-
-      // Simular comportamento do controller
-      mockGetAccount.mockImplementation(async (req, res) => {
-        res.status(403).json({ error: 'Acesso negado' });
-      });
-
-      // Act
-      await mockGetAccount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(403);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Acesso negado' });
+      expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+      expect(mockRes.json).not.toHaveBeenCalled();
     });
   });
 
   describe('updateAccount', () => {
     it('deve atualizar uma conta com sucesso', async () => {
-      // Arrange
-      mockReq.params = { id: 1 };
-      mockReq.body = {
+      const updateData = {
         bank_name: 'Novo Banco',
         account_type: 'poupança',
         balance: 2000
       };
 
-      // Simular comportamento do controller
-      mockUpdateAccount.mockImplementation(async (req, res) => {
-        res.json({ message: 'Conta atualizada com sucesso' });
-      });
-
-      // Act
-      await mockUpdateAccount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({ message: 'Conta atualizada com sucesso' });
-    });
-
-    it('deve retornar 404 quando conta não é encontrada', async () => {
-      // Arrange
-      mockReq.params = { id: 999 };
-
-      // Simular comportamento do controller
-      mockUpdateAccount.mockImplementation(async (req, res) => {
-        res.status(404).json({ error: 'Conta não encontrada' });
-      });
-
-      // Act
-      await mockUpdateAccount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Conta não encontrada' });
-    });
-
-    it('deve retornar 403 quando usuário não é dono da conta', async () => {
-      // Arrange
       mockReq.params = { id: 1 };
+      mockReq.body = updateData;
+      updateAccountSchema.parse.mockReturnValue(updateData);
+      accountService.updateAccount.mockResolvedValue();
 
-      // Simular comportamento do controller
-      mockUpdateAccount.mockImplementation(async (req, res) => {
-        res.status(403).json({ error: 'Acesso negado' });
+      await accountController.updateAccount(mockReq, mockRes, mockNext);
+
+      expect(updateAccountSchema.parse).toHaveBeenCalledWith(updateData);
+      expect(accountService.updateAccount).toHaveBeenCalledWith(1, 1, updateData);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Conta atualizada com sucesso'
+      });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar erro de validação', async () => {
+      const updateData = { bank_name: '' };
+      mockReq.params = { id: 1 };
+      mockReq.body = updateData;
+      updateAccountSchema.parse.mockImplementation(() => {
+        throw new Error('Nome do banco é obrigatório');
       });
 
-      // Act
-      await mockUpdateAccount(mockReq, mockRes);
+      await accountController.updateAccount(mockReq, mockRes, mockNext);
 
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(403);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Acesso negado' });
+      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
+      expect(mockRes.json).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar erro quando conta não é encontrada', async () => {
+      const updateData = { bank_name: 'Novo Banco' };
+      mockReq.params = { id: 999 };
+      mockReq.body = updateData;
+      updateAccountSchema.parse.mockReturnValue(updateData);
+      accountService.updateAccount.mockRejectedValue(new AppError('Conta não encontrada', 404));
+
+      await accountController.updateAccount(mockReq, mockRes, mockNext);
+
+      expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+      expect(mockRes.json).not.toHaveBeenCalled();
     });
   });
 
   describe('deleteAccount', () => {
-    it('deve excluir uma conta com sucesso', async () => {
-      // Arrange
+    it('deve deletar uma conta com sucesso', async () => {
       mockReq.params = { id: 1 };
+      accountService.deleteAccount.mockResolvedValue();
 
-      // Simular comportamento do controller
-      mockDeleteAccount.mockImplementation(async (req, res) => {
-        res.json({ message: 'Conta excluída com sucesso' });
+      await accountController.deleteAccount(mockReq, mockRes, mockNext);
+
+      expect(accountService.deleteAccount).toHaveBeenCalledWith(1, 1);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Conta excluída com sucesso'
       });
-
-      // Act
-      await mockDeleteAccount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.json).toHaveBeenCalledWith({ message: 'Conta excluída com sucesso' });
+      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('deve retornar 404 quando conta não é encontrada', async () => {
-      // Arrange
+    it('deve retornar erro quando conta não é encontrada', async () => {
       mockReq.params = { id: 999 };
+      accountService.deleteAccount.mockRejectedValue(new AppError('Conta não encontrada', 404));
 
-      // Simular comportamento do controller
-      mockDeleteAccount.mockImplementation(async (req, res) => {
-        res.status(404).json({ error: 'Conta não encontrada' });
-      });
+      await accountController.deleteAccount(mockReq, mockRes, mockNext);
 
-      // Act
-      await mockDeleteAccount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(404);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Conta não encontrada' });
-    });
-
-    it('deve retornar 403 quando usuário não é dono da conta', async () => {
-      // Arrange
-      mockReq.params = { id: 1 };
-
-      // Simular comportamento do controller
-      mockDeleteAccount.mockImplementation(async (req, res) => {
-        res.status(403).json({ error: 'Acesso negado' });
-      });
-
-      // Act
-      await mockDeleteAccount(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(403);
-      expect(mockRes.json).toHaveBeenCalledWith({ error: 'Acesso negado' });
+      expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
+      expect(mockRes.json).not.toHaveBeenCalled();
     });
   });
 }); 

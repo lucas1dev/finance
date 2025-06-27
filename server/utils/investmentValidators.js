@@ -123,6 +123,28 @@ const createInvestmentSchema = z.object({
     .positive('ID da conta deve ser positivo'),
 
   /**
+   * ID da conta bancária de origem (de onde sai o dinheiro).
+   * @type {number}
+   */
+  source_account_id: z.number({
+    required_error: 'ID da conta de origem é obrigatório',
+    invalid_type_error: 'ID da conta de origem deve ser um número'
+  })
+    .int('ID da conta de origem deve ser um número inteiro')
+    .positive('ID da conta de origem deve ser positivo'),
+
+  /**
+   * ID da conta bancária de destino (onde fica o investimento).
+   * @type {number}
+   */
+  destination_account_id: z.number({
+    required_error: 'ID da conta de destino é obrigatório',
+    invalid_type_error: 'ID da conta de destino deve ser um número'
+  })
+    .int('ID da conta de destino deve ser um número inteiro')
+    .positive('ID da conta de destino deve ser positivo'),
+
+  /**
    * ID da categoria (opcional).
    * @type {number}
    */
@@ -255,6 +277,28 @@ const updateInvestmentSchema = z.object({
   })
     .int('ID da conta deve ser um número inteiro')
     .positive('ID da conta deve ser positivo')
+    .optional(),
+
+  /**
+   * ID da conta bancária de origem (de onde sai o dinheiro).
+   * @type {number}
+   */
+  source_account_id: z.number({
+    invalid_type_error: 'ID da conta de origem deve ser um número'
+  })
+    .int('ID da conta de origem deve ser um número inteiro')
+    .positive('ID da conta de origem deve ser positivo')
+    .optional(),
+
+  /**
+   * ID da conta bancária de destino (onde fica o investimento).
+   * @type {number}
+   */
+  destination_account_id: z.number({
+    invalid_type_error: 'ID da conta de destino deve ser um número'
+  })
+    .int('ID da conta de destino deve ser um número inteiro')
+    .positive('ID da conta de destino deve ser positivo')
     .optional(),
 
   /**

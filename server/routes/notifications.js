@@ -26,6 +26,14 @@ const createNotificationSchema = z.object({
   scheduledFor: z.string().datetime().optional(),
 });
 
+const reprocessNotificationsSchema = z.object({
+  targetUserId: z.number().int().positive('ID do usuário alvo é obrigatório e deve ser positivo'),
+  notificationType: z.enum(['payment_check', 'general_reminders', 'all'], {
+    errorMap: () => ({ message: 'Tipo deve ser payment_check, general_reminders ou all' }),
+  }).optional().default('all'),
+  clearExisting: z.boolean().optional().default(false),
+});
+
 const updateNotificationSchema = z.object({
   isRead: z.boolean().optional(),
   isActive: z.boolean().optional(),
@@ -89,5 +97,29 @@ router.patch('/read-all', auth, notificationController.markAllAsRead);
  * @access Private
  */
 router.delete('/:id', auth, notificationController.deleteNotification);
+
+/**
+ * @route POST /notifications/reprocess
+ * @desc Reprocessa notificações específicas para um usuário
+ * @access Admin
+ */
+router.post('/reprocess', adminAuth, async (req, res, next) => {
+  try {
+    const validatedData = reprocessNotificationsSchema.parse(req.body);
+    req.body = validatedData;
+    next();
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: 'Dados inválidos',
+        details: error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })),
+      });
+    }
+    next(error);
+  }
+}, notificationController.reprocessNotifications);
 
 module.exports = router; 

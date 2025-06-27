@@ -51,11 +51,12 @@ describe('Account Integration Tests', () => {
         .send(accountData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('message', 'Conta criada com sucesso');
-      expect(response.body).toHaveProperty('accountId');
-      expect(typeof response.body.accountId).toBe('number');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('accountId');
+      expect(typeof response.body.data.accountId).toBe('number');
 
-      const newAccount = await Account.findByPk(response.body.accountId);
+      const newAccount = await Account.findByPk(response.body.data.accountId);
       expect(newAccount.bank_name).toBe('New Test Bank');
       expect(newAccount.account_type).toBe('checking');
       expect(Number(newAccount.balance)).toBeCloseTo(1000.00, 1);
@@ -76,9 +77,10 @@ describe('Account Integration Tests', () => {
         .send(accountData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('accountId');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('accountId');
 
-      const account = await Account.findByPk(response.body.accountId);
+      const account = await Account.findByPk(response.body.data.accountId);
       expect(account.account_type).toBe('savings');
       expect(Number(account.balance)).toBeCloseTo(5000.00, 1);
     });
@@ -97,9 +99,10 @@ describe('Account Integration Tests', () => {
         .send(accountData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('accountId');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('accountId');
 
-      const account = await Account.findByPk(response.body.accountId);
+      const account = await Account.findByPk(response.body.data.accountId);
       expect(Number(account.balance)).toBeCloseTo(0.00, 1);
     });
   });
@@ -111,13 +114,15 @@ describe('Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('accounts');
-      expect(response.body).toHaveProperty('totalBalance');
-      expect(Array.isArray(response.body.accounts)).toBe(true);
-      expect(response.body.accounts.length).toBeGreaterThan(0);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('accounts');
+      expect(response.body.data).toHaveProperty('totalBalance');
+      expect(Array.isArray(response.body.data.accounts)).toBe(true);
+      expect(response.body.data.accounts.length).toBeGreaterThan(0);
 
       // Verificar se todas as contas pertencem ao usuário
-      response.body.accounts.forEach(account => {
+      response.body.data.accounts.forEach(account => {
         expect(account).toHaveProperty('id');
         expect(account).toHaveProperty('bank_name');
         expect(account).toHaveProperty('account_type');
@@ -127,8 +132,8 @@ describe('Account Integration Tests', () => {
       });
 
       // Verificar se o saldo total está correto
-      const expectedTotal = response.body.accounts.reduce((sum, acc) => sum + Number(acc.balance), 0);
-      expect(response.body.totalBalance).toBe(expectedTotal);
+      const expectedTotal = response.body.data.accounts.reduce((sum, acc) => sum + Number(acc.balance), 0);
+      expect(response.body.data.totalBalance).toBe(expectedTotal);
     });
 
     it('should return empty array for user with no accounts', async () => {
@@ -154,8 +159,9 @@ describe('Account Integration Tests', () => {
         .set('Authorization', `Bearer ${otherAuthToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.accounts).toEqual([]);
-      expect(response.body.totalBalance).toBe(0);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data.accounts).toEqual([]);
+      expect(response.body.data.totalBalance).toBe(0);
 
       // Limpar
       await User.destroy({ where: { id: otherUser.id } });
@@ -169,11 +175,12 @@ describe('Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('id', testAccount.id);
-      expect(response.body).toHaveProperty('bank_name', 'Test Bank');
-      expect(response.body).toHaveProperty('account_type', 'checking');
-      expect(Number(response.body.balance)).toBeCloseTo(1000.00, 1);
-      expect(response.body).toHaveProperty('user_id', testUser.id);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('id', testAccount.id);
+      expect(response.body.data).toHaveProperty('bank_name', 'Test Bank');
+      expect(response.body.data).toHaveProperty('account_type', 'checking');
+      expect(Number(response.body.data.balance)).toBeCloseTo(1000.00, 1);
+      expect(response.body.data).toHaveProperty('user_id', testUser.id);
     });
 
     it('should return 404 for non-existent account', async () => {
@@ -182,6 +189,7 @@ describe('Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Conta não encontrada');
     });
 
@@ -207,6 +215,7 @@ describe('Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Acesso negado');
 
       // Limpar
@@ -230,7 +239,9 @@ describe('Account Integration Tests', () => {
         .send(updateData);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Conta atualizada com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('message', 'Conta atualizada com sucesso');
 
       // Verificar se foi realmente atualizada
       const updatedAccount = await Account.findByPk(testAccount.id);
@@ -253,6 +264,7 @@ describe('Account Integration Tests', () => {
         .send(updateData);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Conta não encontrada');
     });
 
@@ -285,6 +297,7 @@ describe('Account Integration Tests', () => {
         .send(updateData);
 
       expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Acesso negado');
 
       // Limpar
@@ -309,7 +322,9 @@ describe('Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Conta excluída com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('message', 'Conta excluída com sucesso');
 
       // Verificar se foi realmente deletada
       const deletedAccount = await Account.findByPk(accountToDelete.id);
@@ -322,6 +337,7 @@ describe('Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Conta não encontrada');
     });
 
@@ -347,6 +363,7 @@ describe('Account Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(403);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Acesso negado');
 
       // Limpar

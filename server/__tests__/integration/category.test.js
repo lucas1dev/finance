@@ -38,11 +38,12 @@ describe('Category Integration Tests', () => {
         .send(categoryData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('message', 'Categoria criada com sucesso');
-      expect(response.body).toHaveProperty('categoryId');
-      expect(typeof response.body.categoryId).toBe('number');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('categoryId');
+      expect(typeof response.body.data.categoryId).toBe('number');
 
-      testCategory = await Category.findByPk(response.body.categoryId);
+      testCategory = await Category.findByPk(response.body.data.categoryId);
       expect(testCategory.name).toBe('Test Category');
       expect(testCategory.type).toBe('expense');
       expect(testCategory.user_id).toBe(testUser.id);
@@ -60,9 +61,10 @@ describe('Category Integration Tests', () => {
         .send(categoryData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('categoryId');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('categoryId');
 
-      const category = await Category.findByPk(response.body.categoryId);
+      const category = await Category.findByPk(response.body.data.categoryId);
       expect(category.type).toBe('income');
     });
 
@@ -85,6 +87,7 @@ describe('Category Integration Tests', () => {
         .send(categoryData);
 
       expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Já existe uma categoria com este nome e tipo');
     });
 
@@ -100,7 +103,8 @@ describe('Category Integration Tests', () => {
         .send(categoryData);
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('categoryId');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('categoryId');
     });
   });
 
@@ -119,11 +123,13 @@ describe('Category Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBeGreaterThan(0);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBeGreaterThan(0);
 
       // Verificar se todas as categorias pertencem ao usuário
-      response.body.forEach(category => {
+      response.body.data.forEach(category => {
         expect(category).toHaveProperty('id');
         expect(category).toHaveProperty('name');
         expect(category).toHaveProperty('type');
@@ -138,9 +144,11 @@ describe('Category Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
       
       // Verificar se está ordenado alfabeticamente
-      const names = response.body.map(cat => cat.name);
+      const names = response.body.data.map(cat => cat.name);
       const sortedNames = [...names].sort();
       expect(names).toEqual(sortedNames);
     });
@@ -167,7 +175,8 @@ describe('Category Integration Tests', () => {
         .send(updateData);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Categoria atualizada com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('message', 'Categoria atualizada com sucesso');
 
       // Verificar se foi realmente atualizada
       const updatedCategory = await Category.findByPk(testCategory.id);
@@ -187,6 +196,7 @@ describe('Category Integration Tests', () => {
         .send(updateData);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Categoria não encontrada');
     });
 
@@ -209,6 +219,7 @@ describe('Category Integration Tests', () => {
         .send(updateData);
 
       expect(response.status).toBe(400);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Já existe uma categoria com este nome e tipo');
 
       // Limpar
@@ -231,7 +242,8 @@ describe('Category Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('message', 'Categoria excluída com sucesso');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body.data).toHaveProperty('message', 'Categoria excluída com sucesso');
 
       // Verificar se foi realmente deletada
       const deletedCategory = await Category.findByPk(testCategory.id);
@@ -244,6 +256,7 @@ describe('Category Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
       expect(response.body).toHaveProperty('error', 'Categoria não encontrada');
     });
   });
@@ -254,6 +267,7 @@ describe('Category Integration Tests', () => {
         .get('/api/categories');
 
       expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('success', false);
     });
 
     it('should not allow access to other users categories', async () => {

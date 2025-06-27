@@ -12,6 +12,8 @@ const { logger } = require('../utils/logger');
 const jobTracking = require('./jobTracking');
 const { withRetry } = require('./jobRetry');
 const { executeWithTimeout } = require('./jobTimeout');
+const TransactionService = require('./transactionService');
+const FixedAccountService = require('./fixedAccountService');
 const { Op } = require('sequelize');
 
 /**
@@ -63,130 +65,23 @@ async function processOverdueFixedAccounts(userId = null) {
 
     logger.info(`[JOB:fixed_account_processing] Iniciando processamento de contas fixas${userId ? ` para usuário ${userId}` : ' para todos os usuários'}`);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let transactionsCreated = 0;
-    let accountsProcessed = 0;
-    let usersProcessed = 0;
-    let errors = 0;
-
-    // Buscar usuários (todos ou um específico)
-    const users = userId ? await User.findByPk(userId) : await User.findAll();
-    const userList = userId ? [users] : users;
-
-    logger.info(`[JOB:fixed_account_processing] Processando ${userList.length} usuário(s)`);
-
-    for (const user of userList) {
-      if (!user) continue;
-      usersProcessed++;
-
-      try {
-        // Buscar contas fixas vencidas do usuário
-        const overdueFixedAccounts = await FixedAccount.findAll({
-          where: {
-            user_id: user.id,
-            is_active: true,
-            is_paid: false,
-            next_due_date: {
-              [Op.lte]: today
-            }
-          },
-          include: [
-            { model: Category, as: 'category' },
-            { model: Supplier, as: 'supplier' }
-          ]
-        });
-
-        accountsProcessed += overdueFixedAccounts.length;
-
-        for (const fixedAccount of overdueFixedAccounts) {
-          try {
-            // Buscar a primeira conta do usuário ou criar uma padrão
-            let account = await Account.findOne({
-              where: { user_id: user.id }
-            });
-
-            if (!account) {
-              account = await Account.create({
-                user_id: user.id,
-                bank_name: 'Conta Padrão',
-                account_type: 'corrente',
-                balance: 0,
-                description: 'Conta criada automaticamente para transações de contas fixas'
-              });
-            }
-
-            // Verificar se há saldo suficiente
-            if (parseFloat(account.balance) < parseFloat(fixedAccount.amount)) {
-              logger.warn(`[JOB:fixed_account_processing] Saldo insuficiente para conta fixa ${fixedAccount.id}. Saldo: ${account.balance}, Valor: ${fixedAccount.amount}`);
-              continue;
-            }
-
-            // Criar a transação
-            const transaction = await Transaction.create({
-              user_id: user.id,
-              account_id: account.id,
-              type: 'expense',
-              amount: fixedAccount.amount,
-              description: `Pagamento automático: ${fixedAccount.description}`,
-              category_id: fixedAccount.category_id,
-              supplier_id: fixedAccount.supplier_id,
-              payment_method: fixedAccount.payment_method || 'automatic_debit',
-              payment_date: today,
-              date: today,
-              fixed_account_id: fixedAccount.id
-            });
-
-            // Atualizar saldo da conta
-            await account.update({
-              balance: parseFloat(account.balance) - parseFloat(fixedAccount.amount)
-            });
-
-            // Marcar como paga e calcular próxima data
-            const nextDueDate = calculateNextDueDate(fixedAccount.next_due_date, fixedAccount.periodicity);
-            await fixedAccount.update({
-              is_paid: true,
-              next_due_date: nextDueDate
-            });
-
-            transactionsCreated++;
-
-            logger.info(`[JOB:fixed_account_processing] Conta fixa ${fixedAccount.id} processada com sucesso. Transação criada: ${transaction.id}`);
-
-          } catch (error) {
-            errors++;
-            logger.error(`[JOB:fixed_account_processing] Erro ao processar conta fixa ${fixedAccount.id}: ${error.message}`, {
-              error: error.stack,
-              fixedAccountId: fixedAccount.id,
-              userId: user.id
-            });
-          }
-        }
-
-      } catch (error) {
-        errors++;
-        logger.error(`[JOB:fixed_account_processing] Erro ao processar usuário ${user.id}: ${error.message}`, {
-          error: error.stack,
-          userId: user.id
-        });
-      }
-    }
+    // Usar o novo FixedAccountService para verificar contas vencidas
+    const result = await FixedAccountService.checkOverdueFixedAccounts(userId);
 
     const duration = Date.now() - startTime;
 
     // Finalizar tracking com sucesso
     await jobTracking.finishJobTracking(executionId, {
-      transactionsCreated,
-      accountsProcessed,
-      errors,
+      newTransactions: result.newTransactions,
+      updatedAccounts: result.updatedAccounts,
+      errors: result.errors,
       metadata: { 
-        usersProcessed,
+        processed: result.processed,
         duration
       }
     });
 
-    logger.info(`[JOB:fixed_account_processing] Concluído com sucesso em ${duration}ms. Usuários processados: ${usersProcessed}, Contas processadas: ${accountsProcessed}, Transações criadas: ${transactionsCreated}, Erros: ${errors}`);
+    logger.info(`[JOB:fixed_account_processing] Concluído com sucesso em ${duration}ms. Contas processadas: ${result.processed}, Novos lançamentos: ${result.newTransactions}, Contas atualizadas: ${result.updatedAccounts}, Erros: ${result.errors}`);
   } catch (error) {
     const duration = Date.now() - startTime;
     
@@ -200,6 +95,8 @@ async function processOverdueFixedAccounts(userId = null) {
       userId,
       duration
     });
+    
+    throw error;
   }
 }
 

@@ -10,247 +10,175 @@
  * // npm test __tests__/controllers/categoryController.test.js
  */
 
+// Mock do service
+jest.mock('../../services/categoryService', () => ({
+  getCategories: jest.fn(),
+  createCategory: jest.fn(),
+  updateCategory: jest.fn(),
+  deleteCategory: jest.fn(),
+  getStats: jest.fn(),
+  getCharts: jest.fn()
+}));
+
+// Mock dos schemas de validação
+jest.mock('../../utils/validators', () => ({
+  createCategorySchema: {
+    parse: jest.fn()
+  },
+  updateCategorySchema: {
+    parse: jest.fn()
+  }
+}));
+
+let categoryService;
+let createCategorySchema, updateCategorySchema;
+
 describe('CategoryController', () => {
-  let categoryController;
-  let mockModels, mockOp;
+  let req, res, next, categoryController;
 
   beforeEach(() => {
+    // Limpar cache do require para garantir mocks limpos
     jest.resetModules();
+    delete require.cache[require.resolve('../../controllers/categoryController')];
+    delete require.cache[require.resolve('../../services/categoryService')];
+    delete require.cache[require.resolve('../../utils/validators')];
+    
+    // Reimportar módulos com mocks limpos
+    categoryController = require('../../controllers/categoryController');
+    categoryService = require('../../services/categoryService');
+    const validators = require('../../utils/validators');
+    
+    createCategorySchema = validators.createCategorySchema;
+    updateCategorySchema = validators.updateCategorySchema;
+
+    // Limpar todos os mocks
     jest.clearAllMocks();
 
-    // Mock do operador Sequelize
-    mockOp = {
-      ne: Symbol('ne')
-    };
-
-    // Mock do modelo Category
-    mockModels = {
-      Category: {
-        findAll: jest.fn(),
-        findOne: jest.fn(),
-        create: jest.fn()
-      }
-    };
-
-    jest.mock('../../models', () => mockModels);
-    jest.mock('sequelize', () => ({ Op: mockOp }));
-
-    categoryController = require('../../controllers/categoryController');
+    req = { user: { id: 1 }, body: {}, params: {}, query: {} };
+    res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    next = jest.fn();
   });
 
   describe('getCategories', () => {
     it('deve retornar todas as categorias do usuário', async () => {
-      const req = { user: { id: 1 } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
       const mockCategories = [
-        { id: 1, name: 'Alimentação', type: 'expense', color: '#F44336', is_default: false },
-        { id: 2, name: 'Salário', type: 'income', color: '#4CAF50', is_default: true }
+        { id: 1, name: 'Alimentação', type: 'expense' },
+        { id: 2, name: 'Salário', type: 'income' }
       ];
-      mockModels.Category.findAll.mockResolvedValue(mockCategories);
+      categoryService.getCategories.mockResolvedValue(mockCategories);
 
-      await categoryController.getCategories(req, res);
+      await categoryController.getCategories(req, res, next);
 
-      expect(mockModels.Category.findAll).toHaveBeenCalledWith({
-        where: { user_id: 1 },
-        order: [['is_default', 'DESC'], ['name', 'ASC']],
-        attributes: ['id', 'name', 'type', 'color', 'is_default', 'created_at', 'updated_at']
-      });
-      expect(res.json).toHaveBeenCalledWith(mockCategories);
+      expect(categoryService.getCategories).toHaveBeenCalledWith(1);
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: { categories: mockCategories } });
     });
 
-    it('deve lidar com erro interno do servidor', async () => {
-      const req = { user: { id: 1 } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findAll.mockRejectedValue(new Error('Erro de banco'));
-
-      await categoryController.getCategories(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Erro ao buscar categorias' });
+    it('deve passar erro para o next', async () => {
+      const error = new Error('Erro de banco');
+      categoryService.getCategories.mockRejectedValue(error);
+      await categoryController.getCategories(req, res, next);
+      expect(next).toHaveBeenCalledWith(error);
     });
   });
 
   describe('createCategory', () => {
     it('deve criar uma nova categoria com sucesso', async () => {
-      const req = { user: { id: 1 }, body: { name: 'Nova Categoria', type: 'expense' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findOne.mockResolvedValue(null);
-      mockModels.Category.create.mockResolvedValue({ id: 10 });
+      req.body = { name: 'Nova Categoria', type: 'expense' };
+      createCategorySchema.parse.mockReturnValue(req.body);
+      categoryService.createCategory.mockResolvedValue({ id: 10 });
 
-      await categoryController.createCategory(req, res);
+      await categoryController.createCategory(req, res, next);
 
-      expect(mockModels.Category.findOne).toHaveBeenCalledWith({
-        where: { name: 'Nova Categoria', user_id: 1, type: 'expense' }
-      });
-      expect(mockModels.Category.create).toHaveBeenCalledWith({ 
-        name: 'Nova Categoria', 
-        type: 'expense', 
-        color: '#F44336',
-        is_default: false,
-        user_id: 1 
-      });
+      expect(createCategorySchema.parse).toHaveBeenCalledWith(req.body);
+      expect(categoryService.createCategory).toHaveBeenCalledWith(1, req.body);
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Categoria criada com sucesso', categoryId: 10 });
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: { categoryId: 10 } });
     });
 
-    it('deve criar uma nova categoria com cor personalizada', async () => {
-      const req = { user: { id: 1 }, body: { name: 'Nova Categoria', type: 'income', color: '#FF5722' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findOne.mockResolvedValue(null);
-      mockModels.Category.create.mockResolvedValue({ id: 10 });
-
-      await categoryController.createCategory(req, res);
-
-      expect(mockModels.Category.create).toHaveBeenCalledWith({ 
-        name: 'Nova Categoria', 
-        type: 'income', 
-        color: '#FF5722',
-        is_default: false,
-        user_id: 1 
-      });
-    });
-
-    it('deve retornar erro quando categoria já existe', async () => {
-      const req = { user: { id: 1 }, body: { name: 'Existente', type: 'income' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findOne.mockResolvedValue({ id: 2 });
-
-      await categoryController.createCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Já existe uma categoria com este nome e tipo' });
-    });
-
-    it('deve lidar com erro interno do servidor', async () => {
-      const req = { user: { id: 1 }, body: { name: 'Falha', type: 'expense' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findOne.mockRejectedValue(new Error('Erro de banco'));
-
-      await categoryController.createCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Erro ao criar categoria' });
+    it('deve passar erro para o next', async () => {
+      const error = new Error('Erro de banco');
+      req.body = { name: 'Falha', type: 'expense' };
+      createCategorySchema.parse.mockReturnValue(req.body);
+      categoryService.createCategory.mockRejectedValue(error);
+      await categoryController.createCategory(req, res, next);
+      expect(next).toHaveBeenCalledWith(error);
     });
   });
 
   describe('updateCategory', () => {
     it('deve atualizar uma categoria com sucesso', async () => {
-      const req = { user: { id: 1 }, params: { id: 5 }, body: { name: 'Atualizada', type: 'income', color: '#FF5722' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      const mockCategory = { update: jest.fn().mockResolvedValue(true), is_default: false };
-      mockModels.Category.findOne
-        .mockResolvedValueOnce(mockCategory) // busca categoria
-        .mockResolvedValueOnce(null); // não existe duplicada
+      req.params.id = '5';
+      req.body = { name: 'Atualizada', type: 'income', color: '#FF5722' };
+      updateCategorySchema.parse.mockReturnValue(req.body);
+      categoryService.updateCategory.mockResolvedValue(true);
 
-      await categoryController.updateCategory(req, res);
+      await categoryController.updateCategory(req, res, next);
 
-      expect(mockModels.Category.findOne).toHaveBeenNthCalledWith(1, {
-        where: { id: 5, user_id: 1 }
-      });
-      expect(mockModels.Category.findOne).toHaveBeenNthCalledWith(2, {
-        where: { name: 'Atualizada', type: 'income', user_id: 1, id: { [mockOp.ne]: 5 } }
-      });
-      expect(mockCategory.update).toHaveBeenCalledWith({ name: 'Atualizada', type: 'income', color: '#FF5722' });
-      expect(res.json).toHaveBeenCalledWith({ message: 'Categoria atualizada com sucesso' });
+      expect(updateCategorySchema.parse).toHaveBeenCalledWith(req.body);
+      expect(categoryService.updateCategory).toHaveBeenCalledWith(1, '5', req.body);
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: { message: 'Categoria atualizada com sucesso' } });
     });
 
-    it('deve retornar erro ao tentar editar categoria padrão', async () => {
-      const req = { user: { id: 1 }, params: { id: 5 }, body: { name: 'Atualizada', type: 'income' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      const mockCategory = { is_default: true };
-      mockModels.Category.findOne.mockResolvedValue(mockCategory);
-
-      await categoryController.updateCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Não é possível editar categorias padrão do sistema' });
-    });
-
-    it('deve retornar 404 quando categoria não é encontrada', async () => {
-      const req = { user: { id: 1 }, params: { id: 99 }, body: { name: 'Qualquer', type: 'expense' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findOne.mockResolvedValue(null);
-
-      await categoryController.updateCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Categoria não encontrada' });
-    });
-
-    it('deve retornar erro quando nova categoria já existe', async () => {
-      const req = { user: { id: 1 }, params: { id: 5 }, body: { name: 'Duplicada', type: 'income' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      const mockCategory = { update: jest.fn(), is_default: false };
-      mockModels.Category.findOne
-        .mockResolvedValueOnce(mockCategory) // busca categoria
-        .mockResolvedValueOnce({ id: 7 }); // já existe duplicada
-
-      await categoryController.updateCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Já existe uma categoria com este nome e tipo' });
-    });
-
-    it('deve lidar com erro interno do servidor', async () => {
-      const req = { user: { id: 1 }, params: { id: 5 }, body: { name: 'Falha', type: 'income' } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findOne.mockRejectedValue(new Error('Erro de banco'));
-
-      await categoryController.updateCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Erro ao atualizar categoria' });
+    it('deve passar erro para o next', async () => {
+      const error = new Error('Erro de banco');
+      req.params.id = '5';
+      req.body = { name: 'Falha', type: 'expense' };
+      updateCategorySchema.parse.mockReturnValue(req.body);
+      categoryService.updateCategory.mockRejectedValue(error);
+      await categoryController.updateCategory(req, res, next);
+      expect(next).toHaveBeenCalledWith(error);
     });
   });
 
   describe('deleteCategory', () => {
-    it('deve excluir uma categoria com sucesso', async () => {
-      const req = { user: { id: 1 }, params: { id: 3 } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      const mockCategory = { destroy: jest.fn().mockResolvedValue(true), is_default: false };
-      mockModels.Category.findOne.mockResolvedValue(mockCategory);
+    it('deve deletar uma categoria com sucesso', async () => {
+      req.params.id = '7';
+      categoryService.deleteCategory.mockResolvedValue(true);
 
-      await categoryController.deleteCategory(req, res);
+      await categoryController.deleteCategory(req, res, next);
 
-      expect(mockModels.Category.findOne).toHaveBeenCalledWith({
-        where: { id: 3, user_id: 1 }
-      });
-      expect(mockCategory.destroy).toHaveBeenCalled();
-      expect(res.json).toHaveBeenCalledWith({ message: 'Categoria excluída com sucesso' });
+      expect(categoryService.deleteCategory).toHaveBeenCalledWith(1, '7');
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: { message: 'Categoria excluída com sucesso' } });
     });
 
-    it('deve retornar erro ao tentar excluir categoria padrão', async () => {
-      const req = { user: { id: 1 }, params: { id: 3 } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      const mockCategory = { is_default: true };
-      mockModels.Category.findOne.mockResolvedValue(mockCategory);
-
-      await categoryController.deleteCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Não é possível excluir categorias padrão do sistema' });
+    it('deve passar erro para o next', async () => {
+      const error = new Error('Erro de banco');
+      req.params.id = '7';
+      categoryService.deleteCategory.mockRejectedValue(error);
+      await categoryController.deleteCategory(req, res, next);
+      expect(next).toHaveBeenCalledWith(error);
     });
+  });
 
-    it('deve retornar 404 quando categoria não é encontrada', async () => {
-      const req = { user: { id: 1 }, params: { id: 99 } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findOne.mockResolvedValue(null);
-
-      await categoryController.deleteCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Categoria não encontrada' });
+  describe('getStats', () => {
+    it('deve retornar estatísticas das categorias', async () => {
+      const mockStats = { summary: { totalCategories: 2 } };
+      categoryService.getStats.mockResolvedValue(mockStats);
+      await categoryController.getStats(req, res, next);
+      expect(categoryService.getStats).toHaveBeenCalledWith(1, undefined);
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: mockStats });
     });
+    it('deve passar erro para o next', async () => {
+      const error = new Error('Erro de banco');
+      categoryService.getStats.mockRejectedValue(error);
+      await categoryController.getStats(req, res, next);
+      expect(next).toHaveBeenCalledWith(error);
+    });
+  });
 
-    it('deve lidar com erro interno do servidor', async () => {
-      const req = { user: { id: 1 }, params: { id: 3 } };
-      const res = { json: jest.fn(), status: jest.fn().mockReturnThis() };
-      mockModels.Category.findOne.mockRejectedValue(new Error('Erro de banco'));
-
-      await categoryController.deleteCategory(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Erro ao excluir categoria' });
+  describe('getCharts', () => {
+    it('deve retornar dados de gráficos', async () => {
+      const mockCharts = { usageChart: [] };
+      categoryService.getCharts.mockResolvedValue(mockCharts);
+      await categoryController.getCharts(req, res, next);
+      expect(categoryService.getCharts).toHaveBeenCalledWith(1, undefined, undefined);
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: mockCharts });
+    });
+    it('deve passar erro para o next', async () => {
+      const error = new Error('Erro de banco');
+      categoryService.getCharts.mockRejectedValue(error);
+      await categoryController.getCharts(req, res, next);
+      expect(next).toHaveBeenCalledWith(error);
     });
   });
 }); 

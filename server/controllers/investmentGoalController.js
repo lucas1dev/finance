@@ -2,6 +2,7 @@ const { InvestmentGoal, Category, Investment } = require('../models');
 const { createInvestmentGoalSchema, updateInvestmentGoalSchema, updateGoalAmountSchema } = require('../utils/investmentValidators');
 const { ValidationError, NotFoundError } = require('../utils/errors');
 const { Op } = require('sequelize');
+const InvestmentGoalService = require('../services/investmentGoalService');
 
 /**
  * Controller para gerenciamento de metas de investimento.
@@ -9,6 +10,10 @@ const { Op } = require('sequelize');
  * além de calcular o progresso baseado nos investimentos atuais.
  */
 class InvestmentGoalController {
+  constructor() {
+    this.investmentGoalService = new InvestmentGoalService();
+  }
+
   /**
    * Cria uma nova meta de investimento.
    * @param {Object} req - Objeto de requisição Express.
@@ -28,58 +33,22 @@ class InvestmentGoalController {
    * @example
    * // POST /investment-goals
    * // Body: { "title": "Aposentadoria", "target_amount": 500000, "target_date": "2030-12-31" }
-   * // Retorno: { "id": 1, "title": "Aposentadoria", "progress": 0, ... }
+   * // Retorno: { "success": true, "data": { "message": "...", "goal": {...} } }
    */
   async createInvestmentGoal(req, res) {
-    try {
-      // Valida os dados de entrada
-      const validatedData = createInvestmentGoalSchema.parse(req.body);
+    // Valida os dados de entrada
+    const validatedData = createInvestmentGoalSchema.parse(req.body);
 
-      // Verifica se a categoria existe (se fornecida)
-      if (validatedData.category_id) {
-        const category = await Category.findOne({
-          where: { id: validatedData.category_id, user_id: req.userId }
-        });
+    // Delega para o service
+    const goal = await this.investmentGoalService.createInvestmentGoal(req.userId, validatedData);
 
-        if (!category) {
-          throw new NotFoundError('Categoria não encontrada');
-        }
-      }
-
-      // Cria a meta
-      const goal = await InvestmentGoal.create({
-        ...validatedData,
-        user_id: req.userId,
-        current_amount: validatedData.current_amount || 0
-      });
-
-      // Busca a meta com as associações
-      const goalWithAssociations = await InvestmentGoal.findByPk(goal.id, {
-        include: [
-          { model: Category, as: 'category' }
-        ]
-      });
-
-      if (!goalWithAssociations) {
-        throw new NotFoundError('Meta de investimento não encontrada após criação');
-      }
-
-      // Calcula o progresso
-      const progress = goalWithAssociations.getProgress();
-
-      res.status(201).json({
+    res.status(201).json({
+      success: true,
+      data: {
         message: 'Meta de investimento criada com sucesso',
-        goal: {
-          ...goalWithAssociations.toJSON(),
-          progress
-        }
-      });
-    } catch (error) {
-      if (error.name === 'ZodError') {
-        throw new ValidationError('Dados inválidos', error.errors);
+        goal
       }
-      throw error;
-    }
+    });
   }
 
   /**
@@ -94,71 +63,28 @@ class InvestmentGoalController {
    * @returns {Promise<Object>} Lista de metas em formato JSON.
    * @example
    * // GET /investment-goals?status=ativa&page=1&limit=10
-   * // Retorno: { "goals": [...], "total": 5, "page": 1, "totalPages": 1 }
+   * // Retorno: { "success": true, "data": { "goals": [...], "pagination": {...}, "statistics": {...} } }
    */
   async getInvestmentGoals(req, res) {
-    const {
-      status,
-      page = 1,
-      limit = 10
-    } = req.query;
+    const filters = {
+      status: req.query.status,
+      page: req.query.page,
+      limit: req.query.limit
+    };
 
-    // Constrói os filtros
-    const where = { user_id: req.userId };
-    
-    if (status) where.status = status;
-
-    // Configura a paginação
-    const offset = (page - 1) * limit;
-
-    // Busca as metas
-    const { count, rows: goals } = await InvestmentGoal.findAndCountAll({
-      where,
-      include: [
-        { model: Category, as: 'category' }
-      ],
-      order: [['target_date', 'ASC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
+    // Remove valores undefined
+    Object.keys(filters).forEach(key => {
+      if (filters[key] === undefined) {
+        delete filters[key];
+      }
     });
 
-    // Calcula o progresso para cada meta
-    const goalsWithProgress = goals.map(goal => {
-      const progress = goal.getProgress();
-      const isOverdue = goal.isOverdue();
-      const isCompleted = goal.isCompleted();
-
-      return {
-        ...goal.toJSON(),
-        progress,
-        isOverdue,
-        isCompleted
-      };
-    });
-
-    // Calcula estatísticas
-    const totalGoals = await InvestmentGoal.count({ where: { user_id: req.userId } });
-    const activeGoals = await InvestmentGoal.count({ 
-      where: { user_id: req.userId, status: 'ativa' } 
-    });
-    const completedGoals = await InvestmentGoal.count({ 
-      where: { user_id: req.userId, status: 'concluida' } 
-    });
+    // Delega para o service
+    const result = await this.investmentGoalService.getInvestmentGoals(req.userId, filters);
 
     res.json({
-      goals: goalsWithProgress,
-      pagination: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit)
-      },
-      statistics: {
-        totalGoals,
-        activeGoals,
-        completedGoals,
-        completionRate: totalGoals > 0 ? (completedGoals / totalGoals) * 100 : 0
-      }
+      success: true,
+      data: result
     });
   }
 
@@ -172,32 +98,17 @@ class InvestmentGoalController {
    * @throws {NotFoundError} Se a meta não for encontrada.
    * @example
    * // GET /investment-goals/1
-   * // Retorno: { "id": 1, "title": "Aposentadoria", "progress": 25, ... }
+   * // Retorno: { "success": true, "data": { "id": 1, "title": "Aposentadoria", "progress": 25, ... } }
    */
   async getInvestmentGoal(req, res) {
     const { id } = req.params;
 
-    const goal = await InvestmentGoal.findOne({
-      where: { id, user_id: req.userId },
-      include: [
-        { model: Category, as: 'category' }
-      ]
-    });
-
-    if (!goal) {
-      throw new NotFoundError('Meta de investimento não encontrada');
-    }
-
-    // Calcula o progresso
-    const progress = goal.getProgress();
-    const isOverdue = goal.isOverdue();
-    const isCompleted = goal.isCompleted();
+    // Delega para o service
+    const goal = await this.investmentGoalService.getInvestmentGoal(req.userId, id);
 
     res.json({
-      ...goal.toJSON(),
-      progress,
-      isOverdue,
-      isCompleted
+      success: true,
+      data: goal
     });
   }
 
@@ -213,152 +124,86 @@ class InvestmentGoalController {
    * @throws {NotFoundError} Se a meta não for encontrada.
    * @example
    * // PUT /investment-goals/1
-   * // Body: { "target_amount": 600000 }
-   * // Retorno: { "id": 1, "target_amount": 600000, "progress": 20, ... }
+   * // Body: { "title": "Aposentadoria Atualizada", "target_amount": 600000 }
+   * // Retorno: { "success": true, "data": { "id": 1, "title": "Aposentadoria Atualizada", ... } }
    */
   async updateInvestmentGoal(req, res) {
-    try {
-      const { id } = req.params;
+    const { id } = req.params;
 
-      // Valida os dados de entrada
-      const validatedData = updateInvestmentGoalSchema.parse(req.body);
+    // Valida os dados de entrada
+    const validatedData = updateInvestmentGoalSchema.parse(req.body);
 
-      // Busca a meta
-      const goal = await InvestmentGoal.findOne({
-        where: { id, user_id: req.userId }
-      });
+    // Delega para o service
+    const goal = await this.investmentGoalService.updateInvestmentGoal(req.userId, id, validatedData);
 
-      if (!goal) {
-        throw new NotFoundError('Meta de investimento não encontrada');
-      }
-
-      // Verifica se a categoria existe (se fornecida)
-      if (validatedData.category_id) {
-        const category = await Category.findOne({
-          where: { id: validatedData.category_id, user_id: req.userId }
-        });
-
-        if (!category) {
-          throw new NotFoundError('Categoria não encontrada');
-        }
-      }
-
-      // Atualiza a meta
-      await goal.update(validatedData);
-
-      // Busca a meta atualizada com as associações
-      const updatedGoal = await InvestmentGoal.findByPk(id, {
-        include: [
-          { model: Category, as: 'category' }
-        ]
-      });
-
-      // Calcula o progresso
-      const progress = updatedGoal.getProgress();
-      const isOverdue = updatedGoal.isOverdue();
-      const isCompleted = updatedGoal.isCompleted();
-
-      res.json({
+    res.json({
+      success: true,
+      data: {
         message: 'Meta de investimento atualizada com sucesso',
-        goal: {
-          ...updatedGoal.toJSON(),
-          current_amount: Number(updatedGoal.current_amount),
-          target_amount: Number(updatedGoal.target_amount),
-          progress,
-          isOverdue,
-          isCompleted
-        }
-      });
-    } catch (error) {
-      if (error.name === 'ZodError') {
-        throw new ValidationError('Dados inválidos', error.errors);
+        goal
       }
-      throw error;
-    }
+    });
   }
 
   /**
-   * Atualiza o valor atual de uma meta baseado nos investimentos.
+   * Atualiza o valor atual de uma meta de investimento.
    * @param {Object} req - Objeto de requisição Express.
    * @param {number} req.params.id - ID da meta.
    * @param {Object} req.body - Dados para atualização.
-   * @param {number} req.body.current_amount - Valor atual.
+   * @param {number} req.body.current_amount - Novo valor atual.
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Meta atualizada em formato JSON.
    * @throws {ValidationError} Se os dados forem inválidos.
    * @throws {NotFoundError} Se a meta não for encontrada.
    * @example
-   * // PATCH /investment-goals/1/amount
-   * // Body: { "current_amount": 125000 }
-   * // Retorno: { "id": 1, "current_amount": 125000, "progress": 25, ... }
+   * // PUT /investment-goals/1/amount
+   * // Body: { "current_amount": 250000 }
+   * // Retorno: { "success": true, "data": { "message": "...", "goal": {...} } }
    */
   async updateGoalAmount(req, res) {
-    try {
-      const { id } = req.params;
-      const validatedData = updateGoalAmountSchema.parse(req.body);
-      const goal = await InvestmentGoal.findOne({ where: { id, user_id: req.userId } });
-      if (!goal) throw new NotFoundError('Meta de investimento não encontrada');
-      await goal.update({ current_amount: validatedData.current_amount });
-      const updatedGoal = await InvestmentGoal.findByPk(id, { include: [{ model: Category, as: 'category' }] });
-      const progress = updatedGoal.getProgress();
-      const isOverdue = updatedGoal.isOverdue();
-      const isCompleted = updatedGoal.isCompleted();
-      res.json({
+    const { id } = req.params;
+
+    // Valida os dados de entrada
+    const validatedData = updateGoalAmountSchema.parse(req.body);
+
+    // Delega para o service
+    const goal = await this.investmentGoalService.updateGoalAmount(req.userId, id, validatedData);
+
+    res.json({
+      success: true,
+      data: {
         message: 'Valor atual da meta atualizado com sucesso',
-        goal: {
-          ...updatedGoal.toJSON(),
-          current_amount: Number(updatedGoal.current_amount),
-          target_amount: Number(updatedGoal.target_amount),
-          progress,
-          isOverdue,
-          isCompleted
-        }
-      });
-    } catch (error) {
-      if (error.name === 'ZodError') throw new ValidationError('Dados inválidos', error.errors);
-      throw error;
-    }
+        goal
+      }
+    });
   }
 
   /**
-   * Calcula automaticamente o valor atual de uma meta baseado nos investimentos.
+   * Calcula o valor atual de uma meta baseado nos investimentos.
    * @param {Object} req - Objeto de requisição Express.
    * @param {number} req.params.id - ID da meta.
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Meta atualizada em formato JSON.
+   * @returns {Promise<Object>} Meta com valor calculado em formato JSON.
    * @throws {NotFoundError} Se a meta não for encontrada.
    * @example
    * // POST /investment-goals/1/calculate
-   * // Retorno: { "id": 1, "current_amount": 125000, "progress": 25, ... }
+   * // Retorno: { "success": true, "data": { "message": "...", "goal": {...}, "calculatedAmount": 250000, "investmentsCount": 5 } }
    */
   async calculateGoalAmount(req, res) {
     const { id } = req.params;
-    const goal = await InvestmentGoal.findOne({ where: { id, user_id: req.userId } });
-    if (!goal) throw new NotFoundError('Meta de investimento não encontrada');
-    // Soma invested_amount dos investimentos
-    const totalInvestedAmount = await Investment.sum('invested_amount', {
-      where: {
-        user_id: req.userId,
-        operation_type: 'compra',
-        status: 'ativo'
-      }
-    });
-    await goal.update({ current_amount: totalInvestedAmount || 0 });
-    const updatedGoal = await InvestmentGoal.findByPk(id, { include: [{ model: Category, as: 'category' }] });
-    const progress = updatedGoal.getProgress();
-    const isOverdue = updatedGoal.isOverdue();
-    const isCompleted = updatedGoal.isCompleted();
+
+    // Delega para o service
+    const result = await this.investmentGoalService.calculateGoalAmount(req.userId, id);
+
     res.json({
-      message: 'Valor atual da meta calculado com sucesso',
-      goal: {
-        ...updatedGoal.toJSON(),
-        current_amount: Number(updatedGoal.current_amount),
-        target_amount: Number(updatedGoal.target_amount),
-        progress,
-        isOverdue,
-        isCompleted
+      success: true,
+      data: {
+        message: 'Valor da meta calculado com sucesso',
+        goal: result,
+        calculatedAmount: result.calculatedAmount,
+        investmentsCount: result.investmentsCount
       }
     });
   }
@@ -369,28 +214,21 @@ class InvestmentGoalController {
    * @param {number} req.params.id - ID da meta.
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Mensagem de confirmação.
+   * @returns {Promise<Object>} Confirmação de exclusão em formato JSON.
    * @throws {NotFoundError} Se a meta não for encontrada.
    * @example
    * // DELETE /investment-goals/1
-   * // Retorno: { "message": "Meta de investimento excluída com sucesso" }
+   * // Retorno: { "success": true, "data": { "message": "Meta de investimento excluída com sucesso" } }
    */
   async deleteInvestmentGoal(req, res) {
     const { id } = req.params;
 
-    const goal = await InvestmentGoal.findOne({
-      where: { id, user_id: req.userId }
-    });
-
-    if (!goal) {
-      throw new NotFoundError('Meta de investimento não encontrada');
-    }
-
-    // Exclui a meta
-    await goal.destroy();
+    // Delega para o service
+    const result = await this.investmentGoalService.deleteInvestmentGoal(req.userId, id);
 
     res.json({
-      message: 'Meta de investimento excluída com sucesso'
+      success: true,
+      data: result
     });
   }
 
@@ -402,33 +240,17 @@ class InvestmentGoalController {
    * @returns {Promise<Object>} Estatísticas em formato JSON.
    * @example
    * // GET /investment-goals/statistics
-   * // Retorno: { "totalGoals": 5, "activeGoals": 3, "averageProgress": 45, ... }
+   * // Retorno: { "success": true, "data": { "summary": {...}, "amounts": {...}, "progressByCategory": {...} } }
    */
   async getInvestmentGoalStatistics(req, res) {
-    const totalGoals = await InvestmentGoal.count({ where: { user_id: req.userId } });
-    const activeGoals = await InvestmentGoal.count({ where: { user_id: req.userId, status: 'ativa' } });
-    const completedGoals = await InvestmentGoal.count({ where: { user_id: req.userId, status: 'concluida' } });
-    const overdueGoals = await InvestmentGoal.count({ where: { user_id: req.userId, status: 'ativa', target_date: { [Op.lt]: new Date() } } });
-    const allGoals = await InvestmentGoal.findAll({ where: { user_id: req.userId } });
-    let totalProgress = 0;
-    let goalsWithProgress = 0;
-    allGoals.forEach(goal => {
-      const progress = goal.getProgress();
-      if (!isNaN(progress)) {
-        totalProgress += progress;
-        goalsWithProgress++;
-      }
-    });
-    const averageProgress = goalsWithProgress > 0 ? totalProgress / goalsWithProgress : 0;
+    // Delega para o service
+    const statistics = await this.investmentGoalService.getInvestmentGoalStatistics(req.userId);
+
     res.json({
-      totalGoals,
-      activeGoals,
-      completedGoals,
-      overdueGoals,
-      averageProgress: Math.round(averageProgress),
-      completionRate: totalGoals > 0 ? Math.round((completedGoals / totalGoals) * 100) : 0
+      success: true,
+      data: statistics
     });
   }
 }
 
-module.exports = new InvestmentGoalController(); 
+module.exports = InvestmentGoalController; 

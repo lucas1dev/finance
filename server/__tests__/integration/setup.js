@@ -15,11 +15,15 @@ async function globalSetup() {
   try {
     console.log('🔧 Configurando banco de teste...');
     
-    // Limpar o banco de teste
-    await sequelize.drop();
+    // Desabilitar foreign key checks temporariamente
+    await sequelize.query('SET FOREIGN_KEY_CHECKS = 0;');
     
-    // Usar sequelize.sync() em vez de migrations para evitar problemas com índices
+    // Usar sequelize.sync() com force: true para recriar as tabelas
+    // Isso evita o problema do limite de chaves no MySQL
     await sequelize.sync({ force: true });
+    
+    // Reabilitar foreign key checks
+    await sequelize.query('SET FOREIGN_KEY_CHECKS = 1;');
     
     console.log('✅ Banco de teste configurado com sucesso');
   } catch (error) {

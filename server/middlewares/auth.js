@@ -21,7 +21,7 @@ const auth = async (req, res, next) => {
     req.token = token;
     next();
   } catch (error) {
-    res.status(401).json({ error: 'Por favor, autentique-se.' });
+    res.status(401).json({ success: false, error: 'Por favor, autentique-se.' });
   }
 };
 

@@ -15,6 +15,8 @@ const {
   calculateUpdatedBalance
 } = require('../utils/financingCalculations');
 const { ValidationError, NotFoundError } = require('../utils/errors');
+const TransactionService = require('../services/transactionService');
+const { logger } = require('../utils/logger');
 
 /**
  * Cria um novo pagamento de financiamento com integração de transação
@@ -39,6 +41,8 @@ const { ValidationError, NotFoundError } = require('../utils/errors');
  * // Retorno: { "message": "Pagamento registrado com sucesso", "payment": {...}, "transaction": {...} }
  */
 async function createFinancingPayment(req, res) {
+  const dbTransaction = await sequelize.transaction();
+  
   try {
     // Valida os dados de entrada
     const validatedData = createFinancingPaymentSchema.parse(req.body);
@@ -48,7 +52,8 @@ async function createFinancingPayment(req, res) {
       where: {
         id: validatedData.financing_id,
         user_id: req.userId
-      }
+      },
+      transaction: dbTransaction
     });
 
     if (!financing) {
@@ -60,7 +65,8 @@ async function createFinancingPayment(req, res) {
       where: {
         id: validatedData.account_id,
         user_id: req.userId
-      }
+      },
+      transaction: dbTransaction
     });
 
     if (!account) {
@@ -72,7 +78,8 @@ async function createFinancingPayment(req, res) {
       where: {
         financing_id: validatedData.financing_id,
         installment_number: validatedData.installment_number
-      }
+      },
+      transaction: dbTransaction
     });
 
     if (existingPayment) {
@@ -85,97 +92,110 @@ async function createFinancingPayment(req, res) {
       throw new ValidationError('O pagamento resultaria em saldo devedor negativo');
     }
 
-    // Obtém uma categoria para a transação (categoria de despesa)
-    const category = await Category.findOne({
-      where: {
-        user_id: req.userId,
-        type: 'expense'
-      }
+    // Verifica se há saldo suficiente na conta bancária
+    if (account.balance < validatedData.payment_amount) {
+      throw new ValidationError('Saldo insuficiente na conta bancária', {
+        current_balance: account.balance,
+        required_amount: validatedData.payment_amount
+      });
+    }
+
+    // Cria o pagamento do financiamento
+    const payment = await FinancingPayment.create({
+      ...validatedData,
+      user_id: req.userId,
+      balance_before: parseFloat(financing.current_balance),
+      balance_after: parseFloat(financing.current_balance) - validatedData.principal_amount
+    }, { transaction: dbTransaction });
+
+    // Cria a transação automaticamente usando o TransactionService
+    const transactionRecord = await TransactionService.createFromFinancingPayment(
+      { ...payment.toJSON(), account_id: validatedData.account_id },
+      { transaction: dbTransaction }
+    );
+
+    // Atualiza o saldo da conta
+    await TransactionService.updateAccountBalance(
+      validatedData.account_id,
+      validatedData.payment_amount,
+      'expense',
+      { transaction: dbTransaction }
+    );
+
+    // Atualiza estatísticas do financiamento
+    const payments = await FinancingPayment.findAll({
+      where: { financing_id: financing.id },
+      transaction: dbTransaction
     });
 
-    if (!category) {
-      throw new ValidationError('Nenhuma categoria de despesa encontrada');
-    }
+    const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.payment_amount), 0);
+    const totalInterestPaid = payments.reduce((sum, p) => sum + parseFloat(p.interest_amount), 0);
+    const paidInstallments = payments.length;
 
-    // Inicia transação do banco de dados
-    const transaction = await sequelize.transaction();
+    await financing.update({
+      current_balance: parseFloat(financing.total_amount) - (totalPaid - totalInterestPaid),
+      total_paid: totalPaid,
+      total_interest_paid: totalInterestPaid,
+      paid_installments: paidInstallments,
+      status: paidInstallments >= financing.term_months ? 'quitado' : 'ativo'
+    }, { transaction: dbTransaction });
 
-    try {
-      // Cria a transação de saída
-      const transactionRecord = await Transaction.create({
-        user_id: req.userId,
-        account_id: validatedData.account_id,
-        category_id: category.id,
-        type: 'expense',
-        amount: validatedData.payment_amount,
-        description: `Pagamento parcela ${validatedData.installment_number} - ${financing.description}`,
-        date: validatedData.payment_date,
-        payment_method: validatedData.payment_method,
-        payment_date: validatedData.payment_date
-      }, { transaction });
+    // Confirma a transação
+    await dbTransaction.commit();
 
-      // Cria o pagamento do financiamento
-      const payment = await FinancingPayment.create({
-        ...validatedData,
-        user_id: req.userId,
-        transaction_id: transactionRecord.id,
-        balance_before: parseFloat(financing.current_balance),
-        balance_after: parseFloat(financing.current_balance) - validatedData.principal_amount
-      }, { transaction });
+    // Busca os dados atualizados
+    const updatedPayment = await FinancingPayment.findByPk(payment.id, {
+      include: [
+        {
+          model: Transaction,
+          as: 'transaction'
+        },
+        {
+          model: Account,
+          as: 'account'
+        }
+      ]
+    });
 
-      // Atualiza o saldo da conta manualmente (o hook afterCreate não executa dentro de transação)
-      const newBalance = parseFloat(account.balance) - validatedData.payment_amount;
-      await account.update({ balance: newBalance }, { transaction });
+    logger.info(`Pagamento de financiamento criado com sucesso`, {
+      payment_id: payment.id,
+      transaction_id: transactionRecord.id,
+      financing_id: validatedData.financing_id,
+      installment_number: validatedData.installment_number,
+      amount: validatedData.payment_amount
+    });
 
-      // Atualiza estatísticas do financiamento
-      const payments = await FinancingPayment.findAll({
-        where: { financing_id: financing.id },
-        transaction
-      });
+    res.status(201).json({
+      message: 'Pagamento de financiamento criado com sucesso',
+      payment: updatedPayment,
+      transaction: transactionRecord
+    });
 
-      const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.payment_amount), 0);
-      const totalInterestPaid = payments.reduce((sum, p) => sum + parseFloat(p.interest_amount), 0);
-      const paidInstallments = payments.length;
-
-      await financing.update({
-        current_balance: parseFloat(financing.total_amount) - (totalPaid - totalInterestPaid),
-        total_paid: totalPaid,
-        total_interest_paid: totalInterestPaid,
-        paid_installments: paidInstallments,
-        status: paidInstallments >= financing.term_months ? 'quitado' : 'ativo'
-      }, { transaction });
-
-      // Confirma a transação
-      await transaction.commit();
-
-      // Busca os dados atualizados
-      const updatedPayment = await FinancingPayment.findByPk(payment.id, {
-        include: [
-          {
-            model: Transaction,
-            as: 'transaction'
-          },
-          {
-            model: Account,
-            as: 'account'
-          }
-        ]
-      });
-
-      res.status(201).json({
-        message: 'Pagamento de financiamento criado com sucesso',
-        payment: updatedPayment
-      });
-    } catch (error) {
-      // Reverte a transação em caso de erro
-      await transaction.rollback();
-      throw error;
-    }
   } catch (error) {
+    await dbTransaction.rollback();
+    
+    logger.error('Erro ao criar pagamento de financiamento', {
+      error: error.message,
+      body: req.body,
+      user_id: req.userId
+    });
+
     if (error.name === 'ZodError') {
-      throw new ValidationError('Dados inválidos', error.errors);
+      return res.status(400).json({ 
+        error: 'Dados inválidos', 
+        details: error.errors 
+      });
     }
-    throw error;
+
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    if (error instanceof NotFoundError) {
+      return res.status(404).json({ error: error.message });
+    }
+
+    return res.status(500).json({ error: 'Erro interno do servidor' });
   }
 }
 

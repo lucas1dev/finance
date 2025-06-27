@@ -96,4 +96,11 @@ router.post('/run-all', auth, adminAuth, auditJobAction('job_execution', 'all_jo
  */
 router.post('/test-email', auth, adminAuth, auditJobAction('job_execution', 'test_email'), notificationJobController.testEmailAlert);
 
+/**
+ * @route GET /notifications/jobs/execution/:executionId
+ * @desc Obtém detalhes de uma execução específica de job
+ * @access Private (Admin)
+ */
+router.get('/execution/:executionId', auth, adminAuth, auditJobAction('job_execution', 'view_details'), notificationJobController.getJobExecutionDetails);
+
 module.exports = router; 

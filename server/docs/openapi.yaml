@@ -463,28 +463,49 @@ components:
         ticker:
           type: string
           description: Código do ticker
-        current_value:
+        invested_amount:
           type: number
           format: float
-          description: Valor atual do investimento
-        total_invested:
-          type: number
-          format: float
-          description: Total investido
+          description: Valor investido na operação
         quantity:
           type: number
           format: float
           description: Quantidade de ativos
-        average_price:
+        unit_price:
           type: number
           format: float
-          description: Preço médio
+          description: Preço unitário
+        operation_type:
+          type: string
+          enum: [compra, venda]
+          description: Tipo de operação (compra ou venda)
+        operation_date:
+          type: string
+          format: date
+          description: Data da operação
         broker:
           type: string
-          description: Corretora
-        description:
+          enum: [xp_investimentos, rico, clear, modalmais, inter, nubank, itau, bradesco, santander, caixa, outros]
+          description: Corretora utilizada
+        status:
           type: string
-          description: Descrição do investimento
+          enum: [ativo, vendido, cancelado]
+          description: Status do investimento
+        observations:
+          type: string
+          description: Observações adicionais
+        account_id:
+          type: integer
+          description: ID da conta principal (mantido para compatibilidade)
+        source_account_id:
+          type: integer
+          description: ID da conta bancária de origem (de onde sai o dinheiro)
+        destination_account_id:
+          type: integer
+          description: ID da conta bancária de destino (onde fica o investimento)
+        category_id:
+          type: integer
+          description: ID da categoria do investimento
         created_at:
           type: string
           format: date-time
@@ -494,6 +515,12 @@ components:
       required:
         - investment_type
         - asset_name
+        - invested_amount
+        - quantity
+        - operation_type
+        - operation_date
+        - source_account_id
+        - destination_account_id
 
     Notification:
       type: object
@@ -532,1397 +559,14 @@ components:
         isRead:
           type: boolean
           description: Se foi lida
-        isActive:
-          type: boolean
-          description: Se está ativa
-        scheduledFor:
-          type: string
-          format: date-time
-          description: Data agendada para envio
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - title
-        - message
-        - type
-
-    InvestmentGoal:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: ID único da meta
-        user_id:
-          type: integer
-          description: ID do usuário proprietário
-        title:
-          type: string
-          description: Título da meta
-        description:
-          type: string
-          description: Descrição da meta
-        target_amount:
-          type: number
-          format: float
-          description: Valor alvo
-        current_amount:
-          type: number
-          format: float
-          description: Valor atual
-        target_date:
-          type: string
-          format: date
-          description: Data alvo
-        status:
-          type: string
-          enum: [ativa, concluida, cancelada]
-          description: Status da meta
-        color:
-          type: string
-          description: Cor da meta (formato #RRGGBB)
-        category_id:
-          type: integer
-          description: ID da categoria
-        progress_percentage:
-          type: number
-          format: float
-          description: Percentual de progresso
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - title
-        - target_amount
-        - target_date
-
-    InvestmentContribution:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: ID único do aporte
-        user_id:
-          type: integer
-          description: ID do usuário proprietário
-        investment_id:
-          type: integer
-          description: ID do investimento
-        contribution_date:
-          type: string
-          format: date
-          description: Data do aporte
-        amount:
-          type: number
-          format: float
-          description: Valor total do aporte
-        quantity:
-          type: number
-          format: float
-          description: Quantidade de ativos
-        unit_price:
-          type: number
-          format: float
-          description: Preço unitário
-        broker:
-          type: string
-          description: Corretora
-        observations:
-          type: string
-          description: Observações
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - investment_id
-        - contribution_date
-        - amount
-        - quantity
-        - unit_price
-
-    Financing:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: ID único do financiamento
-        user_id:
-          type: integer
-          description: ID do usuário proprietário
-        creditor_id:
-          type: integer
-          description: ID do credor
-        financing_type:
-          type: string
-          enum: [hipoteca, emprestimo_pessoal, veiculo, outros]
-          description: Tipo de financiamento
-        total_amount:
-          type: number
-          format: float
-          description: Valor total financiado
-        interest_rate:
-          type: number
-          format: float
-          description: Taxa de juros anual
-        term_months:
-          type: integer
-          description: Prazo em meses
-        start_date:
-          type: string
-          format: date
-          description: Data de início
-        description:
-          type: string
-          description: Descrição do financiamento
-        contract_number:
-          type: string
-          description: Número do contrato
-        payment_method:
-          type: string
-          enum: [boleto, debito_automatico, cartao, pix]
-          description: Método de pagamento
-        observations:
-          type: string
-          description: Observações
-        amortization_method:
-          type: string
-          enum: [SAC, Price]
-          description: Método de amortização
-        status:
-          type: string
-          enum: [ativo, quitado, inadimplente]
-          description: Status do financiamento
-        remaining_balance:
-          type: number
-          format: float
-          description: Saldo devedor
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - creditor_id
-        - financing_type
-        - total_amount
-        - interest_rate
-        - term_months
-        - start_date
-        - amortization_method
-
-    FinancingPayment:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: ID único do pagamento
-        user_id:
-          type: integer
-          description: ID do usuário proprietário
-        financing_id:
-          type: integer
-          description: ID do financiamento
-        account_id:
-          type: integer
-          description: ID da conta
-        installment_number:
-          type: integer
-          description: Número da parcela
-        payment_amount:
-          type: number
-          format: float
-          description: Valor total do pagamento
-        principal_amount:
-          type: number
-          format: float
-          description: Valor da amortização
-        interest_amount:
-          type: number
-          format: float
-          description: Valor dos juros
-        payment_date:
-          type: string
-          format: date
-          description: Data do pagamento
-        payment_method:
-          type: string
-          enum: [boleto, debito_automatico, cartao, pix, transferencia]
-          description: Método de pagamento
-        payment_type:
-          type: string
-          enum: [parcela, parcial, antecipado]
-          description: Tipo de pagamento
-        status:
-          type: string
-          enum: [pago, pendente, atrasado]
-          description: Status do pagamento
-        observations:
-          type: string
-          description: Observações
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - financing_id
-        - account_id
-        - installment_number
-        - payment_amount
-        - principal_amount
-        - interest_amount
-        - payment_date
-        - payment_method
-
-    Creditor:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: ID único do credor
-        user_id:
-          type: integer
-          description: ID do usuário proprietário
-        name:
-          type: string
-          description: Nome do credor
-        document_type:
-          type: string
-          enum: [CPF, CNPJ]
-          description: Tipo do documento
-        document_number:
-          type: string
-          description: Número do documento
-        email:
-          type: string
-          format: email
-          description: Email do credor
-        phone:
-          type: string
-          description: Telefone do credor
-        address:
-          type: string
-          description: Endereço do credor
-        contact_person:
-          type: string
-          description: Pessoa de contato
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - name
-        - document_type
-        - document_number
-
-    FixedAccount:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: ID único da conta fixa
-        user_id:
-          type: integer
-          description: ID do usuário proprietário
-        description:
-          type: string
-          description: Descrição da conta fixa
-        amount:
-          type: number
-          format: float
-          description: Valor da conta fixa
-        periodicity:
-          type: string
-          enum: [daily, weekly, monthly, quarterly, yearly]
-          description: Periodicidade
-        start_date:
-          type: string
-          format: date
-          description: Data de início
-        category_id:
-          type: integer
-          description: ID da categoria
-        supplier_id:
-          type: integer
-          description: ID do fornecedor
-        payment_method:
-          type: string
-          description: Método de pagamento
-        observations:
-          type: string
-          description: Observações
-        reminder_days:
-          type: integer
-          description: Dias de antecedência para lembretes
-        is_active:
-          type: boolean
-          description: Se está ativa
-        is_paid:
-          type: boolean
-          description: Se está paga
-        next_due_date:
-          type: string
-          format: date
-          description: Próxima data de vencimento
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - description
-        - amount
-        - periodicity
-        - start_date
-        - category_id
-
-    Payable:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: ID único do pagável
-        user_id:
-          type: integer
-          description: ID do usuário proprietário
-        supplier_id:
-          type: integer
-          description: ID do fornecedor
-        category_id:
-          type: integer
-          description: ID da categoria
-        amount:
-          type: number
-          format: float
-          description: Valor total do pagável
-        remaining_amount:
-          type: number
-          format: float
-          description: Valor restante a pagar
-        due_date:
-          type: string
-          format: date
-          description: Data de vencimento
-        description:
-          type: string
-          description: Descrição do pagável
-        status:
-          type: string
-          enum: [pending, partially_paid, paid]
-          description: Status do pagável
-        invoice_number:
-          type: string
-          description: Número da nota fiscal
-        payment_terms:
-          type: string
-          description: Condições de pagamento
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - supplier_id
-        - category_id
-        - amount
-        - due_date
-
-    Notification:
-      type: object
-      properties:
-        id:
-          type: integer
-          description: ID único da notificação
-        user_id:
-          type: integer
-          description: ID do usuário
-        title:
-          type: string
-          description: Título da notificação
-        message:
-          type: string
-          description: Mensagem da notificação
-        type:
-          type: string
-          enum: [info, warning, error, success]
-          description: Tipo da notificação
-        is_read:
-          type: boolean
-          description: Se a notificação foi lida
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - user_id
-        - title
-        - message
-        - type
-
-    Error:
-      type: object
-      properties:
-        error:
-          type: string
-          description: Mensagem de erro
-        details:
-          type: object
-          description: Detalhes adicionais do erro
-        timestamp:
-          type: string
-          format: date-time
-          description: Timestamp do erro
-
-    Success:
-      type: object
-      properties:
-        success:
-          type: boolean
-          description: Indica se a operação foi bem-sucedida
-        message:
-          type: string
-          description: Mensagem de sucesso
-        data:
-          type: object
-          description: Dados retornados pela operação
-
-  parameters:
-    userId:
-      name: userId
-      in: path
-      required: true
-      schema:
-        type: integer
-      description: ID do usuário
-      example: 1
-
-    id:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-      description: ID do recurso
-      example: 1
-
-    page:
-      name: page
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 1
-        minimum: 1
-      description: Número da página
-      example: 1
-
-    limit:
-      name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 10
-        minimum: 1
-        maximum: 100
-      description: Número de itens por página
-      example: 10
-
-    type:
-      name: type
-      in: query
-      required: false
-      schema:
-        type: string
-        enum: [income, expense]
-      description: Tipo de transação
-      example: income
-
-    status:
-      name: status
-      in: query
-      required: false
-      schema:
-        type: string
-      description: Status do recurso
-      example: active
-
-security:
-  - bearerAuth: []
-
-tags:
-  - name: Auth
-    description: Autenticação e autorização
-  - name: Users
-    description: Gerenciamento de usuários
-  - name: Accounts
-    description: Gerenciamento de contas
-  - name: Categories
-    description: Gerenciamento de categorias
-  - name: Transactions
-    description: Gerenciamento de transações
-  - name: Customers
-    description: Gerenciamento de clientes
-  - name: Suppliers
-    description: Gerenciamento de fornecedores
-  - name: Receivables
-    description: Gerenciamento de recebíveis
-  - name: Payables
-    description: Gerenciamento de pagáveis
-  - name: Payments
-    description: Gerenciamento de pagamentos
-  - name: Investments
-    description: Gerenciamento de investimentos
-  - name: InvestmentGoals
-    description: Gerenciamento de metas de investimento
-  - name: InvestmentContributions
-    description: Gerenciamento de contribuições para metas
-  - name: Creditors
-    description: Gerenciamento de credores
-  - name: Financings
-    description: Gerenciamento de financiamentos
-  - name: FinancingPayments
-    description: Gerenciamento de pagamentos de financiamentos
-  - name: FixedAccounts
-    description: Gerenciamento de contas fixas
-  - name: Notifications
-    description: Gerenciamento de notificações
-  - name: Jobs
-    description: Gerenciamento de jobs em background
-  - name: DataIntegrity
-    description: Verificação e correção de integridade dos dados
-  - name: JobScheduler
-    description: Configuração dinâmica de jobs cron
-  - name: JobAdmin
-    description: Painel administrativo de jobs
-  - name: Permissions
-    description: Gerenciamento de permissões de usuários
-
-paths:
-  /health:
-    get:
-      tags:
-        - Health
-      summary: Health Check
-      description: Verifica o status do servidor
-      responses:
-        '200':
-          description: Servidor funcionando
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "OK"
-                  timestamp:
-                    type: string
-                    format: date-time
-                  uptime:
-                    type: number
-                  environment:
-                    type: string
-                  version:
-                    type: string
-
-  /api/auth/register:
-    post:
-      tags:
-        - Authentication
-      summary: Registrar usuário
-      description: Cria uma nova conta de usuário
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  description: Nome completo do usuário
-                email:
-                  type: string
-                  format: email
-                  description: Email único do usuário
-                password:
-                  type: string
-                  description: Senha do usuário
+                  description: Se deve limpar notificações existentes antes de reprocessar
+                  default: false
+                  example: true
               required:
-                - name
-                - email
-                - password
-      responses:
-        '201':
-          description: Usuário criado com sucesso
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-        '400':
-          description: Dados inválidos
-        '409':
-          description: Email já cadastrado
-
-  /api/auth/login:
-    post:
-      tags:
-        - Authentication
-      summary: Fazer login
-      description: Autentica um usuário e retorna token JWT
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                email:
-                  type: string
-                  format: email
-                password:
-                  type: string
-              required:
-                - email
-                - password
+                - targetUserId
       responses:
         '200':
-          description: Login realizado com sucesso
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                  user:
-                    $ref: '#/components/schemas/User'
-        '401':
-          description: Credenciais inválidas
-
-  /api/accounts:
-    get:
-      tags:
-        - Accounts
-      summary: Listar contas
-      description: Retorna todas as contas do usuário autenticado
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de contas
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Account'
-        '401':
-          description: Não autorizado
-    post:
-      tags:
-        - Accounts
-      summary: Criar conta
-      description: Cria uma nova conta para o usuário autenticado
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                type:
-                  type: string
-                  enum: [checking, savings, investment, credit_card, other]
-                balance:
-                  type: number
-                description:
-                  type: string
-              required:
-                - name
-                - type
-                - balance
-      responses:
-        '201':
-          description: Conta criada com sucesso
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Account'
-        '400':
-          description: Dados inválidos
-
-  /api/accounts/{id}:
-    get:
-      tags:
-        - Accounts
-      summary: Obter conta
-      description: Retorna uma conta específica
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Conta encontrada
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Account'
-        '404':
-          description: Conta não encontrada
-    put:
-      tags:
-        - Accounts
-      summary: Atualizar conta
-      description: Atualiza uma conta existente
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                type:
-                  type: string
-                  enum: [checking, savings, investment, credit_card, other]
-                balance:
-                  type: number
-                description:
-                  type: string
-      responses:
-        '200':
-          description: Conta atualizada com sucesso
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Account'
-        '404':
-          description: Conta não encontrada
-    delete:
-      tags:
-        - Accounts
-      summary: Deletar conta
-      description: Remove uma conta
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Conta removida com sucesso
-        '404':
-          description: Conta não encontrada
-
-  /api/categories:
-    get:
-      tags:
-        - Categories
-      summary: Listar categorias
-      description: |
-        Retorna todas as categorias do usuário autenticado, incluindo categorias padrão do sistema.
-        
-        **Observação:**
-        - O campo `is_default` indica se a categoria é padrão do sistema.
-        - Categorias padrão (`is_default: true`) não podem ser editadas ou excluídas.
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de categorias
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Category'
-    post:
-      tags:
-        - Categories
-      summary: Criar categoria
-      description: |
-        Cria uma nova categoria personalizada para o usuário.
-        
-        **Observação:**
-        - O campo `color` é opcional. Se não informado, será atribuído automaticamente conforme o tipo.
-        - O campo `is_default` sempre será `false` para categorias criadas pelo usuário.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                type:
-                  type: string
-                  enum: [income, expense]
-                color:
-                  type: string
-              required:
-                - name
-                - type
-      responses:
-        '201':
-          description: Categoria criada com sucesso
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Category'
-
-  /api/categories/{id}:
-    put:
-      tags:
-        - Categories
-      summary: Atualizar categoria
-      description: |
-        Atualiza uma categoria existente do usuário.
-        
-        **Atenção:**
-        - Não é possível editar categorias padrão do sistema (`is_default: true`).
-        - Apenas categorias personalizadas podem ser editadas.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                type:
-                  type: string
-                  enum: [income, expense]
-                color:
-                  type: string
-      responses:
-        '200':
-          description: Categoria atualizada
-    delete:
-      tags:
-        - Categories
-      summary: Excluir categoria
-      description: |
-        Remove uma categoria personalizada do usuário.
-        
-        **Atenção:**
-        - Não é possível excluir categorias padrão do sistema (`is_default: true`).
-        - Apenas categorias personalizadas podem ser removidas.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Categoria removida
-
-  /api/transactions:
-    get:
-      tags:
-        - Transactions
-      summary: Listar transações
-      description: Retorna todas as transações do usuário autenticado
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 1
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 10
-        - name: type
-          in: query
-          schema:
-            type: string
-            enum: [income, expense]
-        - name: category_id
-          in: query
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Lista de transações
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Transaction'
-    post:
-      tags:
-        - Transactions
-      summary: Criar transação
-      description: Cria uma nova transação
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                description:
-                  type: string
-                amount:
-                  type: number
-                type:
-                  type: string
-                  enum: [income, expense]
-                category_id:
-                  type: integer
-                account_id:
-                  type: integer
-                date:
-                  type: string
-                  format: date
-              required:
-                - description
-                - amount
-                - type
-                - account_id
-      responses:
-        '201':
-          description: Transação criada com sucesso
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Transaction'
-
-  /api/customers:
-    get:
-      tags:
-        - Customers
-      summary: Listar clientes
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de clientes
-    post:
-      tags:
-        - Customers
-      summary: Criar cliente
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Cliente criado
-  /api/customers/{id}:
-    get:
-      tags:
-        - Customers
-      summary: Obter cliente
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Cliente encontrado
-    put:
-      tags:
-        - Customers
-      summary: Atualizar cliente
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Cliente atualizado
-    delete:
-      tags:
-        - Customers
-      summary: Deletar cliente
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Cliente removido
-
-  /api/suppliers:
-    get:
-      tags:
-        - Suppliers
-      summary: Listar fornecedores
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de fornecedores
-    post:
-      tags:
-        - Suppliers
-      summary: Criar fornecedor
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Fornecedor criado
-  /api/suppliers/{id}:
-    get:
-      tags:
-        - Suppliers
-      summary: Obter fornecedor
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Fornecedor encontrado
-    put:
-      tags:
-        - Suppliers
-      summary: Atualizar fornecedor
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Fornecedor atualizado
-    delete:
-      tags:
-        - Suppliers
-      summary: Deletar fornecedor
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Fornecedor removido
-
-  /api/receivables:
-    get:
-      tags:
-        - Receivables
-      summary: Listar recebíveis
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de recebíveis
-    post:
-      tags:
-        - Receivables
-      summary: Criar recebível
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Recebível criado
-  /api/receivables/{id}:
-    get:
-      tags:
-        - Receivables
-      summary: Obter recebível
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Recebível encontrado
-    put:
-      tags:
-        - Receivables
-      summary: Atualizar recebível
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Recebível atualizado
-    delete:
-      tags:
-        - Receivables
-      summary: Deletar recebível
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Recebível removido
-
-  /api/payables:
-    get:
-      tags:
-        - Payables
-      summary: Listar pagáveis
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de pagáveis
-    post:
-      tags:
-        - Payables
-      summary: Criar pagável
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Pagável criado
-  /api/payables/{id}:
-    get:
-      tags:
-        - Payables
-      summary: Obter pagável
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Pagável encontrado
-    patch:
-      tags:
-        - Payables
-      summary: Atualizar pagável
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Pagável atualizado
-    delete:
-      tags:
-        - Payables
-      summary: Deletar pagável
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Pagável removido
-
-  /api/payments/receivables/{receivable_id}/payments:
-    post:
-      tags:
-        - Payments
-      summary: Criar pagamento para recebível
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: receivable_id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '201':
-          description: Pagamento criado
-    get:
-      tags:
-        - Payments
-      summary: Listar pagamentos de recebível
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: receivable_id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Lista de pagamentos
-
-  /api/payments/payables/{payable_id}/payments:
-    post:
-      tags:
-        - Payments
-      summary: Criar pagamento para pagável
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: payable_id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '201':
-          description: Pagamento criado
-    get:
-      tags:
-        - Payments
-      summary: Listar pagamentos de pagável
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: payable_id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Lista de pagamentos
-
-  /api/payments/{id}:
-    delete:
-      tags:
-        - Payments
-      summary: Excluir pagamento
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Pagamento removido
-
-  /api/fixed-accounts:
-    get:
-      tags:
-        - FixedAccounts
-      summary: Listar contas fixas
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de contas fixas
-    post:
-      tags:
-        - FixedAccounts
-      summary: Criar conta fixa
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Conta fixa criada
-  /api/fixed-accounts/statistics:
-    get:
-      tags:
-        - FixedAccounts
-      summary: Estatísticas das contas fixas
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Estatísticas retornadas
+          description: Notificações reprocessadas com sucesso
           content:
             application/json:
               schema:
@@ -1930,436 +574,67 @@ paths:
                 properties:
                   success:
                     type: boolean
+                    example: true
                   data:
                     type: object
                     properties:
-                      total:
+                      targetUserId:
                         type: integer
-                        description: Total de contas fixas
-                      totalAmount:
-                        type: number
-                        description: Valor total das contas fixas
-                      active:
+                        description: ID do usuário alvo
+                        example: 123
+                      notificationType:
+                        type: string
+                        description: Tipo de notificação reprocessada
+                        example: payment_check
+                      clearExisting:
+                        type: boolean
+                        description: Se notificações existentes foram limpas
+                        example: true
+                      notificationsCreated:
                         type: integer
-                        description: Contas fixas ativas
-                      inactive:
+                        description: Número de notificações criadas
+                        example: 5
+                      notificationsRemoved:
                         type: integer
-                        description: Contas fixas inativas
-                      paid:
-                        type: integer
-                        description: Contas fixas pagas
-                      unpaid:
-                        type: integer
-                        description: Contas fixas não pagas
-                      overdue:
-                        type: integer
-                        description: Contas fixas vencidas
-                      dueThisMonth:
-                        type: integer
-                        description: Contas fixas que vencem este mês
-                      dueNextMonth:
-                        type: integer
-                        description: Contas fixas que vencem próximo mês
-                      totalMonthlyValue:
-                        type: number
-                        description: Valor total mensal projetado
-                      totalYearlyValue:
-                        type: number
-                        description: Valor total anual projetado
-                      byPeriodicity:
-                        type: object
-                        description: Contas fixas por periodicidade
-                      byCategory:
-                        type: object
-                        description: Contas fixas por categoria
-                      bySupplier:
-                        type: object
-                        description: Contas fixas por fornecedor
-  /api/fixed-accounts/{id}:
-    get:
-      tags:
-        - FixedAccounts
-      summary: Obter conta fixa
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Conta fixa encontrada
-    put:
-      tags:
-        - FixedAccounts
-      summary: Atualizar conta fixa
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Conta fixa atualizada
-    delete:
-      tags:
-        - FixedAccounts
-      summary: Deletar conta fixa
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Conta fixa removida
-  /api/fixed-accounts/{id}/toggle:
-    patch:
-      tags:
-        - FixedAccounts
-      summary: Ativar/desativar conta fixa
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Conta fixa atualizada
-  /api/fixed-accounts/{id}/pay:
-    post:
-      tags:
-        - FixedAccounts
-      summary: Marcar conta fixa como paga
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '201':
-          description: Pagamento registrado
-
-  /api/investments:
-    get:
-      tags:
-        - Investments
-      summary: Listar investimentos
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de investimentos
-    post:
-      tags:
-        - Investments
-      summary: Criar investimento
-      security:
-        - bearerAuth: []
-      responses:
-        '201':
-          description: Investimento criado
-  /api/investments/{id}:
-    get:
-      tags:
-        - Investments
-      summary: Obter investimento
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Investimento encontrado
-    put:
-      tags:
-        - Investments
-      summary: Atualizar investimento
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Investimento atualizado
-    delete:
-      tags:
-        - Investments
-      summary: Deletar investimento
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Investimento removido
-  /api/investments/statistics:
-    get:
-      tags:
-        - Investments
-      summary: Estatísticas dos investimentos
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Estatísticas retornadas
-  /api/investments/positions:
-    get:
-      tags:
-        - Investments
-      summary: Listar posições de ativos
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de posições
-  /api/investments/positions/{assetName}:
-    get:
-      tags:
-        - Investments
-      summary: Obter posição de ativo
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: assetName
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Posição encontrada
-  /api/investments/positions/{assetName}/sell:
-    post:
-      tags:
-        - Investments
-      summary: Vender ativo
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: assetName
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '201':
-          description: Venda registrada
-  /api/investments/positions/{assetName}/{ticker}:
-    get:
-      tags:
-        - Investments
-      summary: Obter posição de ativo por ticker
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: assetName
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: ticker
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Posição encontrada
-  /api/investments/positions/{assetName}/{ticker}/sell:
-    post:
-      tags:
-        - Investments
-      summary: Vender ativo por ticker
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: assetName
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: ticker
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '201':
-          description: Venda registrada
-
-  # Endpoints de Notificações
-  /api/notifications:
-    get:
-      tags:
-        - Notifications
-      summary: Listar notificações
-      description: Retorna todas as notificações do usuário autenticado
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Lista de notificações
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Notification'
-    post:
-      tags:
-        - Notifications
-      summary: Criar notificação manual
-      description: Cria uma nova notificação manual
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                title:
-                  type: string
-                  description: Título da notificação
-                message:
-                  type: string
-                  description: Mensagem da notificação
-                type:
-                  type: string
-                  enum: [payment_due, payment_overdue, reminder, system]
-                  description: Tipo da notificação
-                relatedType:
-                  type: string
-                  enum: [financing, financing_payment, creditor, general]
-                  description: Tipo de entidade relacionada
-                relatedId:
-                  type: integer
-                  description: ID da entidade relacionada
-                dueDate:
-                  type: string
-                  format: date-time
-                  description: Data de vencimento
-                priority:
-                  type: string
-                  enum: [low, medium, high, urgent]
-                  description: Prioridade da notificação
-                scheduledFor:
-                  type: string
-                  format: date-time
-                  description: Data agendada para envio
-              required:
-                - title
-                - message
-                - type
-      responses:
-        '201':
-          description: Notificação criada com sucesso
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Notification'
-
-  /api/notifications/stats:
-    get:
-      tags:
-        - Notifications
-      summary: Estatísticas de notificações
-      description: Obtém estatísticas das notificações do usuário
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Estatísticas retornadas
+                        description: Número de notificações removidas
+                        example: 2
+                      jobsExecuted:
+                        type: array
+                        items:
+                          type: string
+                        description: Jobs executados
+                        example: ["payment_check"]
+                  message:
+                    type: string
+                    example: "Notificações reprocessadas com sucesso para o usuário João Silva"
+        '400':
+          description: Dados inválidos
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  total:
-                    type: integer
-                    description: Total de notificações
-                  unread:
-                    type: integer
-                    description: Notificações não lidas
-                  byType:
-                    type: object
-                    description: Contagem por tipo
-
-  /api/notifications/{id}/read:
-    patch:
-      tags:
-        - Notifications
-      summary: Marcar notificação como lida
-      description: Marca uma notificação específica como lida
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Notificação marcada como lida
-
-  /api/notifications/read-all:
-    patch:
-      tags:
-        - Notifications
-      summary: Marcar todas como lidas
-      description: Marca todas as notificações do usuário como lidas
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Todas as notificações marcadas como lidas
-
-  /api/notifications/{id}:
-    delete:
-      tags:
-        - Notifications
-      summary: Excluir notificação
-      description: Remove uma notificação (marca como inativa)
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: Notificação removida
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "ID do usuário alvo é obrigatório"
+        '401':
+          description: Não autorizado
+        '404':
+          description: Usuário alvo não encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Usuário alvo não encontrado"
 
   # Endpoints de Jobs de Notificação
   /api/notifications/jobs/payment-check:
@@ -2402,13 +677,262 @@ paths:
     get:
       tags:
         - NotificationJobs
-      summary: Histórico de execução dos jobs
-      description: Obtém o histórico de execução dos jobs de notificação
+      summary: Histórico de execução dos jobs com filtros avançados
+      description: Obtém o histórico de execução dos jobs de notificação com paginação e filtros avançados (apenas administradores)
       security:
         - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Número da página
+          example: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Limite de itens por página
+          example: 20
+        - name: jobType
+          in: query
+          schema:
+            type: string
+          description: Tipo de job para filtrar
+          example: payment_check
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [success, error, running]
+          description: Status para filtrar
+          example: success
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Data de início para filtrar (YYYY-MM-DD)
+          example: "2025-01-01"
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Data de fim para filtrar (YYYY-MM-DD)
+          example: "2025-01-31"
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [startedAt, finishedAt, duration, notificationsCreated, notificationsUpdated, status]
+            default: startedAt
+          description: Campo para ordenação
+          example: duration
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [ASC, DESC]
+            default: DESC
+          description: Ordem de classificação
+          example: DESC
+        - name: minDuration
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Duração mínima em milissegundos
+          example: 1000
+        - name: maxDuration
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Duração máxima em milissegundos
+          example: 10000
+        - name: minNotifications
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+          description: Número mínimo de notificações criadas
+          example: 5
+        - name: hasError
+          in: query
+          schema:
+            type: boolean
+          description: Filtrar apenas execuções com erro
+          example: false
       responses:
         '200':
-          description: Histórico retornado
+          description: Histórico retornado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      history:
+                        type: array
+                        description: Lista de execuções
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 123
+                            jobName:
+                              type: string
+                              example: payment_check
+                            status:
+                              type: string
+                              enum: [success, error, running]
+                              example: success
+                            startedAt:
+                              type: string
+                              format: date-time
+                              example: "2025-01-20T10:00:00Z"
+                            finishedAt:
+                              type: string
+                              format: date-time
+                              example: "2025-01-20T10:05:00Z"
+                            duration:
+                              type: integer
+                              example: 300000
+                            notificationsCreated:
+                              type: integer
+                              example: 15
+                            notificationsUpdated:
+                              type: integer
+                              example: 3
+                            errorMessage:
+                              type: string
+                              example: null
+                            metadata:
+                              type: object
+                              example: {"usersProcessed": 25}
+                      pagination:
+                        type: object
+                        properties:
+                          page:
+                            type: integer
+                            example: 1
+                          limit:
+                            type: integer
+                            example: 20
+                          total:
+                            type: integer
+                            example: 150
+                          totalPages:
+                            type: integer
+                            example: 8
+                          hasNextPage:
+                            type: boolean
+                            example: true
+                          hasPrevPage:
+                            type: boolean
+                            example: false
+                          nextPage:
+                            type: integer
+                            example: 2
+                          prevPage:
+                            type: integer
+                            example: null
+                      filters:
+                        type: object
+                        properties:
+                          applied:
+                            type: object
+                            description: Filtros aplicados
+                            example: {"jobType": "payment_check", "status": "success"}
+                          available:
+                            type: object
+                            properties:
+                              jobTypes:
+                                type: array
+                                items:
+                                  type: string
+                                example: ["payment_check", "general_reminders", "cleanup"]
+                              dateRange:
+                                type: object
+                                properties:
+                                  minDate:
+                                    type: string
+                                    format: date-time
+                                    example: "2024-01-01T00:00:00Z"
+                                  maxDate:
+                                    type: string
+                                    format: date-time
+                                    example: "2025-01-20T23:59:59Z"
+                      stats:
+                        type: object
+                        properties:
+                          totalCount:
+                            type: integer
+                            example: 150
+                          successCount:
+                            type: integer
+                            example: 135
+                          errorCount:
+                            type: integer
+                            example: 10
+                          runningCount:
+                            type: integer
+                            example: 5
+                          successRate:
+                            type: number
+                            example: 90.0
+                          avgDuration:
+                            type: integer
+                            example: 2500
+                          distribution:
+                            type: object
+                            properties:
+                              success:
+                                type: integer
+                                example: 90
+                              error:
+                                type: integer
+                                example: 7
+                              running:
+                                type: integer
+                                example: 3
+                  message:
+                    type: string
+                    example: "Histórico recuperado com sucesso. 150 execuções encontradas."
+        '400':
+          description: Parâmetros inválidos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  message:
+                    type: string
+                    example: "Parâmetros inválidos"
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                    example: ["Página deve ser um número positivo"]
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
 
   /api/notifications/jobs/stats:
     get:
@@ -2457,6 +981,186 @@ paths:
       responses:
         '200':
           description: Todos os jobs executados com sucesso
+
+  /api/notifications/jobs/execution/{executionId}:
+    get:
+      tags:
+        - NotificationJobs
+      summary: Detalhes de execução de job
+      description: Obtém detalhes completos de uma execução específica de job (apenas administradores)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: executionId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID da execução do job
+          example: 123
+      responses:
+        '200':
+          description: Detalhes da execução retornados com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      execution:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            description: ID da execução
+                            example: 123
+                          jobName:
+                            type: string
+                            description: Nome do job
+                            example: payment_check
+                          status:
+                            type: string
+                            enum: [success, error, running]
+                            description: Status da execução
+                            example: success
+                          startedAt:
+                            type: string
+                            format: date-time
+                            description: Data/hora de início
+                            example: "2025-01-20T10:00:00Z"
+                          finishedAt:
+                            type: string
+                            format: date-time
+                            description: Data/hora de término
+                            example: "2025-01-20T10:05:00Z"
+                          duration:
+                            type: integer
+                            description: Duração em milissegundos
+                            example: 300000
+                          notificationsCreated:
+                            type: integer
+                            description: Notificações criadas
+                            example: 15
+                          notificationsUpdated:
+                            type: integer
+                            description: Notificações atualizadas
+                            example: 3
+                          errorMessage:
+                            type: string
+                            description: Mensagem de erro (se houver)
+                            example: "Falha na conexão com banco de dados"
+                          errorStack:
+                            type: string
+                            description: Stack trace do erro (se houver)
+                            example: "SequelizeConnectionError: Connection timeout"
+                          metadata:
+                            type: object
+                            description: Metadados da execução
+                            example: {"usersProcessed": 25, "paymentsChecked": 150}
+                      stats:
+                        type: object
+                        properties:
+                          isRunning:
+                            type: boolean
+                            description: Se o job está em execução
+                            example: false
+                          hasError:
+                            type: boolean
+                            description: Se houve erro na execução
+                            example: false
+                          durationFormatted:
+                            type: string
+                            description: Duração formatada
+                            example: "300000ms"
+                          timeSinceStart:
+                            type: string
+                            description: Tempo desde o início
+                            example: "300s atrás"
+                          totalNotifications:
+                            type: integer
+                            description: Total de notificações processadas
+                            example: 18
+                      relatedExecutions:
+                        type: array
+                        description: Execuções relacionadas do mesmo job
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 122
+                            status:
+                              type: string
+                              example: success
+                            startedAt:
+                              type: string
+                              format: date-time
+                              example: "2025-01-20T09:00:00Z"
+                            duration:
+                              type: integer
+                              example: 250000
+                            notificationsCreated:
+                              type: integer
+                              example: 12
+                            hasError:
+                              type: boolean
+                              example: false
+                            errorMessage:
+                              type: string
+                              example: null
+                      analysis:
+                        type: object
+                        properties:
+                          successRate:
+                            type: integer
+                            description: Taxa de sucesso (0-100)
+                            example: 100
+                          performance:
+                            type: string
+                            enum: [excellent, good, fair, poor, unknown]
+                            description: Avaliação de performance
+                            example: good
+                          impact:
+                            type: string
+                            enum: [high, low]
+                            description: Impacto da execução
+                            example: high
+                  message:
+                    type: string
+                    example: "Detalhes da execução 123 recuperados com sucesso"
+        '400':
+          description: ID de execução inválido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  message:
+                    type: string
+                    example: "ID de execução inválido"
+        '401':
+          description: Não autorizado
+        '404':
+          description: Execução de job não encontrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  message:
+                    type: string
+                    example: "Execução de job não encontrada"
 
   # Endpoints de Metas de Investimento
   /api/investment-goals:
@@ -5172,3 +3876,59 @@ paths:
           description: Acesso negado (apenas administradores)
         '404':
           description: Usuário não encontrado
+
+    InvestmentContribution:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID único do aporte
+        user_id:
+          type: integer
+          description: ID do usuário proprietário
+        investment_id:
+          type: integer
+          description: ID do investimento
+        contribution_date:
+          type: string
+          format: date
+          description: Data do aporte (YYYY-MM-DD)
+        amount:
+          type: number
+          format: float
+          description: Valor total do aporte
+        quantity:
+          type: number
+          format: float
+          description: Quantidade de ativos
+        unit_price:
+          type: number
+          format: float
+          description: Preço unitário
+        broker:
+          type: string
+          enum: [xp_investimentos, rico_investimentos, clear_corretora, modal_mais, inter_invest, nubank_invest, itau_corretora, bradesco_corretora, santander_corretora, outros]
+          description: Corretora utilizada
+        observations:
+          type: string
+          description: Observações adicionais
+        source_account_id:
+          type: integer
+          description: ID da conta bancária de origem do aporte
+        destination_account_id:
+          type: integer
+          description: ID da conta bancária de destino do aporte
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - investment_id
+        - contribution_date
+        - amount
+        - quantity
+        - unit_price
+        - source_account_id
+        - destination_account_id

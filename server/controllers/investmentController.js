@@ -2,11 +2,12 @@ const { Investment, Account, Category, Transaction, InvestmentContribution } = r
 const { createInvestmentSchema, updateInvestmentSchema, sellAssetSchema, listPositionsSchema } = require('../utils/investmentValidators');
 const { ValidationError, NotFoundError } = require('../utils/errors');
 const { Op } = require('sequelize');
+const { sequelize } = require('../models');
+const investmentService = require('../services/investmentService');
 
 /**
  * Controller para gerenciamento de investimentos.
- * Permite criar, listar, atualizar e excluir investimentos,
- * além de gerenciar o impacto nas contas e transações.
+ * Agora delega toda a lógica ao service e padroniza respostas.
  */
 class InvestmentController {
   /**
@@ -32,85 +33,23 @@ class InvestmentController {
    * @example
    * // POST /investments
    * // Body: { "investment_type": "acoes", "asset_name": "Petrobras", "invested_amount": 1000, ... }
-   * // Retorno: { "id": 1, "investment_type": "acoes", "asset_name": "Petrobras", ... }
+   * // Retorno: { "success": true, "data": { "investment": {...}, "transactions": [...] } }
    */
-  async createInvestment(req, res) {
+  async createInvestment(req, res, next) {
     try {
-      // Valida os dados de entrada
       const validatedData = createInvestmentSchema.parse(req.body);
-
-      // Verifica se a conta existe e pertence ao usuário
-      const account = await Account.findOne({
-        where: { id: validatedData.account_id, user_id: req.userId }
-      });
-
-      if (!account) {
-        throw new NotFoundError('Conta não encontrada');
-      }
-
-      // Verifica se a categoria existe (se fornecida)
-      if (validatedData.category_id) {
-        const category = await Category.findOne({
-          where: { id: validatedData.category_id, user_id: req.userId }
-        });
-
-        if (!category) {
-          throw new NotFoundError('Categoria não encontrada');
-        }
-      }
-
-      // Verifica se há saldo suficiente na conta para compra
-      if (validatedData.operation_type === 'compra') {
-        if (parseFloat(account.balance) < validatedData.invested_amount) {
-          throw new ValidationError('Saldo insuficiente na conta');
-        }
-      }
-
-      // Cria o investimento
-      const investment = await Investment.create({
-        ...validatedData,
-        user_id: req.userId
-      });
-
-      // Atualiza o saldo da conta
-      const balanceChange = validatedData.operation_type === 'compra' 
-        ? -validatedData.invested_amount 
-        : validatedData.invested_amount;
-
-      await account.update({
-        balance: parseFloat(account.balance) + balanceChange
-      });
-
-      // Cria uma transação para registrar a operação
-      const transaction = await Transaction.create({
-        type: validatedData.operation_type === 'compra' ? 'expense' : 'income',
-        amount: validatedData.invested_amount,
-        description: `${validatedData.operation_type === 'compra' ? 'Compra' : 'Venda'} de ${validatedData.asset_name}`,
-        date: validatedData.operation_date,
-        account_id: validatedData.account_id,
-        category_id: validatedData.category_id,
-        user_id: req.userId,
-        investment_id: investment.id
-      });
-
-      // Busca o investimento com as associações
-      const investmentWithAssociations = await Investment.findByPk(investment.id, {
-        include: [
-          { model: Account, as: 'account' },
-          { model: Category, as: 'category' }
-        ]
-      });
-
+      const result = await investmentService.createInvestment(req.userId, validatedData);
+      
       res.status(201).json({
-        message: 'Investimento criado com sucesso',
-        investment: investmentWithAssociations,
-        transaction: transaction
+        success: true,
+        data: {
+          message: 'Investimento criado com sucesso',
+          investment: result.investment,
+          transactions: result.transactions
+        }
       });
     } catch (error) {
-      if (error.name === 'ZodError') {
-        throw new ValidationError('Dados inválidos', error.errors);
-      }
-      throw error;
+      next(error);
     }
   }
 
@@ -129,72 +68,28 @@ class InvestmentController {
    * @returns {Promise<Object>} Lista de investimentos em formato JSON.
    * @example
    * // GET /investments?investment_type=acoes&page=1&limit=10
-   * // Retorno: { "investments": [...], "total": 50, "page": 1, "totalPages": 5 }
+   * // Retorno: { "success": true, "data": { "investments": [...], "pagination": {...}, "statistics": {...} } }
    */
-  async getInvestments(req, res) {
-    const {
-      investment_type,
-      operation_type,
-      status,
-      broker,
-      page = 1,
-      limit = 10
-    } = req.query;
+  async getInvestments(req, res, next) {
+    try {
+      const filters = {
+        investment_type: req.query.investment_type,
+        operation_type: req.query.operation_type,
+        status: req.query.status,
+        broker: req.query.broker,
+        page: parseInt(req.query.page) || 1,
+        limit: parseInt(req.query.limit) || 10
+      };
 
-    // Constrói os filtros
-    const where = { user_id: req.userId };
-    
-    if (investment_type) where.investment_type = investment_type;
-    if (operation_type) where.operation_type = operation_type;
-    if (status) where.status = status;
-    if (broker) where.broker = broker;
-
-    // Configura a paginação
-    const offset = (page - 1) * limit;
-
-    // Busca os investimentos
-    const { count, rows: investments } = await Investment.findAndCountAll({
-      where,
-      include: [
-        { model: Account, as: 'account' },
-        { model: Category, as: 'category' }
-      ],
-      order: [['operation_date', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
-    });
-
-    // Calcula estatísticas
-    const totalInvested = await Investment.sum('invested_amount', {
-      where: { 
-        user_id: req.userId,
-        operation_type: 'compra',
-        status: 'ativo'
-      }
-    });
-
-    const totalSold = await Investment.sum('invested_amount', {
-      where: { 
-        user_id: req.userId,
-        operation_type: 'venda',
-        status: 'vendido'
-      }
-    });
-
-    res.json({
-      investments,
-      pagination: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit)
-      },
-      statistics: {
-        totalInvested: totalInvested || 0,
-        totalSold: totalSold || 0,
-        netInvestment: (totalInvested || 0) - (totalSold || 0)
-      }
-    });
+      const result = await investmentService.getInvestments(req.userId, filters);
+      
+      res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
   /**
@@ -207,25 +102,19 @@ class InvestmentController {
    * @throws {NotFoundError} Se o investimento não for encontrado.
    * @example
    * // GET /investments/1
-   * // Retorno: { "id": 1, "investment_type": "acoes", "asset_name": "Petrobras", ... }
+   * // Retorno: { "success": true, "data": { "investment": {...} } }
    */
-  async getInvestment(req, res) {
-    const { id } = req.params;
-
-    const investment = await Investment.findOne({
-      where: { id, user_id: req.userId },
-      include: [
-        { model: Account, as: 'account' },
-        { model: Category, as: 'category' },
-        { model: InvestmentContribution, as: 'contributions' }
-      ]
-    });
-
-    if (!investment) {
-      throw new NotFoundError('Investimento não encontrado');
+  async getInvestment(req, res, next) {
+    try {
+      const investment = await investmentService.getInvestment(req.userId, req.params.id);
+      
+      res.json({
+        success: true,
+        data: { investment }
+      });
+    } catch (error) {
+      next(error);
     }
-
-    res.json(investment);
   }
 
   /**
@@ -241,66 +130,22 @@ class InvestmentController {
    * @example
    * // PUT /investments/1
    * // Body: { "observations": "Atualização das observações" }
-   * // Retorno: { "id": 1, "observations": "Atualização das observações", ... }
+   * // Retorno: { "success": true, "data": { "message": "Investimento atualizado com sucesso", "investment": {...} } }
    */
-  async updateInvestment(req, res) {
+  async updateInvestment(req, res, next) {
     try {
-      const { id } = req.params;
-
-      // Valida os dados de entrada
       const validatedData = updateInvestmentSchema.parse(req.body);
-
-      // Busca o investimento
-      const investment = await Investment.findOne({
-        where: { id, user_id: req.userId }
-      });
-
-      if (!investment) {
-        throw new NotFoundError('Investimento não encontrado');
-      }
-
-      // Verifica se a conta existe (se fornecida)
-      if (validatedData.account_id) {
-        const account = await Account.findOne({
-          where: { id: validatedData.account_id, user_id: req.userId }
-        });
-
-        if (!account) {
-          throw new NotFoundError('Conta não encontrada');
-        }
-      }
-
-      // Verifica se a categoria existe (se fornecida)
-      if (validatedData.category_id) {
-        const category = await Category.findOne({
-          where: { id: validatedData.category_id, user_id: req.userId }
-        });
-
-        if (!category) {
-          throw new NotFoundError('Categoria não encontrada');
-        }
-      }
-
-      // Atualiza o investimento
-      await investment.update(validatedData);
-
-      // Busca o investimento atualizado com as associações
-      const updatedInvestment = await Investment.findByPk(id, {
-        include: [
-          { model: Account, as: 'account' },
-          { model: Category, as: 'category' }
-        ]
-      });
-
+      const investment = await investmentService.updateInvestment(req.userId, req.params.id, validatedData);
+      
       res.json({
-        message: 'Investimento atualizado com sucesso',
-        investment: updatedInvestment
+        success: true,
+        data: {
+          message: 'Investimento atualizado com sucesso',
+          investment
+        }
       });
     } catch (error) {
-      if (error.name === 'ZodError') {
-        throw new ValidationError('Dados inválidos', error.errors);
-      }
-      throw error;
+      next(error);
     }
   }
 
@@ -314,34 +159,19 @@ class InvestmentController {
    * @throws {NotFoundError} Se o investimento não for encontrado.
    * @example
    * // DELETE /investments/1
-   * // Retorno: { "message": "Investimento excluído com sucesso" }
+   * // Retorno: { "success": true, "data": { "message": "Investimento excluído com sucesso" } }
    */
-  async deleteInvestment(req, res) {
-    const { id } = req.params;
-
-    const investment = await Investment.findOne({
-      where: { id, user_id: req.userId }
-    });
-
-    if (!investment) {
-      throw new NotFoundError('Investimento não encontrado');
+  async deleteInvestment(req, res, next) {
+    try {
+      await investmentService.deleteInvestment(req.userId, req.params.id);
+      
+      res.json({
+        success: true,
+        data: { message: 'Investimento excluído com sucesso' }
+      });
+    } catch (error) {
+      next(error);
     }
-
-    // Verifica se há transações associadas
-    const transaction = await Transaction.findOne({
-      where: { investment_id: id }
-    });
-
-    if (transaction) {
-      throw new ValidationError('Não é possível excluir um investimento que possui transações associadas');
-    }
-
-    // Exclui o investimento
-    await investment.destroy();
-
-    res.json({
-      message: 'Investimento excluído com sucesso'
-    });
   }
 
   /**
@@ -352,73 +182,19 @@ class InvestmentController {
    * @returns {Promise<Object>} Estatísticas em formato JSON.
    * @example
    * // GET /investments/statistics
-   * // Retorno: { "totalInvested": 50000, "totalSold": 10000, "byType": {...} }
+   * // Retorno: { "success": true, "data": { "general": {...}, "byType": [...], "byBroker": [...] } }
    */
-  async getInvestmentStatistics(req, res) {
-    // Estatísticas gerais
-    const totalInvested = await Investment.sum('invested_amount', {
-      where: { 
-        user_id: req.userId,
-        operation_type: 'compra',
-        status: 'ativo'
-      }
-    });
-
-    const totalSold = await Investment.sum('invested_amount', {
-      where: { 
-        user_id: req.userId,
-        operation_type: 'venda',
-        status: 'vendido'
-      }
-    });
-
-    // Estatísticas por tipo de investimento
-    const byType = await Investment.findAll({
-      where: { user_id: req.userId },
-      attributes: [
-        'investment_type',
-        [Investment.sequelize.fn('SUM', Investment.sequelize.col('invested_amount')), 'total_amount'],
-        [Investment.sequelize.fn('COUNT', Investment.sequelize.col('id')), 'count']
-      ],
-      group: ['investment_type']
-    });
-
-    // Estatísticas por corretora
-    const byBroker = await Investment.findAll({
-      where: { 
-        user_id: req.userId,
-        broker: { [Op.ne]: null }
-      },
-      attributes: [
-        'broker',
-        [Investment.sequelize.fn('SUM', Investment.sequelize.col('invested_amount')), 'total_amount'],
-        [Investment.sequelize.fn('COUNT', Investment.sequelize.col('id')), 'count']
-      ],
-      group: ['broker']
-    });
-
-    // Investimentos mais recentes
-    const recentInvestments = await Investment.findAll({
-      where: { user_id: req.userId },
-      include: [
-        { model: Account, as: 'account' },
-        { model: Category, as: 'category' }
-      ],
-      order: [['operation_date', 'DESC']],
-      limit: 5
-    });
-
-    res.json({
-      general: {
-        totalInvested: totalInvested || 0,
-        totalSold: totalSold || 0,
-        netInvestment: (totalInvested || 0) - (totalSold || 0),
-        totalTransactions: await Investment.count({ where: { user_id: req.userId } })
-      },
-      byType,
-      byBroker,
-      recentInvestments
-    });
+  async getInvestmentStatistics(req, res, next) {
+    try {
+      const statistics = await investmentService.getInvestmentStatistics(req.userId);
+      
+      res.json({
+        success: true,
+        data: statistics
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
   /**
@@ -436,59 +212,19 @@ class InvestmentController {
    * @returns {Promise<Object>} Lista de posições ativas.
    * @example
    * // GET /investments/positions?investment_type=acoes&page=1&limit=10
-   * // Retorno: { "positions": [...], "pagination": {...} }
+   * // Retorno: { "success": true, "data": { "positions": [...], "pagination": {...} } }
    */
-  async getActivePositions(req, res) {
+  async getActivePositions(req, res, next) {
     try {
       const validatedFilters = listPositionsSchema.parse(req.query);
+      const result = await investmentService.getActivePositions(req.userId, validatedFilters);
       
-      // Obtém todas as posições ativas
-      let positions = await Investment.getActivePositions(req.userId);
-
-      // Aplica filtros
-      if (validatedFilters.investment_type) {
-        positions = positions.filter(pos => pos.investment_type === validatedFilters.investment_type);
-      }
-
-      if (validatedFilters.broker) {
-        positions = positions.filter(pos => pos.broker === validatedFilters.broker);
-      }
-
-      if (validatedFilters.asset_name) {
-        const searchTerm = validatedFilters.asset_name.toLowerCase();
-        positions = positions.filter(pos => 
-          pos.assetName.toLowerCase().includes(searchTerm)
-        );
-      }
-
-      if (validatedFilters.ticker) {
-        const searchTerm = validatedFilters.ticker.toLowerCase();
-        positions = positions.filter(pos => 
-          pos.ticker && pos.ticker.toLowerCase().includes(searchTerm)
-        );
-      }
-
-      // Aplica paginação
-      const total = positions.length;
-      const page = validatedFilters.page;
-      const limit = validatedFilters.limit;
-      const offset = (page - 1) * limit;
-      const paginatedPositions = positions.slice(offset, offset + limit);
-
       res.json({
-        positions: paginatedPositions,
-        pagination: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit)
-        }
+        success: true,
+        data: result
       });
     } catch (error) {
-      if (error.name === 'ZodError') {
-        throw new ValidationError('Filtros inválidos', error.errors);
-      }
-      throw error;
+      next(error);
     }
   }
 
@@ -504,39 +240,19 @@ class InvestmentController {
    * @throws {NotFoundError} Se o ativo não for encontrado.
    * @example
    * // GET /investments/positions/Petrobras
-   * // Retorno: { "assetName": "Petrobras", "totalQuantity": 100, ... }
+   * // Retorno: { "success": true, "data": { "position": {...}, "operations": [...] } }
    */
   async getAssetPosition(req, res, next) {
     try {
       const { assetName, ticker } = req.params;
-
-      const position = await Investment.getPosition(req.userId, assetName, ticker);
-
-      if (!position.hasPosition) {
-        return next(new NotFoundError('Posição não encontrada para este ativo'));
-      }
-
-      // Busca histórico de operações para este ativo
-      const operations = await Investment.findAll({
-        where: {
-          user_id: req.userId,
-          asset_name: assetName,
-          ticker: ticker || null,
-          status: 'ativo'
-        },
-        include: [
-          { model: Account, as: 'account' },
-          { model: Category, as: 'category' }
-        ],
-        order: [['operation_date', 'ASC']]
-      });
-
+      const result = await investmentService.getAssetPosition(req.userId, assetName, ticker);
+      
       res.json({
-        position,
-        operations
+        success: true,
+        data: result
       });
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 
@@ -560,90 +276,24 @@ class InvestmentController {
    * @example
    * // POST /api/investments/positions/PETR4/sell
    * // Body: { quantity: 10, unit_price: 30, operation_date: '2024-03-25', account_id: 1, broker: 'xp_investimentos' }
-   * // Retorno: { message: 'Venda registrada com sucesso', investment: { ... }, transaction: { ... } }
+   * // Retorno: { "success": true, "data": { "message": "Venda registrada com sucesso", "investment": {...}, "transaction": {...} } }
    */
   async sellAsset(req, res, next) {
     try {
       const { assetName, ticker } = req.params;
       const validatedData = sellAssetSchema.parse(req.body);
-      const position = await Investment.getPosition(req.userId, assetName, ticker);
-      if (!position.hasPosition) {
-        return next(new NotFoundError('Posição não encontrada para este ativo'));
-      }
-      if (position.totalQuantity < validatedData.quantity) {
-        return next(new ValidationError(
-          `Quantidade insuficiente. Posição atual: ${position.totalQuantity}, Quantidade solicitada: ${validatedData.quantity}`
-        ));
-      }
-      const account = await Account.findOne({
-        where: { id: validatedData.account_id, user_id: req.userId }
-      });
-      if (!account) {
-        return next(new NotFoundError('Conta não encontrada'));
-      }
-      const totalAmount = validatedData.quantity * validatedData.unit_price;
-      const originalInvestment = await Investment.findOne({
-        where: {
-          user_id: req.userId,
-          asset_name: assetName,
-          ticker: ticker || null,
-          operation_type: 'compra',
-          status: 'ativo'
-        },
-        order: [['operation_date', 'ASC']]
-      });
-      const userCategory = await Category.findOne({
-        where: { user_id: req.userId },
-        order: [['id', 'ASC']]
-      });
-      const categoryId = originalInvestment?.category_id || userCategory?.id || 1;
-      const investment = await Investment.create({
-        investment_type: 'acoes',
-        asset_name: assetName,
-        ticker: ticker,
-        invested_amount: totalAmount,
-        quantity: validatedData.quantity,
-        unit_price: validatedData.unit_price,
-        operation_date: validatedData.operation_date,
-        operation_type: 'venda',
-        broker: validatedData.broker,
-        observations: validatedData.observations,
-        status: 'ativo',
-        user_id: req.userId,
-        account_id: validatedData.account_id,
-        category_id: categoryId
-      });
-      await account.update({
-        balance: parseFloat(account.balance) + totalAmount
-      });
-      const transaction = await Transaction.create({
-        type: 'income',
-        amount: totalAmount,
-        description: `Venda de ${validatedData.quantity} ${assetName}${ticker ? ` (${ticker})` : ''}`,
-        date: validatedData.operation_date,
-        account_id: validatedData.account_id,
-        category_id: categoryId,
-        user_id: req.userId,
-        investment_id: investment.id
-      });
-      const transactionWithAssociations = await Transaction.findByPk(transaction.id, {
-        include: [
-          { model: Account, as: 'account' }
-        ]
-      });
-      const investmentWithAssociations = await Investment.findByPk(investment.id, {
-        include: [
-          { model: Account, as: 'account' },
-          { model: Category, as: 'category' }
-        ]
-      });
+      const result = await investmentService.sellAsset(req.userId, assetName, ticker, validatedData);
+      
       res.status(201).json({
-        message: 'Venda registrada com sucesso',
-        investment: investmentWithAssociations,
-        transaction: transactionWithAssociations
+        success: true,
+        data: {
+          message: 'Venda registrada com sucesso',
+          investment: result.investment,
+          transaction: result.transaction
+        }
       });
     } catch (error) {
-      return next(error);
+      next(error);
     }
   }
 }

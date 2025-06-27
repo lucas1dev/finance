@@ -2,55 +2,167 @@
 
 ## 📋 Visão Geral
 
-Sistema completo de gerenciamento financeiro pessoal e empresarial com API REST robusta, validações avançadas e autenticação segura.
+Sistema completo de gerenciamento financeiro pessoal e empresarial com API REST robusta, validações avançadas, autenticação segura, sistema de auditoria, investimentos, financiamentos, dashboard avançado e jobs automatizados.
 
 ## 🚀 Status do Projeto
 
 ### ✅ Funcionalidades Implementadas
-- **43 suítes de teste**: Todas passando ✅
-- **618 testes**: Todos passando ✅
+- **55 suítes de teste**: Sistema de testes robusto
+- **802 testes**: Cobertura abrangente
 - **Validações Zod**: Implementadas em todos os controllers
-- **Autenticação JWT**: Sistema seguro
-- **Autorização**: Middlewares de permissão
+- **Autenticação JWT**: Sistema seguro com 2FA
+- **Autorização**: Middlewares de permissão e admin
 - **Documentação**: JSDoc e OpenAPI completos
+- **Sistema de Auditoria**: Logs detalhados de todas as ações
+- **Jobs Automatizados**: Processamento de contas fixas e notificações
 - **Categorias Padrão**: Sistema de categorias padrão e personalizadas
 - **Cores Personalizadas**: Suporte a cores hexadecimais para categorias
 - **Proteção de Dados**: Categorias padrão protegidas contra edição/exclusão
+- **Sistema de Sessões**: Controle avançado de sessões de usuário
+- **Configurações Personalizadas**: Sistema de configurações por usuário
+- **Dashboard Avançado**: Métricas consolidadas e relatórios
+- **Sistema de Investimentos**: Gestão completa de portfólio
+- **Sistema de Financiamentos**: Cálculos automáticos de amortização
+- **Sistema de Notificações**: Alertas e lembretes por email
+- **Sistema de Jobs**: Processamento em background
+- **Sistema de Monitoramento**: Performance e integridade de dados
 
-## 🛠️ Tecnologias
+## 🛠️ Stack Tecnológica Completa
 
-- **Node.js** - Runtime JavaScript
-- **Express.js** - Framework web
-- **Sequelize** - ORM para MySQL
-- **JWT** - Autenticação segura
-- **Zod** - Validação de dados
-- **Jest** - Framework de testes
-- **Swagger** - Documentação da API
-- **Helmet** - Segurança HTTP
-- **Rate Limiting** - Proteção contra ataques
+### 🏗️ **Core Framework & Runtime**
+- **Node.js** (v18+) - Runtime JavaScript server-side
+- **Express.js** (v4.18+) - Framework web minimalista e flexível
+- **Nodemon** - Auto-reload para desenvolvimento
+
+### 🗄️ **Banco de Dados & ORM**
+- **MySQL** (v8.0+) - Sistema de gerenciamento de banco de dados relacional
+- **Sequelize** (v6.31+) - ORM (Object-Relational Mapping) para Node.js
+- **Sequelize CLI** - Ferramentas de linha de comando para migrações
+- **MySQL2** - Driver MySQL nativo para Node.js
+
+### 🔐 **Autenticação & Segurança**
+- **JSON Web Tokens (JWT)** - Autenticação stateless
+- **bcrypt/bcryptjs** - Criptografia de senhas
+- **Speakeasy** - Geração de códigos 2FA (Two-Factor Authentication)
+- **QRCode** - Geração de QR codes para 2FA
+- **Helmet** - Middleware de segurança HTTP
+- **Express Rate Limit** - Proteção contra ataques de força bruta
+- **CORS** - Cross-Origin Resource Sharing
+
+### 📝 **Validação & Validação de Dados**
+- **Zod** (v3.21+) - Biblioteca de validação TypeScript-first
+- **Express Validator** - Middleware de validação para Express
+
+### 🧪 **Testes & Qualidade**
+- **Jest** (v29.5+) - Framework de testes JavaScript
+- **Supertest** - Biblioteca para testar APIs HTTP
+- **ESLint** - Linter para JavaScript
+- **ESLint Plugin Jest** - Regras específicas para testes Jest
+
+### 📧 **Comunicação & Notificações**
+- **Nodemailer** - Biblioteca para envio de emails
+- **Node Cron** - Agendamento de tarefas (cron jobs)
+
+### 📊 **Cache & Performance**
+- **Redis** (v5.5+) - Banco de dados em memória para cache
+- **Rate Limit Redis** - Rate limiting com Redis
+- **Compression** - Middleware de compressão gzip
+
+### 📚 **Documentação**
+- **JSDoc** (v4.0+) - Gerador de documentação JavaScript
+- **Clean JSDoc Theme** - Tema moderno para documentação
+- **Swagger UI Express** - Interface para documentação da API
+- **YAML.js** - Parser YAML para configurações
+
+### 🔍 **Monitoramento & Logs**
+- **Winston** (v3.17+) - Biblioteca de logging estruturado
+- **Sistema de Auditoria Customizado** - Logs detalhados de ações
+
+### 🚀 **Deploy & Produção**
+- **PM2** - Process manager para Node.js
+- **Docker** - Containerização (configuração disponível)
+- **Environment Variables** - Configuração via dotenv
+
+### 📦 **Utilitários & Helpers**
+- **HTTP Server** - Servidor local para documentação
+- **Clean Scripts** - Scripts de limpeza e manutenção
+
+## 🏛️ **Arquitetura do Sistema**
+
+### **Padrão MVC (Model-View-Controller)**
+- **Models**: Definições Sequelize com relacionamentos
+- **Controllers**: Lógica de negócio e validações
+- **Routes**: Definição de endpoints da API
+- **Middlewares**: Autenticação, autorização e validação
+
+### **Camadas de Segurança**
+1. **Rate Limiting** - Proteção contra ataques
+2. **Helmet** - Headers de segurança
+3. **CORS** - Controle de origens
+4. **JWT Validation** - Autenticação de tokens
+5. **Zod Validation** - Validação de entrada
+6. **Role-based Access** - Controle de permissões
+7. **2FA** - Autenticação de dois fatores
+
+### **Sistema de Jobs**
+- **Contas Fixas**: Processamento automático de vencimentos
+- **Notificações**: Sistema de alertas por email
+- **Auditoria**: Logs automáticos de ações importantes
+- **Data Integrity**: Verificação de integridade de dados
+- **Performance Monitoring**: Monitoramento de performance
 
 ## 📁 Estrutura do Projeto
 
 ```
 server/
-├── controllers/          # Lógica de negócio
+├── controllers/          # Lógica de negócio (MVC)
+│   ├── authController.js           # Autenticação e 2FA
+│   ├── accountController.js        # Gestão de contas
+│   ├── transactionController.js    # Transações financeiras
+│   ├── categoryController.js       # Categorias
+│   ├── customerController.js       # Clientes
+│   ├── supplierController.js       # Fornecedores
+│   ├── receivableController.js     # Contas a receber
+│   ├── payableController.js        # Contas a pagar
+│   ├── paymentController.js        # Pagamentos
+│   ├── investmentController.js     # Investimentos
+│   ├── investmentGoalController.js # Metas de investimento
+│   ├── investmentContributionController.js # Contribuições
+│   ├── financingController.js      # Financiamentos
+│   ├── financingPaymentController.js # Pagamentos de financiamento
+│   ├── creditorController.js       # Credores
+│   ├── fixedAccountController.js   # Contas fixas
+│   ├── dashboardController.js      # Dashboard e métricas
+│   ├── notificationController.js   # Notificações
+│   ├── auditController.js          # Auditoria
+│   ├── jobAdminController.js       # Administração de jobs
+│   ├── jobSchedulerController.js   # Agendamento
+│   ├── jobTimeoutController.js     # Controle de timeouts
+│   ├── dataIntegrityController.js  # Integridade de dados
+│   ├── permissionController.js     # Permissões
+│   ├── settingsController.js       # Configurações
+│   └── userController.js           # Gestão de usuários
 ├── models/              # Modelos Sequelize
 ├── routes/              # Definição de rotas
 ├── middlewares/         # Middlewares (auth, validação)
-├── services/            # Serviços externos
+├── services/            # Serviços externos (email, jobs)
 ├── utils/               # Utilitários e helpers
-├── docs/                # Documentação
+├── docs/                # Documentação (JSDoc, OpenAPI)
 ├── __tests__/           # Testes unitários e integração
 ├── migrations/          # Migrações do banco
-└── config/              # Configurações
+├── seeders/             # Dados iniciais
+├── config/              # Configurações
+├── database/            # Schema e seeds
+└── ecosystem.config.js  # Configuração PM2
 ```
 
 ## 🔧 Instalação e Configuração
 
 ### Pré-requisitos
-- Node.js 18+
-- MySQL 8.0+
-- npm ou yarn
+- **Node.js** 18.0.0+
+- **MySQL** 8.0+
+- **Redis** (opcional, para cache)
+- **npm** 8.0.0+ ou **yarn**
 
 ### Instalação
 ```bash
@@ -134,11 +246,19 @@ JWT_EXPIRES_IN=24h
 PORT=3001
 NODE_ENV=development
 
+# Redis (opcional)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
 # Email (opcional)
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
+
+# 2FA
+TWO_FACTOR_ISSUER=FinanceApp
 ```
 
 ## 🚀 Execução
@@ -184,10 +304,10 @@ node run-integration-tests.js
 
 ### Status dos Testes
 ```
-Test Suites: 43 passed, 43 total
-Tests:       1 skipped, 618 passed, 619 total
+Test Suites: 55 passed, 55 total
+Tests:       802 passed, 1 skipped, 803 total
 Snapshots:   0 total
-Time:        47.439 s
+Time:        210.153 s
 ```
 
 ## 📚 Documentação
@@ -198,12 +318,14 @@ Time:        47.439 s
 - **JSDoc**: `docs/jsdoc/`
 
 ### Documentos Disponíveis
+- [Documentação Completa](docs/DOCUMENTATION.md)
 - [Guia de Testes](docs/TESTING_GUIDE.md)
 - [Padrões de Teste](docs/TESTING_PATTERNS.md)
 - [Status dos Testes](docs/TEST_STATUS_REPORT.md)
 - [Tarefas e Melhorias](docs/TASKS_MELHORIAS.md)
 - [Configuração de Email](docs/EMAIL_CONFIGURATION.md)
 - [Guia de Produção](docs/PRODUCTION.md)
+- [Changelog](docs/CHANGELOG.md)
 
 ## 🔐 Autenticação e Autorização
 
@@ -241,6 +363,8 @@ Authorization: Bearer <token>
 - `POST /api/auth/reset-password` - Reset de senha
 - `PUT /api/auth/profile` - Atualizar perfil
 - `PUT /api/auth/password` - Alterar senha
+- `POST /api/auth/setup-2fa` - Configurar 2FA
+- `POST /api/auth/verify-2fa` - Verificar 2FA
 
 ### Contas
 - `GET /api/accounts` - Listar contas
@@ -314,19 +438,114 @@ PUT /api/categories/1
 ### Investimentos
 - `GET /api/investments` - Listar investimentos
 - `POST /api/investments` - Criar investimento
+- `GET /api/investments/:id` - Obter investimento
+- `PUT /api/investments/:id` - Atualizar investimento
+- `DELETE /api/investments/:id` - Excluir investimento
+- `GET /api/investments/statistics` - Estatísticas de investimentos
+- `GET /api/investments/positions` - Posições ativas
+- `POST /api/investments/:id/sell` - Vender ativo
+
+### Metas de Investimento
 - `GET /api/investment-goals` - Listar metas
 - `POST /api/investment-goals` - Criar meta
+- `GET /api/investment-goals/:id` - Obter meta
+- `PUT /api/investment-goals/:id` - Atualizar meta
+- `DELETE /api/investment-goals/:id` - Excluir meta
+- `GET /api/investment-goals/:id/progress` - Progresso da meta
+
+### Contribuições para Investimentos
+- `GET /api/investment-contributions` - Listar contribuições
+- `POST /api/investment-contributions` - Criar contribuição
+- `GET /api/investment-contributions/:id` - Obter contribuição
+- `PUT /api/investment-contributions/:id` - Atualizar contribuição
+- `DELETE /api/investment-contributions/:id` - Excluir contribuição
 
 ### Financiamentos
 - `GET /api/financings` - Listar financiamentos
 - `POST /api/financings` - Criar financiamento
+- `GET /api/financings/:id` - Obter financiamento
+- `PUT /api/financings/:id` - Atualizar financiamento
+- `DELETE /api/financings/:id` - Excluir financiamento
+- `GET /api/financings/:id/amortization` - Tabela de amortização
+- `POST /api/financings/:id/simulate-early-payment` - Simular pagamento antecipado
+- `GET /api/financings/statistics` - Estatísticas de financiamentos
+
+### Pagamentos de Financiamento
 - `GET /api/financing-payments` - Listar pagamentos
 - `POST /api/financing-payments` - Criar pagamento
+- `GET /api/financing-payments/:id` - Obter pagamento
+- `PUT /api/financing-payments/:id` - Atualizar pagamento
+- `DELETE /api/financing-payments/:id` - Excluir pagamento
+
+### Credores
+- `GET /api/creditors` - Listar credores
+- `POST /api/creditors` - Criar credor
+- `GET /api/creditors/:id` - Obter credor
+- `PUT /api/creditors/:id` - Atualizar credor
+- `DELETE /api/creditors/:id` - Excluir credor
+
+### Contas Fixas
+- `GET /api/fixed-accounts` - Listar contas fixas
+- `POST /api/fixed-accounts` - Criar conta fixa
+- `GET /api/fixed-accounts/:id` - Obter conta fixa
+- `PUT /api/fixed-accounts/:id` - Atualizar conta fixa
+- `DELETE /api/fixed-accounts/:id` - Excluir conta fixa
+- `PUT /api/fixed-accounts/:id/pay` - Pagar conta fixa
+
+### Dashboard
+- `GET /api/dashboard` - Dashboard completo
+- `GET /api/dashboard/metrics` - Métricas consolidadas
+- `GET /api/dashboard/charts` - Dados para gráficos
+- `GET /api/dashboard/alerts` - Alertas e notificações
+
+### Notificações
+- `GET /api/notifications` - Listar notificações
+- `POST /api/notifications` - Criar notificação
+- `GET /api/notifications/:id` - Obter notificação
+- `PUT /api/notifications/:id` - Atualizar notificação
+- `DELETE /api/notifications/:id` - Excluir notificação
+- `PUT /api/notifications/:id/read` - Marcar como lida
+
+### Jobs e Automação
+- `GET /api/job-admin/stats` - Estatísticas dos jobs
+- `GET /api/job-admin/jobs` - Listar jobs
+- `POST /api/job-admin/jobs/:id/execute` - Executar job
+- `POST /api/fixed-account-jobs/process` - Processar contas fixas
+- `POST /api/notification-jobs/send` - Enviar notificações
+- `GET /api/job-scheduler/jobs` - Jobs agendados
+- `POST /api/job-scheduler/jobs` - Agendar job
+- `GET /api/job-timeouts/stats` - Estatísticas de timeout
+
+### Auditoria
+- `GET /api/audit/logs` - Logs de auditoria
+- `GET /api/audit/stats` - Estatísticas de auditoria
+- `GET /api/audit/logs/:id` - Obter log específico
+
+### Integridade de Dados
+- `GET /api/data-integrity/check` - Verificar integridade
+- `POST /api/data-integrity/fix` - Corrigir problemas
+- `GET /api/data-integrity/report` - Relatório de integridade
+
+### Configurações
+- `GET /api/settings` - Obter configurações
+- `PUT /api/settings` - Atualizar configurações
+- `GET /api/settings/notifications` - Configurações de notificação
+- `PUT /api/settings/notifications` - Atualizar notificações
+
+### Usuários e Permissões
+- `GET /api/users` - Listar usuários (admin)
+- `POST /api/users` - Criar usuário (admin)
+- `GET /api/users/:id` - Obter usuário
+- `PUT /api/users/:id` - Atualizar usuário
+- `DELETE /api/users/:id` - Excluir usuário (admin)
+- `GET /api/permissions` - Listar permissões
+- `POST /api/permissions` - Criar permissão
+- `PUT /api/permissions/:id` - Atualizar permissão
 
 ## 🔒 Validações Implementadas
 
 ### Controllers com Validação Zod
-- ✅ **authController** - Login, registro, recuperação
+- ✅ **authController** - Login, registro, recuperação, 2FA
 - ✅ **transactionController** - CRUD de transações
 - ✅ **accountController** - CRUD de contas
 - ✅ **categoryController** - CRUD de categorias
@@ -336,7 +555,22 @@ PUT /api/categories/1
 - ✅ **receivableController** - CRUD de recebíveis
 - ✅ **payableController** - CRUD de pagáveis
 - ✅ **financingController** - CRUD de financiamentos
+- ✅ **financingPaymentController** - CRUD de pagamentos de financiamento
 - ✅ **investmentController** - CRUD de investimentos
+- ✅ **investmentGoalController** - CRUD de metas de investimento
+- ✅ **investmentContributionController** - CRUD de contribuições
+- ✅ **fixedAccountController** - CRUD de contas fixas
+- ✅ **creditorController** - CRUD de credores
+- ✅ **dashboardController** - Métricas e relatórios
+- ✅ **notificationController** - Sistema de notificações
+- ✅ **auditController** - Logs de auditoria
+- ✅ **jobAdminController** - Administração de jobs
+- ✅ **jobSchedulerController** - Agendamento de jobs
+- ✅ **jobTimeoutController** - Controle de timeouts
+- ✅ **dataIntegrityController** - Verificação de integridade
+- ✅ **permissionController** - Gestão de permissões
+- ✅ **settingsController** - Configurações
+- ✅ **userController** - Gestão de usuários
 
 ### Validações Específicas
 - **Documentos**: CPF e CNPJ validados
@@ -347,6 +581,10 @@ PUT /api/categories/1
 - **Campos Obrigatórios**: Validação completa
 - **Cores**: Formato hexadecimal válido para categorias
 - **Categorias Padrão**: Proteção contra edição/exclusão
+- **2FA**: Validação de códigos TOTP
+- **Investimentos**: Validação de valores e tipos
+- **Financiamentos**: Validação de cálculos e parcelas
+- **Contas Fixas**: Validação de vencimentos
 
 ## 🛡️ Segurança
 
@@ -356,6 +594,7 @@ PUT /api/categories/1
 - **CORS**: Configuração de origens permitidas
 - **JWT**: Autenticação segura
 - **Validação**: Entrada de dados validada
+- **2FA**: Autenticação de dois fatores
 
 ### Boas Práticas
 - Senhas criptografadas com bcrypt
@@ -363,6 +602,8 @@ PUT /api/categories/1
 - Validação de entrada com Zod
 - Logs estruturados
 - Tratamento de erros centralizado
+- Auditoria de ações importantes
+- Rate limiting por IP e usuário
 
 ## 📈 Monitoramento
 
@@ -382,6 +623,8 @@ PUT /api/categories/1
 - Taxa de erro
 - Uso de recursos
 - Performance do banco
+- Execução de jobs
+- Atividades de auditoria
 
 ## 🔄 Deploy
 
@@ -485,6 +728,8 @@ npm run status           # Verificar status do projeto
 ---
 
 **Versão**: 2.1.0  
-**Última atualização**: Junho 2025  
+**Última atualização**: Janeiro 2025  
 **Status**: ✅ Produção Pronta  
-**Licença**: MIT
+**Licença**: MIT  
+**Node.js**: >=18.0.0  
+**MySQL**: >=8.0.0

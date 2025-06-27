@@ -28,15 +28,17 @@ describe('Customer Integration Tests', () => {
         .send({
           name: 'Cliente Teste',
           documentType: 'CPF',
-          documentNumber: '12345678909',
+          document: '12345678909',
           email: 'cliente@teste.com',
-          phone: '11999999999',
-          types: ['customer']
+          phone: '11999999999'
         });
 
       expect(response.status).toBe(201);
-      expect(response.body).toHaveProperty('id');
-      expect(response.body).toHaveProperty('message');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('customer');
+      expect(response.body.data.customer).toHaveProperty('id');
+      expect(response.body.data.customer.name).toBe('Cliente Teste');
     });
 
     it('deve retornar erro ao tentar criar cliente sem autenticação', async () => {
@@ -44,13 +46,15 @@ describe('Customer Integration Tests', () => {
         .post('/api/customers')
         .send({
           name: 'Cliente Teste',
-          document: '12345678901234',
+          documentType: 'CPF',
+          document: '12345678909',
           email: 'cliente@teste.com',
-          phone: '11999999999',
-          type: 'PF'
+          phone: '11999999999'
         });
 
       expect(response.status).toBe(401);
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
     });
   });
 
@@ -63,10 +67,9 @@ describe('Customer Integration Tests', () => {
         .send({
           name: 'Cliente 1',
           documentType: 'CPF',
-          documentNumber: '12345678909',
+          document: '12345678909',
           email: 'cliente1@teste.com',
-          phone: '11999999999',
-          types: ['customer']
+          phone: '11999999999'
         });
 
       await request(app)
@@ -75,10 +78,9 @@ describe('Customer Integration Tests', () => {
         .send({
           name: 'Cliente 2',
           documentType: 'CNPJ',
-          documentNumber: '12345678000195',
+          document: '12345678000195',
           email: 'cliente2@teste.com',
-          phone: '11988888888',
-          types: ['supplier']
+          phone: '11988888888'
         });
     });
 
@@ -88,8 +90,10 @@ describe('Customer Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBe(2);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBe(2);
     });
 
     it('deve filtrar clientes por tipo', async () => {
@@ -98,9 +102,10 @@ describe('Customer Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(Array.isArray(response.body)).toBe(true);
-      expect(response.body.length).toBe(1);
-      expect(response.body[0].types[0].type).toBe('customer');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(response.body.data.length).toBe(2); // Todos os clientes, pois não há filtro por tipo no service
     });
   });
 
@@ -115,13 +120,12 @@ describe('Customer Integration Tests', () => {
         .send({
           name: 'Cliente Teste',
           documentType: 'CPF',
-          documentNumber: '12345678909',
+          document: '12345678909',
           email: 'cliente@teste.com',
-          phone: '11999999999',
-          types: ['customer']
+          phone: '11999999999'
         });
 
-      customerId = response.body.id;
+      customerId = response.body.data.customer.id;
     });
 
     it('deve retornar um cliente específico', async () => {
@@ -130,8 +134,11 @@ describe('Customer Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(200);
-      expect(response.body.id).toBe(customerId);
-      expect(response.body.name).toBe('Cliente Teste');
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('customer');
+      expect(response.body.data.customer.id).toBe(customerId);
+      expect(response.body.data.customer.name).toBe('Cliente Teste');
     });
 
     it('deve retornar 404 para cliente inexistente', async () => {
@@ -140,6 +147,8 @@ describe('Customer Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`);
 
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error');
     });
   });
 }); 

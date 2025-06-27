@@ -1,218 +1,55 @@
-const { Account } = require('../models');
+const accountService = require('../services/accountService');
 const { createAccountSchema, updateAccountSchema } = require('../utils/validators');
-const { successResponse } = require('../utils/response');
 
 /**
- * Controlador responsável por gerenciar contas bancárias dos usuários.
- * Permite criar, listar, atualizar e excluir contas com diferentes tipos e saldos.
+ * Controller responsável por gerenciar contas bancárias dos usuários.
+ * Agora delega toda a lógica ao service e padroniza respostas.
  */
 const accountController = {
-  /**
-   * Cria uma nova conta bancária.
-   * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.body - Dados da conta.
-   * @param {string} req.body.bank_name - Nome do banco.
-   * @param {string} req.body.account_type - Tipo da conta (checking/savings/investment).
-   * @param {number} req.body.balance - Saldo inicial.
-   * @param {string} req.body.description - Descrição da conta (opcional).
-   * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Resposta JSON com dados da conta criada.
-   * @throws {Error} Se houver erro no banco de dados.
-   * @example
-   * // POST /accounts
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Body: { "bank_name": "Banco do Brasil", "account_type": "checking", "balance": 1000 }
-   * // Retorno: { "message": "Conta criada com sucesso", "accountId": 1 }
-   */
-  createAccount: async (req, res) => {
+  async createAccount(req, res, next) {
     try {
-      console.log('Dados recebidos:', req.body);
-      console.log('Usuário:', req.user);
-      
-      // Validar dados de entrada
       const validatedData = createAccountSchema.parse(req.body);
-      const { bank_name, account_type, balance, description } = validatedData;
-      
-      console.log('Dados validados:', validatedData);
-      
-      const account = await Account.create({
-        user_id: req.user.id,
-        bank_name,
-        account_type,
-        balance,
-        description
-      });
-
-      console.log('Conta criada:', account.toJSON());
-
-      res.status(201).json({
-        message: 'Conta criada com sucesso',
-        accountId: account.id
-      });
-    } catch (error) {
-      console.error('Erro ao criar conta:', error);
-      console.error('Stack trace:', error.stack);
-      
-      // Se for erro de validação Zod, retorna 400
-      if (error.name === 'ZodError') {
-        return res.status(400).json({ 
-          error: 'Dados inválidos',
-          details: error.errors 
-        });
-      }
-      
-      res.status(500).json({ 
-        error: 'Erro ao criar conta',
-        details: error.message 
-      });
+      const account = await accountService.createAccount(req.user.id, validatedData);
+      res.status(201).json({ success: true, data: { accountId: account.id } });
+    } catch (err) {
+      next(err);
     }
   },
 
-  /**
-   * Obtém a lista de contas do usuário.
-   * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Lista de contas em formato JSON.
-   * @throws {Error} Se houver erro no banco de dados.
-   * @example
-   * // GET /accounts
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { "accounts": [...], "totalBalance": 1000 }
-   */
-  getAccounts: async (req, res) => {
+  async getAccounts(req, res, next) {
     try {
-      const accounts = await Account.findAll({
-        where: { user_id: req.user.id },
-        order: [['created_at', 'DESC']]
-      });
-
-      const totalBalance = accounts.reduce((sum, account) => sum + Number(account.balance), 0);
-
-      res.json({ accounts, totalBalance });
-    } catch (error) {
-      console.error('Erro ao buscar contas:', error);
-      res.status(500).json({ error: 'Erro ao buscar contas' });
+      const result = await accountService.getAccounts(req.user.id);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
     }
   },
 
-  /**
-   * Obtém uma conta específica.
-   * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
-   * @param {string} req.params.id - ID da conta.
-   * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Conta em formato JSON.
-   * @throws {Error} Se a conta não for encontrada ou houver erro no banco.
-   * @example
-   * // GET /accounts/1
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { id: 1, bank_name: "Banco do Brasil", balance: 1000 }
-   */
-  getAccount: async (req, res) => {
+  async getAccount(req, res, next) {
     try {
-      const { id } = req.params;
-      const account = await Account.findByPk(id);
-
-      if (!account) {
-        return res.status(404).json({ error: 'Conta não encontrada' });
-      }
-
-      // Verificar se o usuário é dono da conta
-      if (account.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      res.json(account);
-    } catch (error) {
-      console.error('Erro ao buscar conta:', error);
-      res.status(500).json({ error: 'Erro ao buscar conta' });
+      const account = await accountService.getAccount(req.user.id, req.params.id);
+      res.json({ success: true, data: account });
+    } catch (err) {
+      next(err);
     }
   },
 
-  /**
-   * Atualiza uma conta existente.
-   * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
-   * @param {string} req.params.id - ID da conta.
-   * @param {Object} req.body - Dados para atualização.
-   * @param {string} req.body.bank_name - Nome do banco (opcional).
-   * @param {string} req.body.account_type - Tipo da conta (opcional).
-   * @param {number} req.body.balance - Saldo (opcional).
-   * @param {string} req.body.description - Descrição da conta (opcional).
-   * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
-   * @throws {Error} Se a conta não for encontrada ou houver erro no banco.
-   * @example
-   * // PUT /accounts/1
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Body: { "balance": 1500, "description": "Conta principal" }
-   * // Retorno: { "message": "Conta atualizada com sucesso" }
-   */
-  updateAccount: async (req, res) => {
+  async updateAccount(req, res, next) {
     try {
-      const { id } = req.params;
-      
-      // Validar dados de entrada
       const validatedData = updateAccountSchema.parse(req.body);
-      const { bank_name, account_type, balance, description } = validatedData;
-      
-      const account = await Account.findByPk(id);
-
-      if (!account) {
-        return res.status(404).json({ error: 'Conta não encontrada' });
-      }
-
-      // Verificar se o usuário é dono da conta
-      if (account.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      await account.update({
-        bank_name,
-        account_type,
-        balance,
-        description
-      });
-
-      res.json({ message: 'Conta atualizada com sucesso' });
-    } catch (error) {
-      console.error('Erro ao atualizar conta:', error);
-      res.status(500).json({ error: 'Erro ao atualizar conta' });
+      await accountService.updateAccount(req.user.id, req.params.id, validatedData);
+      res.json({ success: true, data: { message: 'Conta atualizada com sucesso' } });
+    } catch (err) {
+      next(err);
     }
   },
 
-  /**
-   * Remove uma conta.
-   * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
-   * @param {string} req.params.id - ID da conta.
-   * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
-   * @throws {Error} Se a conta não for encontrada ou houver erro no banco.
-   * @example
-   * // DELETE /accounts/1
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { "message": "Conta excluída com sucesso" }
-   */
-  deleteAccount: async (req, res) => {
+  async deleteAccount(req, res, next) {
     try {
-      const { id } = req.params;
-      const account = await Account.findByPk(id);
-
-      if (!account) {
-        return res.status(404).json({ error: 'Conta não encontrada' });
-      }
-
-      // Verificar se o usuário é dono da conta
-      if (account.user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Acesso negado' });
-      }
-
-      await account.destroy();
-      res.json({ message: 'Conta excluída com sucesso' });
-    } catch (error) {
-      console.error('Erro ao remover conta:', error);
-      res.status(500).json({ error: 'Erro ao remover conta' });
+      await accountService.deleteAccount(req.user.id, req.params.id);
+      res.json({ success: true, data: { message: 'Conta excluída com sucesso' } });
+    } catch (err) {
+      next(err);
     }
   },
 
@@ -235,12 +72,9 @@ const accountController = {
       const userId = req.user.id;
       
       // Buscar todas as contas do usuário
-      const accounts = await Account.findAll({
-        where: { user_id: userId },
-        attributes: ['id', 'description', 'balance', 'account_type', 'created_at']
-      });
+      const accounts = await accountService.getAccounts(userId);
 
-      console.log(`📊 [AccountController] ${accounts.length} contas encontradas`);
+      console.log(`�� [AccountController] ${accounts.length} contas encontradas`);
 
       // Calcular estatísticas básicas
       const totalBalance = accounts.reduce((sum, account) => sum + parseFloat(account.balance || 0), 0);
@@ -255,13 +89,10 @@ const accountController = {
       };
 
       console.log('✅ [AccountController] Estatísticas calculadas:', stats);
-      res.json(stats);
+      res.json({ success: true, data: stats });
     } catch (error) {
       console.error('❌ [AccountController] Erro ao obter estatísticas das contas:', error);
-      res.status(500).json({
-        error: 'Erro ao obter estatísticas das contas',
-        details: error.message
-      });
+      res.status(500).json({ success: false, error: 'Erro ao obter estatísticas das contas', details: error.message });
     }
   },
 
@@ -284,10 +115,7 @@ const accountController = {
       
       console.log(`🔍 [AccountController] Buscando dados de gráficos para usuário ${userId}, tipo: ${type}`);
       
-      const accounts = await Account.findAll({
-        where: { user_id: userId },
-        attributes: ['id', 'description', 'balance', 'account_type', 'created_at']
-      });
+      const accounts = await accountService.getAccounts(userId);
 
       let data;
       switch (type) {
@@ -305,12 +133,10 @@ const accountController = {
       }
 
       console.log('✅ [AccountController] Dados de gráficos obtidos:', data);
-      return successResponse(res, data, 'Dados para gráficos obtidos com sucesso');
+      return res.json({ success: true, data });
     } catch (error) {
       console.error('❌ [AccountController] Erro ao obter dados para gráficos:', error);
-      return res.status(500).json({
-        error: 'Erro ao obter dados para gráficos'
-      });
+      return res.status(500).json({ success: false, error: 'Erro ao obter dados para gráficos' });
     }
   },
 
