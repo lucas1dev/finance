@@ -3,7 +3,7 @@
 ## 🎯 Status Geral do Projeto
 
 ### ✅ Melhorias Implementadas (27/06/2025)
-- **Refatoração de Controllers para Services**: 17/25 implementado e testado ✅
+- **Refatoração de Controllers para Services**: 19/28 implementado e testado ✅
   - **transactionController** → `transactionService` ✅
   - **accountController** → `accountService` ✅
   - **categoryController** → `categoryService` ✅
@@ -21,6 +21,8 @@
   - **authController** → `authService` ✅
   - **settingsController** → `settingsService` ✅
   - **notificationController** → `notificationService` ✅
+  - **investmentContributionController** → `investmentContributionService` ✅
+  - **financingPaymentController** → `financingPaymentService` ✅
   - **Padrão de Resposta Padronizado**: `{ success: true, data: ... }` ✅
   - **Tratamento de Erros com AppError**: Status HTTP apropriados ✅
   - **Validação Centralizada**: Zod nos services ✅
@@ -98,7 +100,7 @@
 - **Documentação**: 100% atualizada
 - **Alertas automáticos**: ✅ Implementados
 - **Cobertura de Testes**: ~75%+ statements, ~65%+ branches, ~75%+ functions, ~75%+ lines
-- **Controllers Refatorados**: 17/25 (68%) - transaction, account, category, creditor, customer, investment, investmentGoal, payable, supplier, receivable, payment, financing, dashboard, user, auth, settings, notification
+- **Controllers Refatorados**: 19/28 (68%) - transaction, account, category, creditor, customer, investment, investmentGoal, payable, supplier, receivable, payment, financing, dashboard, user, auth, settings, notification, investmentContribution, financingPayment
 - **Jobs de Contas Fixas**: 23/23 testes (100%) ✅
 - **Dashboard Principal**: 10/10 testes (100%) ✅
 - **Transações Críticas**: 29/29 testes (100%) ✅
@@ -106,10 +108,10 @@
 
 ### 🔄 Tarefas de Refatoração Pendentes
 - **Modelos**: 20/20 pendentes (100%)
-- **Controllers**: 8/25 pendentes (32%) - 17 refatorados ✅
+- **Controllers**: 8/28 pendentes (29%) - 19 refatorados ✅
   - **Controllers Restantes**: investmentContribution, fixedAccount, fixedAccountJob, jobAdmin, jobScheduler, jobTimeout, notificationJob, dataIntegrity
 - **Middlewares**: 6/6 pendentes (100%)
-- **Rotas**: 25/25 pendentes (100%)
+- **Rotas**: 28/28 pendentes (100%)
 - **Total de Tarefas de Refatoração**: 59/76 pendentes (78%)
 
 ### 📈 Status Geral do Projeto
@@ -311,7 +313,69 @@
 
 ---
 
-## 6. Performance e Escalabilidade
+## 6. 🔐 Sistema de Autenticação de Dois Fatores (2FA) - PENDENTE
+
+### 📋 Funcionalidades a Implementar
+
+#### 🔥 **Alta Prioridade:**
+- [ ] **verifyTwoFactor** - Verificação de código 2FA
+  - Endpoint `POST /api/auth/2fa/verify` para verificar código TOTP
+  - Validação de código de 6 dígitos
+  - Integração com Google Authenticator/Authy
+  - Geração de QR Code para configuração inicial
+  - Backup codes para recuperação de acesso
+  - Rate limiting para tentativas de verificação
+  - Logs de auditoria para tentativas de acesso
+
+- [ ] **disableTwoFactor** - Desativação de 2FA
+  - Endpoint `POST /api/auth/2fa/disable` para desativar 2FA
+  - Validação de senha atual antes da desativação
+  - Confirmação por email para desativação
+  - Logs de auditoria para desativação
+  - Notificação de segurança por email
+  - Opção de reativação posterior
+
+#### ⚡ **Média Prioridade:**
+- [ ] **enableTwoFactor** - Ativação de 2FA
+  - Endpoint `POST /api/auth/2fa/enable` para ativar 2FA
+  - Geração de secret key para TOTP
+  - QR Code para configuração em apps
+  - Backup codes para emergências
+  - Validação de código antes da ativação
+  - Configuração de preferências de 2FA
+
+- [ ] **generateBackupCodes** - Códigos de backup
+  - Endpoint `POST /api/auth/2fa/backup-codes` para gerar novos códigos
+  - 10 códigos de backup únicos
+  - Invalidação de códigos antigos
+  - Download seguro dos códigos
+  - Validação de senha para geração
+
+#### 🔶 **Baixa Prioridade:**
+- [ ] **2faSettings** - Configurações de 2FA
+  - Endpoint `GET /api/auth/2fa/settings` para configurações
+  - Preferências de notificação
+  - Configuração de dispositivos confiáveis
+  - Histórico de dispositivos usados
+  - Opções de segurança avançadas
+
+### 🎯 Benefícios da Implementação
+- **Segurança Aprimorada**: Proteção adicional contra acesso não autorizado
+- **Conformidade**: Atende requisitos de segurança para dados financeiros
+- **Flexibilidade**: Usuário pode escolher ativar/desativar 2FA
+- **Recuperação**: Sistema de backup codes para emergências
+- **Auditoria**: Logs completos de todas as operações 2FA
+
+### 📊 Métricas de Implementação
+- [ ] **Cobertura de Testes**: 100% dos endpoints 2FA testados
+- [ ] **Documentação**: OpenAPI atualizada com endpoints 2FA
+- [ ] **Segurança**: Validação de todas as entradas e rate limiting
+- [ ] **UX**: Interface intuitiva para configuração e uso
+- [ ] **Integração**: Compatibilidade com apps populares (Google Authenticator, Authy)
+
+---
+
+## 7. Performance e Escalabilidade
 - [ ] **Paginação e filtros avançados no histórico de jobs** - **Média Prioridade**
   - Permitir busca por período, status, usuário, etc.
 
@@ -323,7 +387,7 @@
 
 ---
 
-## 7. Qualidade de Código e Testes ✅
+## 8. Qualidade de Código e Testes ✅
 
 ### ✅ Implementado
 - **Cobertura de testes para jobs e tracking** - **Concluído**
@@ -368,7 +432,7 @@
 
 ---
 
-## 8. Experiência do Usuário/Admin
+## 9. Experiência do Usuário/Admin
 - [x] **Endpoint para reprocessar notificações específicas** - **Média Prioridade** ✅ **CONCLUÍDO**
   - Permitir reprocessar notificações de um usuário ou de um job específico.
   - ✅ **Implementado**: POST /api/notifications/reprocess
@@ -398,7 +462,7 @@
 
 ---
 
-## 9. Usuários Administradores e Funções de Admin ✅
+## 10. Usuários Administradores e Funções de Admin ✅
 
 ### ✅ Implementado
 - **Usuário do tipo administrador** - **Concluído**
@@ -413,7 +477,7 @@
 
 ---
 
-## 10. Melhorias nos Testes ✅
+## 11. Melhorias nos Testes ✅
 
 ### ✅ Implementado
 - **Execução sequencial de testes** - **Concluído**
@@ -468,14 +532,14 @@
 - **Suítes**: 41/41 (100%) ✅
 - **Cobertura**: ~75%+ statements, ~65%+ branches, ~75%+ functions, ~75%+ lines
 - **Jobs de Contas Fixas**: 23/23 (100%) ✅
-- **Controllers com Alta Cobertura**: 17/25 (68%) ✅
+- **Controllers com Alta Cobertura**: 19/28 (68%) ✅
 - **Documentação**: 100% atualizada ✅
 
 **O backend está 96% completo e pronto para produção!** 🚀
 
 ---
 
-## 11. 🔴 ENDPOINTS CRÍTICOS PARA FRONTEND (PRIORIDADE MÁXIMA)
+## 12. 🔴 ENDPOINTS CRÍTICOS PARA FRONTEND (PRIORIDADE MÁXIMA)
 
 ### 📊 **Dashboard Principal - Métricas Financeiras**
 **Status**: ✅ **100% implementado** - Todos os endpoints necessários implementados
