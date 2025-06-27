@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const investmentContributionController = require('../controllers/investmentContributionController');
+const { defaultController: investmentContributionController } = require('../controllers/investmentContributionController');
 const authMiddleware = require('../middlewares/auth');
 
 /**

@@ -3,14 +3,22 @@
  * Permite criar, listar, atualizar e excluir aportes,
  * além de calcular totais e estatísticas.
  */
-const InvestmentContributionService = require('../services/investmentContributionService');
 const { logger } = require('../utils/logger');
+const { ValidationError, NotFoundError } = require('../utils/errors');
 
 /**
  * Controlador responsável por gerenciar aportes de investimentos.
  * Delega toda a lógica de negócio para o InvestmentContributionService.
  */
 class InvestmentContributionController {
+  /**
+   * Construtor do controller.
+   * @param {Object} investmentContributionService - Service para gerenciar aportes.
+   */
+  constructor(investmentContributionService) {
+    this.investmentContributionService = investmentContributionService;
+  }
+
   /**
    * Cria um novo aporte para um investimento.
    * @param {Object} req - Objeto de requisição Express.
@@ -32,7 +40,7 @@ class InvestmentContributionController {
    */
   async createContribution(req, res) {
     try {
-      const result = await InvestmentContributionService.createContribution(req.userId, req.body);
+      const result = await this.investmentContributionService.createContribution(req.userId, req.body);
 
       logger.info('Aporte de investimento criado com sucesso', {
         user_id: req.userId,
@@ -52,14 +60,14 @@ class InvestmentContributionController {
         contribution_data: req.body
       });
 
-      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+      if (error instanceof ValidationError) {
         return res.status(400).json({
           success: false,
           error: error.message
         });
       }
 
-      if (error.name === 'NotFoundError') {
+      if (error instanceof NotFoundError) {
         return res.status(404).json({
           success: false,
           error: error.message
@@ -92,7 +100,7 @@ class InvestmentContributionController {
    */
   async getContributions(req, res) {
     try {
-      const result = await InvestmentContributionService.getContributions(req.userId, req.query);
+      const result = await this.investmentContributionService.getContributions(req.userId, req.query);
 
       logger.info('Aportes de investimento listados com sucesso', {
         user_id: req.userId,
@@ -110,7 +118,7 @@ class InvestmentContributionController {
         query: req.query
       });
 
-      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+      if (error instanceof ValidationError) {
         return res.status(400).json({
           success: false,
           error: error.message
@@ -137,7 +145,7 @@ class InvestmentContributionController {
    */
   async getContribution(req, res) {
     try {
-      const result = await InvestmentContributionService.getContribution(req.userId, req.params.id);
+      const result = await this.investmentContributionService.getContribution(req.userId, req.params.id);
 
       logger.info('Aporte de investimento obtido com sucesso', {
         user_id: req.userId,
@@ -155,7 +163,7 @@ class InvestmentContributionController {
         contribution_id: req.params.id
       });
 
-      if (error.name === 'NotFoundError') {
+      if (error instanceof NotFoundError) {
         return res.status(404).json({
           success: false,
           error: error.message
@@ -183,7 +191,7 @@ class InvestmentContributionController {
    */
   async getContributionsByInvestment(req, res) {
     try {
-      const result = await InvestmentContributionService.getContributionsByInvestment(
+      const result = await this.investmentContributionService.getContributionsByInvestment(
         req.userId, 
         req.params.investmentId, 
         req.query
@@ -206,7 +214,7 @@ class InvestmentContributionController {
         investment_id: req.params.investmentId
       });
 
-      if (error.name === 'NotFoundError') {
+      if (error instanceof NotFoundError) {
         return res.status(404).json({
           success: false,
           error: error.message
@@ -235,7 +243,7 @@ class InvestmentContributionController {
    */
   async updateContribution(req, res) {
     try {
-      const result = await InvestmentContributionService.updateContribution(
+      const result = await this.investmentContributionService.updateContribution(
         req.userId, 
         req.params.id, 
         req.body
@@ -259,14 +267,14 @@ class InvestmentContributionController {
         update_data: req.body
       });
 
-      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+      if (error instanceof ValidationError) {
         return res.status(400).json({
           success: false,
           error: error.message
         });
       }
 
-      if (error.name === 'NotFoundError') {
+      if (error instanceof NotFoundError) {
         return res.status(404).json({
           success: false,
           error: error.message
@@ -293,7 +301,7 @@ class InvestmentContributionController {
    */
   async deleteContribution(req, res) {
     try {
-      const result = await InvestmentContributionService.deleteContribution(req.userId, req.params.id);
+      const result = await this.investmentContributionService.deleteContribution(req.userId, req.params.id);
 
       logger.info('Aporte de investimento removido com sucesso', {
         user_id: req.userId,
@@ -311,7 +319,7 @@ class InvestmentContributionController {
         contribution_id: req.params.id
       });
 
-      if (error.name === 'NotFoundError') {
+      if (error instanceof NotFoundError) {
         return res.status(404).json({
           success: false,
           error: error.message
@@ -338,7 +346,7 @@ class InvestmentContributionController {
    */
   async getContributionStatistics(req, res) {
     try {
-      const result = await InvestmentContributionService.getContributionStatistics(req.userId, req.query);
+      const result = await this.investmentContributionService.getContributionStatistics(req.userId, req.query);
 
       logger.info('Estatísticas de aportes obtidas com sucesso', {
         user_id: req.userId
@@ -362,4 +370,11 @@ class InvestmentContributionController {
   }
 }
 
-module.exports = new InvestmentContributionController(); 
+// Instância padrão com o service real
+const InvestmentContributionService = require('../services/investmentContributionService');
+const defaultController = new InvestmentContributionController(InvestmentContributionService);
+
+module.exports = {
+  InvestmentContributionController,
+  defaultController
+}; 
