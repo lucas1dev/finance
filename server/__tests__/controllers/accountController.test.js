@@ -3,57 +3,24 @@
  * @author Lucas Santos
  */
 
-// Mock do service
-jest.mock('../../services/accountService', () => ({
-  createAccount: jest.fn(),
-  getAccounts: jest.fn(),
-  getAccount: jest.fn(),
-  updateAccount: jest.fn(),
-  deleteAccount: jest.fn()
-}));
+const { ValidationError, NotFoundError, AppError } = require('../../utils/errors');
 
-// Mock dos schemas de validação
-jest.mock('../../utils/validators', () => ({
-  createAccountSchema: {
-    parse: jest.fn()
-  },
-  updateAccountSchema: {
-    parse: jest.fn()
-  }
-}));
-
-// Mock dos erros
-jest.mock('../../utils/errors', () => ({
-  AppError: jest.fn()
-}));
-
-let accountService;
-let createAccountSchema, updateAccountSchema;
-let AppError;
-
-describe('Account Controller', () => {
-  let mockReq, mockRes, mockNext, accountController;
+describe('AccountController', () => {
+  let controller;
+  let mockAccountService;
+  let mockReq;
+  let mockRes;
 
   beforeEach(() => {
-    // Limpar cache do require para garantir mocks limpos
-    jest.resetModules();
-    delete require.cache[require.resolve('../../controllers/accountController')];
-    delete require.cache[require.resolve('../../utils/validators')];
-    delete require.cache[require.resolve('../../services/accountService')];
-    delete require.cache[require.resolve('../../utils/errors')];
-    
-    // Reimportar módulos com mocks limpos
-    accountController = require('../../controllers/accountController');
-    accountService = require('../../services/accountService');
-    const validators = require('../../utils/validators');
-    const errors = require('../../utils/errors');
-    
-    createAccountSchema = validators.createAccountSchema;
-    updateAccountSchema = validators.updateAccountSchema;
-    AppError = errors.AppError;
+    mockAccountService = {
+      createAccount: jest.fn(),
+      getAccounts: jest.fn(),
+      getAccount: jest.fn(),
+      updateAccount: jest.fn(),
+      deleteAccount: jest.fn()
+    };
 
-    // Limpar todos os mocks
-    jest.clearAllMocks();
+    controller = new (require('../../controllers/accountController'))(mockAccountService);
 
     mockReq = {
       user: { id: 1 },
@@ -67,7 +34,8 @@ describe('Account Controller', () => {
       json: jest.fn().mockReturnThis()
     };
 
-    mockNext = jest.fn();
+    // Limpar mocks
+    jest.clearAllMocks();
   });
 
   describe('createAccount', () => {
@@ -86,44 +54,66 @@ describe('Account Controller', () => {
       };
 
       mockReq.body = accountData;
-      createAccountSchema.parse.mockReturnValue(accountData);
-      accountService.createAccount.mockResolvedValue(mockAccount);
+      mockAccountService.createAccount.mockResolvedValue(mockAccount);
 
-      await accountController.createAccount(mockReq, mockRes, mockNext);
+      await controller.createAccount(mockReq, mockRes);
 
-      expect(createAccountSchema.parse).toHaveBeenCalledWith(accountData);
-      expect(accountService.createAccount).toHaveBeenCalledWith(1, accountData);
+      expect(mockAccountService.createAccount).toHaveBeenCalledWith(1, accountData);
       expect(mockRes.status).toHaveBeenCalledWith(201);
       expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
         data: { accountId: mockAccount.id }
       });
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('deve retornar erro de validação', async () => {
+    it('deve retornar erro 400 para dados inválidos', async () => {
       const accountData = { bank_name: '' };
       mockReq.body = accountData;
-      createAccountSchema.parse.mockImplementation(() => {
-        throw new Error('Nome do banco é obrigatório');
+      
+      // Mock do erro Zod
+      const zodError = new Error('Nome do banco é obrigatório');
+      zodError.name = 'ZodError';
+      mockAccountService.createAccount.mockRejectedValue(zodError);
+
+      await controller.createAccount(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Nome do banco é obrigatório'
       });
-
-      await accountController.createAccount(mockReq, mockRes, mockNext);
-
-      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
-      expect(mockRes.json).not.toHaveBeenCalled();
     });
 
-    it('deve retornar erro do service', async () => {
+    it('deve retornar erro 404 para conta não encontrada', async () => {
       const accountData = { bank_name: 'Banco Teste' };
       mockReq.body = accountData;
-      createAccountSchema.parse.mockReturnValue(accountData);
-      accountService.createAccount.mockRejectedValue(new Error('Erro interno'));
+      
+      const notFoundError = new AppError('Conta não encontrada', 404);
+      mockAccountService.createAccount.mockRejectedValue(notFoundError);
 
-      await accountController.createAccount(mockReq, mockRes, mockNext);
+      await controller.createAccount(mockReq, mockRes);
 
-      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
-      expect(mockRes.json).not.toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Conta não encontrada'
+      });
+    });
+
+    it('deve retornar erro 500 para erro interno', async () => {
+      const accountData = { bank_name: 'Banco Teste' };
+      mockReq.body = accountData;
+      
+      const internalError = new Error('Erro interno');
+      mockAccountService.createAccount.mockRejectedValue(internalError);
+
+      await controller.createAccount(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     });
   });
 
@@ -134,25 +124,28 @@ describe('Account Controller', () => {
         { id: 2, bank_name: 'Banco B', balance: 2000 }
       ];
 
-      accountService.getAccounts.mockResolvedValue(mockAccounts);
+      mockAccountService.getAccounts.mockResolvedValue({ accounts: mockAccounts, totalBalance: 3000 });
 
-      await accountController.getAccounts(mockReq, mockRes, mockNext);
+      await controller.getAccounts(mockReq, mockRes);
 
-      expect(accountService.getAccounts).toHaveBeenCalledWith(1);
+      expect(mockAccountService.getAccounts).toHaveBeenCalledWith(1);
       expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
-        data: mockAccounts
+        data: { accounts: mockAccounts, totalBalance: 3000 }
       });
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('deve retornar erro do service', async () => {
-      accountService.getAccounts.mockRejectedValue(new Error('Erro interno'));
+    it('deve retornar erro 500 para erro interno', async () => {
+      const internalError = new Error('Erro interno');
+      mockAccountService.getAccounts.mockRejectedValue(internalError);
 
-      await accountController.getAccounts(mockReq, mockRes, mockNext);
+      await controller.getAccounts(mockReq, mockRes);
 
-      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
-      expect(mockRes.json).not.toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     });
   });
 
@@ -166,26 +159,29 @@ describe('Account Controller', () => {
       };
 
       mockReq.params = { id: 1 };
-      accountService.getAccount.mockResolvedValue(mockAccount);
+      mockAccountService.getAccount.mockResolvedValue(mockAccount);
 
-      await accountController.getAccount(mockReq, mockRes, mockNext);
+      await controller.getAccount(mockReq, mockRes);
 
-      expect(accountService.getAccount).toHaveBeenCalledWith(1, 1);
+      expect(mockAccountService.getAccount).toHaveBeenCalledWith(1, 1);
       expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
         data: mockAccount
       });
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('deve retornar erro quando conta não é encontrada', async () => {
+    it('deve retornar erro 404 quando conta não é encontrada', async () => {
       mockReq.params = { id: 999 };
-      accountService.getAccount.mockRejectedValue(new AppError('Conta não encontrada', 404));
+      const notFoundError = new NotFoundError('Conta não encontrada');
+      mockAccountService.getAccount.mockRejectedValue(notFoundError);
 
-      await accountController.getAccount(mockReq, mockRes, mockNext);
+      await controller.getAccount(mockReq, mockRes);
 
-      expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
-      expect(mockRes.json).not.toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Conta não encontrada'
+      });
     });
   });
 
@@ -199,71 +195,211 @@ describe('Account Controller', () => {
 
       mockReq.params = { id: 1 };
       mockReq.body = updateData;
-      updateAccountSchema.parse.mockReturnValue(updateData);
-      accountService.updateAccount.mockResolvedValue();
+      mockAccountService.updateAccount.mockResolvedValue();
 
-      await accountController.updateAccount(mockReq, mockRes, mockNext);
+      await controller.updateAccount(mockReq, mockRes);
 
-      expect(updateAccountSchema.parse).toHaveBeenCalledWith(updateData);
-      expect(accountService.updateAccount).toHaveBeenCalledWith(1, 1, updateData);
+      expect(mockAccountService.updateAccount).toHaveBeenCalledWith(1, 1, updateData);
       expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Conta atualizada com sucesso'
+        data: { message: 'Conta atualizada com sucesso' }
       });
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('deve retornar erro de validação', async () => {
+    it('deve retornar erro 400 para dados inválidos', async () => {
       const updateData = { bank_name: '' };
       mockReq.params = { id: 1 };
       mockReq.body = updateData;
-      updateAccountSchema.parse.mockImplementation(() => {
-        throw new Error('Nome do banco é obrigatório');
+      
+      // Mock do erro Zod
+      const zodError = new Error('Nome do banco é obrigatório');
+      zodError.name = 'ZodError';
+      mockAccountService.updateAccount.mockRejectedValue(zodError);
+
+      await controller.updateAccount(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Nome do banco é obrigatório'
       });
-
-      await accountController.updateAccount(mockReq, mockRes, mockNext);
-
-      expect(mockNext).toHaveBeenCalledWith(expect.any(Error));
-      expect(mockRes.json).not.toHaveBeenCalled();
-    });
-
-    it('deve retornar erro quando conta não é encontrada', async () => {
-      const updateData = { bank_name: 'Novo Banco' };
-      mockReq.params = { id: 999 };
-      mockReq.body = updateData;
-      updateAccountSchema.parse.mockReturnValue(updateData);
-      accountService.updateAccount.mockRejectedValue(new AppError('Conta não encontrada', 404));
-
-      await accountController.updateAccount(mockReq, mockRes, mockNext);
-
-      expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
-      expect(mockRes.json).not.toHaveBeenCalled();
     });
   });
 
   describe('deleteAccount', () => {
-    it('deve deletar uma conta com sucesso', async () => {
+    it('deve excluir uma conta com sucesso', async () => {
       mockReq.params = { id: 1 };
-      accountService.deleteAccount.mockResolvedValue();
+      mockAccountService.deleteAccount.mockResolvedValue();
 
-      await accountController.deleteAccount(mockReq, mockRes, mockNext);
+      await controller.deleteAccount(mockReq, mockRes);
 
-      expect(accountService.deleteAccount).toHaveBeenCalledWith(1, 1);
+      expect(mockAccountService.deleteAccount).toHaveBeenCalledWith(1, 1);
       expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Conta excluída com sucesso'
+        data: { message: 'Conta excluída com sucesso' }
       });
-      expect(mockNext).not.toHaveBeenCalled();
     });
 
-    it('deve retornar erro quando conta não é encontrada', async () => {
+    it('deve retornar erro 404 quando conta não é encontrada', async () => {
       mockReq.params = { id: 999 };
-      accountService.deleteAccount.mockRejectedValue(new AppError('Conta não encontrada', 404));
+      const notFoundError = new NotFoundError('Conta não encontrada');
+      mockAccountService.deleteAccount.mockRejectedValue(notFoundError);
 
-      await accountController.deleteAccount(mockReq, mockRes, mockNext);
+      await controller.deleteAccount(mockReq, mockRes);
 
-      expect(mockNext).toHaveBeenCalledWith(expect.any(AppError));
-      expect(mockRes.json).not.toHaveBeenCalled();
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Conta não encontrada'
+      });
+    });
+  });
+
+  describe('getStats', () => {
+    it('deve retornar estatísticas das contas', async () => {
+      const mockAccounts = [
+        { id: 1, balance: 1000 },
+        { id: 2, balance: 2000 },
+        { id: 3, balance: 3000 }
+      ];
+
+      mockAccountService.getAccounts.mockResolvedValue({ accounts: mockAccounts, totalBalance: 6000 });
+
+      await controller.getStats(mockReq, mockRes);
+
+      expect(mockAccountService.getAccounts).toHaveBeenCalledWith(1);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: {
+          total_balance: 6000,
+          account_count: 3,
+          average_balance: 2000,
+          highest_balance: 3000,
+          lowest_balance: 1000
+        }
+      });
+    });
+  });
+
+  describe('getCharts', () => {
+    it('deve retornar dados de gráficos de distribuição de saldo', async () => {
+      const mockAccounts = [
+        { id: 1, description: 'Conta A', balance: 1000, account_type: 'corrente' },
+        { id: 2, description: 'Conta B', balance: 2000, account_type: 'poupança' }
+      ];
+
+      mockReq.query = { type: 'balance' };
+      mockAccountService.getAccounts.mockResolvedValue({ accounts: mockAccounts, totalBalance: 3000 });
+
+      await controller.getCharts(mockReq, mockRes);
+
+      expect(mockAccountService.getAccounts).toHaveBeenCalledWith(1);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: {
+          balanceDistribution: [
+            {
+              id: 2,
+              name: 'Conta B',
+              balance: 2000,
+              percentage: 66.67,
+              type: 'poupança'
+            },
+            {
+              id: 1,
+              name: 'Conta A',
+              balance: 1000,
+              percentage: 33.33,
+              type: 'corrente'
+            }
+          ],
+          totalBalance: 3000
+        }
+      });
+    });
+
+    it('deve retornar dados de gráficos de distribuição por tipo', async () => {
+      const mockAccounts = [
+        { id: 1, balance: 1000, account_type: 'corrente' },
+        { id: 2, balance: 2000, account_type: 'poupança' }
+      ];
+
+      mockReq.query = { type: 'type' };
+      mockAccountService.getAccounts.mockResolvedValue({ accounts: mockAccounts, totalBalance: 3000 });
+
+      await controller.getCharts(mockReq, mockRes);
+
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: {
+          typeDistribution: [
+            {
+              type: 'poupança',
+              count: 1,
+              totalBalance: 2000,
+              percentage: 66.67
+            },
+            {
+              type: 'corrente',
+              count: 1,
+              totalBalance: 1000,
+              percentage: 33.33
+            }
+          ],
+          totalAccounts: 2,
+          totalBalance: 3000
+        }
+      });
+    });
+  });
+
+  describe('handleError', () => {
+    it('deve tratar ValidationError corretamente', () => {
+      const error = new ValidationError('Erro de validação');
+      
+      controller.handleError(error, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro de validação'
+      });
+    });
+
+    it('deve tratar NotFoundError corretamente', () => {
+      const error = new NotFoundError('Recurso não encontrado');
+      
+      controller.handleError(error, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Recurso não encontrado'
+      });
+    });
+
+    it('deve tratar AppError com statusCode 404 corretamente', () => {
+      const error = new AppError('Recurso não encontrado', 404);
+      
+      controller.handleError(error, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Recurso não encontrado'
+      });
+    });
+
+    it('deve tratar erro genérico como 500', () => {
+      const error = new Error('Erro interno');
+      
+      controller.handleError(error, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     });
   });
 }); 

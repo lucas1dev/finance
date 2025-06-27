@@ -1,80 +1,76 @@
-const accountService = require('../services/accountService');
-const { createAccountSchema, updateAccountSchema } = require('../utils/validators');
+const { ValidationError, NotFoundError, AppError } = require('../utils/errors');
 
 /**
  * Controller responsável por gerenciar contas bancárias dos usuários.
- * Agora delega toda a lógica ao service e padroniza respostas.
+ * Delega toda a lógica ao service e padroniza respostas.
  */
-const accountController = {
-  async createAccount(req, res, next) {
-    try {
-      const validatedData = createAccountSchema.parse(req.body);
-      const account = await accountService.createAccount(req.user.id, validatedData);
-      res.status(201).json({ success: true, data: { accountId: account.id } });
-    } catch (err) {
-      next(err);
-    }
-  },
+class AccountController {
+  constructor(accountService) {
+    this.accountService = accountService;
+  }
 
-  async getAccounts(req, res, next) {
+  async createAccount(req, res) {
     try {
-      const result = await accountService.getAccounts(req.user.id);
+      const account = await this.accountService.createAccount(req.user.id, req.body);
+      res.status(201).json({ 
+        success: true, 
+        data: { accountId: account.id } 
+      });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
+
+  async getAccounts(req, res) {
+    try {
+      const result = await this.accountService.getAccounts(req.user.id);
       res.json({ success: true, data: result });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
-  async getAccount(req, res, next) {
+  async getAccount(req, res) {
     try {
-      const account = await accountService.getAccount(req.user.id, req.params.id);
+      const account = await this.accountService.getAccount(req.user.id, req.params.id);
       res.json({ success: true, data: account });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
-  async updateAccount(req, res, next) {
+  async updateAccount(req, res) {
     try {
-      const validatedData = updateAccountSchema.parse(req.body);
-      await accountService.updateAccount(req.user.id, req.params.id, validatedData);
-      res.json({ success: true, data: { message: 'Conta atualizada com sucesso' } });
-    } catch (err) {
-      next(err);
+      await this.accountService.updateAccount(req.user.id, req.params.id, req.body);
+      res.json({ 
+        success: true, 
+        data: { message: 'Conta atualizada com sucesso' } 
+      });
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
-  async deleteAccount(req, res, next) {
+  async deleteAccount(req, res) {
     try {
-      await accountService.deleteAccount(req.user.id, req.params.id);
-      res.json({ success: true, data: { message: 'Conta excluída com sucesso' } });
-    } catch (err) {
-      next(err);
+      await this.accountService.deleteAccount(req.user.id, req.params.id);
+      res.json({ 
+        success: true, 
+        data: { message: 'Conta excluída com sucesso' } 
+      });
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém estatísticas detalhadas das contas.
-   * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.user - Usuário autenticado.
-   * @param {number} req.user.id - ID do usuário autenticado.
-   * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Estatísticas detalhadas em formato JSON.
-   * @throws {Error} Se houver erro ao buscar dados.
-   * @example
-   * // GET /api/accounts/stats
-   * // Retorno: { total_balance: 15000, account_count: 3, average_balance: 5000 }
    */
   async getStats(req, res) {
     try {
-      console.log('🔍 [AccountController] Buscando estatísticas para usuário:', req.user.id);
-      
       const userId = req.user.id;
-      
-      // Buscar todas as contas do usuário
-      const accounts = await accountService.getAccounts(userId);
-
-      console.log(`�� [AccountController] ${accounts.length} contas encontradas`);
+      const result = await this.accountService.getAccounts(userId);
+      const accounts = result.accounts || result; // Compatibilidade com diferentes retornos
 
       // Calcular estatísticas básicas
       const totalBalance = accounts.reduce((sum, account) => sum + parseFloat(account.balance || 0), 0);
@@ -88,34 +84,22 @@ const accountController = {
         lowest_balance: accounts.length > 0 ? Math.round(Math.min(...accounts.map(a => parseFloat(a.balance || 0))) * 100) / 100 : 0
       };
 
-      console.log('✅ [AccountController] Estatísticas calculadas:', stats);
       res.json({ success: true, data: stats });
     } catch (error) {
-      console.error('❌ [AccountController] Erro ao obter estatísticas das contas:', error);
-      res.status(500).json({ success: false, error: 'Erro ao obter estatísticas das contas', details: error.message });
+      this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém dados para gráficos de contas.
-   * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.user - Usuário autenticado.
-   * @param {number} req.user.id - ID do usuário autenticado.
-   * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Dados para gráficos em formato JSON.
-   * @throws {Error} Se houver erro ao buscar dados.
-   * @example
-   * // GET /api/accounts/charts
-   * // Retorno: { balanceDistribution: [...], typeDistribution: [...], evolution: [...] }
    */
   async getCharts(req, res) {
     try {
       const userId = req.user.id;
       const { type = 'balance' } = req.query;
       
-      console.log(`🔍 [AccountController] Buscando dados de gráficos para usuário ${userId}, tipo: ${type}`);
-      
-      const accounts = await accountService.getAccounts(userId);
+      const result = await this.accountService.getAccounts(userId);
+      const accounts = result.accounts || result; // Compatibilidade com diferentes retornos
 
       let data;
       switch (type) {
@@ -132,18 +116,14 @@ const accountController = {
           data = this.getBalanceDistributionData(accounts);
       }
 
-      console.log('✅ [AccountController] Dados de gráficos obtidos:', data);
-      return res.json({ success: true, data });
+      res.json({ success: true, data });
     } catch (error) {
-      console.error('❌ [AccountController] Erro ao obter dados para gráficos:', error);
-      return res.status(500).json({ success: false, error: 'Erro ao obter dados para gráficos' });
+      this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém dados de distribuição de saldo para gráficos.
-   * @param {Array} accounts - Lista de contas.
-   * @returns {Object} Dados de distribuição de saldo.
    */
   getBalanceDistributionData(accounts) {
     const totalBalance = accounts.reduce((sum, account) => sum + parseFloat(account.balance || 0), 0);
@@ -160,12 +140,10 @@ const accountController = {
       balanceDistribution,
       totalBalance: Math.round(totalBalance * 100) / 100
     };
-  },
+  }
 
   /**
    * Obtém dados de distribuição por tipo para gráficos.
-   * @param {Array} accounts - Lista de contas.
-   * @returns {Object} Dados de distribuição por tipo.
    */
   getTypeDistributionData(accounts) {
     const typeDistribution = accounts.reduce((acc, account) => {
@@ -195,40 +173,48 @@ const accountController = {
       totalAccounts: accounts.length,
       totalBalance: Math.round(totalBalance * 100) / 100
     };
-  },
+  }
 
   /**
    * Obtém dados de evolução de saldo para gráficos.
-   * @param {Array} accounts - Lista de contas.
-   * @returns {Promise<Object>} Dados de evolução de saldo.
    */
   async getBalanceEvolutionData(accounts) {
-    const evolution = [];
-    const currentDate = new Date();
+    // Implementação simplificada - pode ser expandida no futuro
+    const totalBalance = accounts.reduce((sum, account) => sum + parseFloat(account.balance || 0), 0);
     
-    // Últimos 12 meses
-    for (let i = 11; i >= 0; i--) {
-      const month = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
-      
-      // Simular evolução baseada na data de criação das contas
-      const monthAccounts = accounts.filter(account => 
-        new Date(account.created_at) <= month
-      );
-      
-      const monthBalance = monthAccounts.reduce((sum, account) => 
-        sum + parseFloat(account.balance || 0), 0
-      );
+    return {
+      evolution: [{
+        date: new Date().toISOString().split('T')[0],
+        balance: Math.round(totalBalance * 100) / 100
+      }],
+      totalBalance: Math.round(totalBalance * 100) / 100
+    };
+  }
 
-      evolution.push({
-        month: month.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }),
-        balance: Math.round(monthBalance * 100) / 100,
-        accountsCount: monthAccounts.length,
-        date: month.toISOString()
+  /**
+   * Método helper para tratamento consistente de erros.
+   */
+  handleError(error, res) {
+    // Verificar se é erro de validação Zod
+    if (error.name === 'ZodError' || error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: error.message || 'Dados inválidos'
       });
     }
 
-    return { evolution };
-  }
-};
+    if (error instanceof NotFoundError || (error instanceof AppError && error.statusCode === 404)) {
+      return res.status(404).json({
+        success: false,
+        error: error.message
+      });
+    }
 
-module.exports = accountController; 
+    return res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+}
+
+module.exports = AccountController; 

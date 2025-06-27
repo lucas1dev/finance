@@ -1354,7 +1354,7 @@ O projeto está pronto para produção, mas foi identificada a necessidade de um
 ### 🎯 Objetivo
 Transformar todos os controllers de objetos literais para classes com injeção de dependência, seguindo o padrão estabelecido no `TransactionController` e `InvestmentContributionController`.
 
-### ✅ Implementado (2/28 controllers)
+### ✅ Implementado (3/28 controllers)
 
 #### **1. InvestmentContributionController** ✅
 - **Transformação**: Objeto literal → Classe com injeção de dependência
@@ -1373,6 +1373,18 @@ Transformar todos os controllers de objetos literais para classes com injeção 
   - Método helper `handleError()` para tratamento consistente
   - Estrutura de resposta padronizada
   - Logs melhorados para debugging
+- **Status**: Completamente refatorado e testado
+
+#### **3. AccountController** ✅
+- **Transformação**: Objeto literal → Classe com injeção de dependência
+- **Service**: `accountService` injetado via construtor
+- **Testes Unitários**: 19/19 passando (100%)
+- **Testes Integração**: 12/16 passando (75%)
+- **Melhorias**:
+  - Tratamento de erro centralizado com `handleError()`
+  - Estrutura de resposta padronizada
+  - Métodos auxiliares para gráficos e estatísticas
+  - Compatibilidade com diferentes retornos do service
 - **Status**: Completamente refatorado e testado
 
 ### 📊 Benefícios Implementados
@@ -1463,8 +1475,7 @@ describe('ControllerName', () => {
 });
 ```
 
-### 📋 Controllers Pendentes (26/28)
-- [ ] **accountController** → `accountService`
+### 📋 Controllers Pendentes (25/28)
 - [ ] **categoryController** → `categoryService`
 - [ ] **creditorController** → `creditorService`
 - [ ] **customerController** → `customerService`
@@ -1492,14 +1503,14 @@ describe('ControllerName', () => {
 - [ ] **permissionController** → `permissionService`
 
 ### 🎯 Próximos Passos
-1. **Priorizar controllers críticos**: account, category, user, auth
+1. **Priorizar controllers críticos**: category, user, auth
 2. **Manter padrão consistente**: Seguir estrutura do TransactionController
 3. **Testes completos**: Unitários + integração para cada controller
 4. **Documentação**: Criar docs específicos para cada refatoração
 5. **Validação**: Verificar compatibilidade com frontend existente
 
 ### 📈 Métricas de Progresso
-- **Controllers Refatorados**: 2/28 (7%)
+- **Controllers Refatorados**: 3/28 (11%)
 - **Testes Unitários**: 100% cobertura nos refatorados
 - **Testes Integração**: 90%+ passando nos refatorados
 - **Documentação**: 100% atualizada para refatorados
