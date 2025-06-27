@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const { auth, requireTwoFactor } = require('../middlewares/auth');
-const User = require('../models/User');
+const { auth } = require('../middlewares/auth');
 
 // Rotas públicas
 router.post('/register', authController.register);
@@ -14,8 +13,5 @@ router.post('/reset-password', authController.resetPassword);
 router.get('/profile', auth, authController.getProfile);
 router.put('/profile', auth, authController.updateProfile);
 router.put('/password', auth, authController.updatePassword);
-router.post('/2fa/setup', auth, authController.setupTwoFactor);
-router.post('/2fa/verify', auth, authController.verifyTwoFactor);
-router.post('/2fa/disable', auth, authController.disableTwoFactor);
 
 module.exports = router; 

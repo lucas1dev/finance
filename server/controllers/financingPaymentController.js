@@ -17,521 +17,400 @@ const {
 const { ValidationError, NotFoundError } = require('../utils/errors');
 const TransactionService = require('../services/transactionService');
 const { logger } = require('../utils/logger');
+const FinancingPaymentService = require('../services/financingPaymentService');
 
 /**
- * Cria um novo pagamento de financiamento com integração de transação
- * @param {Object} req - Objeto de requisição Express
- * @param {Object} req.body - Dados do pagamento
- * @param {number} req.body.financing_id - ID do financiamento
- * @param {number} req.body.account_id - ID da conta
- * @param {number} req.body.installment_number - Número da parcela
- * @param {number} req.body.payment_amount - Valor do pagamento
- * @param {number} req.body.principal_amount - Valor da amortização
- * @param {number} req.body.interest_amount - Valor dos juros
- * @param {string} req.body.payment_date - Data do pagamento
- * @param {string} req.body.payment_method - Método de pagamento
- * @param {string} req.body.payment_type - Tipo de pagamento
- * @param {Object} res - Objeto de resposta Express
- * @returns {Promise<Object>} Pagamento criado com transação
- * @throws {ValidationError} Se os dados forem inválidos
- * @throws {NotFoundError} Se o financiamento ou conta não for encontrado
- * @example
- * // POST /financing-payments
- * // Body: { "financing_id": 1, "account_id": 1, "installment_number": 1, "payment_amount": 1000, "principal_amount": 800, "interest_amount": 200, "payment_date": "2024-01-15", "payment_method": "pix" }
- * // Retorno: { "message": "Pagamento registrado com sucesso", "payment": {...}, "transaction": {...} }
+ * Controlador responsável por gerenciar pagamentos de financiamentos.
+ * Delega toda a lógica de negócio para o FinancingPaymentService.
  */
-async function createFinancingPayment(req, res) {
-  const dbTransaction = await sequelize.transaction();
-  
-  try {
-    // Valida os dados de entrada
-    const validatedData = createFinancingPaymentSchema.parse(req.body);
+class FinancingPaymentController {
+  /**
+   * Cria um novo pagamento de financiamento com integração de transação.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.body - Dados do pagamento.
+   * @param {number} req.body.financing_id - ID do financiamento.
+   * @param {number} req.body.account_id - ID da conta.
+   * @param {number} req.body.installment_number - Número da parcela.
+   * @param {number} req.body.payment_amount - Valor do pagamento.
+   * @param {number} req.body.principal_amount - Valor da amortização.
+   * @param {number} req.body.interest_amount - Valor dos juros.
+   * @param {string} req.body.payment_date - Data do pagamento.
+   * @param {string} req.body.payment_method - Método de pagamento.
+   * @param {string} req.body.payment_type - Tipo de pagamento.
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Pagamento criado com transação.
+   * @example
+   * // POST /financing-payments
+   * // Body: { "financing_id": 1, "account_id": 1, "installment_number": 1, "payment_amount": 1000, "principal_amount": 800, "interest_amount": 200, "payment_date": "2024-01-15", "payment_method": "pix" }
+   * // Retorno: { "success": true, "data": { payment: {...}, transaction: {...} }, "message": "Pagamento registrado com sucesso" }
+   */
+  async createFinancingPayment(req, res) {
+    try {
+      const result = await FinancingPaymentService.createFinancingPayment(req.userId, req.body);
 
-    // Verifica se o financiamento existe e pertence ao usuário
-    const financing = await Financing.findOne({
-      where: {
-        id: validatedData.financing_id,
-        user_id: req.userId
-      },
-      transaction: dbTransaction
-    });
+      logger.info('Pagamento de financiamento criado com sucesso', {
+        user_id: req.userId,
+        payment_id: result.payment.id,
+        financing_id: req.body.financing_id,
+        installment_number: req.body.installment_number
+      });
 
-    if (!financing) {
-      throw new NotFoundError('Financiamento não encontrado');
-    }
+      return res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Pagamento registrado com sucesso'
+      });
+    } catch (error) {
+      logger.error('Erro ao criar pagamento de financiamento', {
+        error: error.message,
+        user_id: req.userId,
+        payment_data: req.body
+      });
 
-    // Verifica se a conta existe e pertence ao usuário
-    const account = await Account.findOne({
-      where: {
-        id: validatedData.account_id,
-        user_id: req.userId
-      },
-      transaction: dbTransaction
-    });
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
 
-    if (!account) {
-      throw new NotFoundError('Conta não encontrada');
-    }
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
 
-    // Verifica se a parcela já foi paga
-    const existingPayment = await FinancingPayment.findOne({
-      where: {
-        financing_id: validatedData.financing_id,
-        installment_number: validatedData.installment_number
-      },
-      transaction: dbTransaction
-    });
-
-    if (existingPayment) {
-      throw new ValidationError('Esta parcela já foi paga');
-    }
-
-    // Valida se o pagamento não resultará em saldo negativo
-    const calculatedBalanceAfter = parseFloat(financing.current_balance) - validatedData.principal_amount;
-    if (calculatedBalanceAfter < 0) {
-      throw new ValidationError('O pagamento resultaria em saldo devedor negativo');
-    }
-
-    // Verifica se há saldo suficiente na conta bancária
-    if (account.balance < validatedData.payment_amount) {
-      throw new ValidationError('Saldo insuficiente na conta bancária', {
-        current_balance: account.balance,
-        required_amount: validatedData.payment_amount
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
       });
     }
+  }
 
-    // Cria o pagamento do financiamento
-    const payment = await FinancingPayment.create({
-      ...validatedData,
-      user_id: req.userId,
-      balance_before: parseFloat(financing.current_balance),
-      balance_after: parseFloat(financing.current_balance) - validatedData.principal_amount
-    }, { transaction: dbTransaction });
+  /**
+   * Lista pagamentos de financiamentos com filtros e paginação.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.query - Parâmetros de consulta.
+   * @param {number} req.query.financing_id - Filtrar por financiamento (opcional).
+   * @param {string} req.query.payment_method - Filtrar por método de pagamento (opcional).
+   * @param {string} req.query.start_date - Data inicial (opcional).
+   * @param {string} req.query.end_date - Data final (opcional).
+   * @param {number} req.query.page - Página (padrão: 1).
+   * @param {number} req.query.limit - Limite por página (padrão: 10).
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Lista de pagamentos com paginação e estatísticas.
+   * @example
+   * // GET /financing-payments?page=1&limit=10&financing_id=1
+   * // Retorno: { "success": true, "data": { payments: [...], pagination: {...}, statistics: {...} } }
+   */
+  async listFinancingPayments(req, res) {
+    try {
+      const result = await FinancingPaymentService.listFinancingPayments(req.userId, req.query);
 
-    // Cria a transação automaticamente usando o TransactionService
-    const transactionRecord = await TransactionService.createFromFinancingPayment(
-      { ...payment.toJSON(), account_id: validatedData.account_id },
-      { transaction: dbTransaction }
-    );
+      logger.info('Pagamentos de financiamento listados com sucesso', {
+        user_id: req.userId,
+        total_payments: result.pagination.total
+      });
 
-    // Atualiza o saldo da conta
-    await TransactionService.updateAccountBalance(
-      validatedData.account_id,
-      validatedData.payment_amount,
-      'expense',
-      { transaction: dbTransaction }
-    );
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao listar pagamentos de financiamento', {
+        error: error.message,
+        user_id: req.userId,
+        query: req.query
+      });
 
-    // Atualiza estatísticas do financiamento
-    const payments = await FinancingPayment.findAll({
-      where: { financing_id: financing.id },
-      transaction: dbTransaction
-    });
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
 
-    const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.payment_amount), 0);
-    const totalInterestPaid = payments.reduce((sum, p) => sum + parseFloat(p.interest_amount), 0);
-    const paidInstallments = payments.length;
-
-    await financing.update({
-      current_balance: parseFloat(financing.total_amount) - (totalPaid - totalInterestPaid),
-      total_paid: totalPaid,
-      total_interest_paid: totalInterestPaid,
-      paid_installments: paidInstallments,
-      status: paidInstallments >= financing.term_months ? 'quitado' : 'ativo'
-    }, { transaction: dbTransaction });
-
-    // Confirma a transação
-    await dbTransaction.commit();
-
-    // Busca os dados atualizados
-    const updatedPayment = await FinancingPayment.findByPk(payment.id, {
-      include: [
-        {
-          model: Transaction,
-          as: 'transaction'
-        },
-        {
-          model: Account,
-          as: 'account'
-        }
-      ]
-    });
-
-    logger.info(`Pagamento de financiamento criado com sucesso`, {
-      payment_id: payment.id,
-      transaction_id: transactionRecord.id,
-      financing_id: validatedData.financing_id,
-      installment_number: validatedData.installment_number,
-      amount: validatedData.payment_amount
-    });
-
-    res.status(201).json({
-      message: 'Pagamento de financiamento criado com sucesso',
-      payment: updatedPayment,
-      transaction: transactionRecord
-    });
-
-  } catch (error) {
-    await dbTransaction.rollback();
-    
-    logger.error('Erro ao criar pagamento de financiamento', {
-      error: error.message,
-      body: req.body,
-      user_id: req.userId
-    });
-
-    if (error.name === 'ZodError') {
-      return res.status(400).json({ 
-        error: 'Dados inválidos', 
-        details: error.errors 
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
       });
     }
-
-    if (error instanceof ValidationError) {
-      return res.status(400).json({ error: error.message });
-    }
-
-    if (error instanceof NotFoundError) {
-      return res.status(404).json({ error: error.message });
-    }
-
-    return res.status(500).json({ error: 'Erro interno do servidor' });
   }
-}
 
-/**
- * Lista todos os pagamentos do usuário com filtros e paginação
- * @param {Object} req - Objeto de requisição Express
- * @param {Object} req.query - Parâmetros de consulta
- * @param {Object} res - Objeto de resposta Express
- * @returns {Promise<Object>} Lista de pagamentos paginada
- * @example
- * // GET /financing-payments?page=1&limit=10&financing_id=1
- * // Retorno: { "payments": [...], "pagination": {...} }
- */
-async function listFinancingPayments(req, res) {
-  try {
-    const validatedQuery = listFinancingPaymentsSchema.parse(req.query);
-    const where = { user_id: req.userId };
-    if (validatedQuery.financing_id) where.financing_id = validatedQuery.financing_id;
-    if (validatedQuery.account_id) where.account_id = validatedQuery.account_id;
-    if (validatedQuery.payment_method) where.payment_method = validatedQuery.payment_method;
-    if (validatedQuery.payment_type) where.payment_type = validatedQuery.payment_type;
-    if (validatedQuery.status) where.status = validatedQuery.status;
-    if (validatedQuery.payment_date_from) where.payment_date = { [require('sequelize').Op.gte]: validatedQuery.payment_date_from };
-    if (validatedQuery.payment_date_to) {
-      where.payment_date = {
-        ...where.payment_date,
-        [require('sequelize').Op.lte]: validatedQuery.payment_date_to
-      };
-    }
-    const { count, rows: payments } = await FinancingPayment.findAndCountAll({
-      where,
-      include: [
-        { model: Financing, as: 'financing', attributes: ['id', 'description', 'financing_type', 'creditor_id'], include: [{ model: Creditor, as: 'creditor', attributes: ['id', 'name'] }] },
-        { model: Account, as: 'account', attributes: ['id', 'bank_name', 'account_type'] },
-        { model: Transaction, as: 'transaction', attributes: ['id', 'amount', 'description', 'date'] }
-      ],
-      order: [['payment_date', 'DESC']],
-      limit: validatedQuery.limit,
-      offset: (validatedQuery.page - 1) * validatedQuery.limit
-    });
-    const totalPages = Math.ceil(count / validatedQuery.limit);
-    const hasNextPage = validatedQuery.page < totalPages;
-    const hasPrevPage = validatedQuery.page > 1;
-    res.json({
-      payments,
-      pagination: {
-        total: count,
-        page: validatedQuery.page,
-        limit: validatedQuery.limit,
-        totalPages,
-        hasNextPage,
-        hasPrevPage
+  /**
+   * Obtém um pagamento específico por ID.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.params.id - ID do pagamento.
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Pagamento com dados relacionados.
+   * @example
+   * // GET /financing-payments/123
+   * // Retorno: { "success": true, "data": { payment: {...} } }
+   */
+  async getFinancingPayment(req, res) {
+    try {
+      const result = await FinancingPaymentService.getFinancingPayment(req.userId, req.params.id);
+
+      logger.info('Pagamento de financiamento obtido com sucesso', {
+        user_id: req.userId,
+        payment_id: req.params.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao obter pagamento de financiamento', {
+        error: error.message,
+        user_id: req.userId,
+        payment_id: req.params.id
+      });
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
       }
-    });
-  } catch (error) {
-    if (error.name === 'ZodError') {
-      throw new ValidationError('Parâmetros de consulta inválidos', error.errors);
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
-    throw error;
   }
-}
 
-/**
- * Obtém um pagamento específico por ID
- * @param {Object} req - Objeto de requisição Express
- * @param {number} req.params.id - ID do pagamento
- * @param {Object} res - Objeto de resposta Express
- * @returns {Promise<Object>} Dados do pagamento
- * @throws {NotFoundError} Se o pagamento não for encontrado
- * @example
- * // GET /financing-payments/1
- * // Retorno: { "payment": {...} }
- */
-async function getFinancingPayment(req, res) {
-  const { id } = req.params;
-  const payment = await FinancingPayment.findOne({
-    where: { id, user_id: req.userId },
-    include: [
-      { model: Financing, as: 'financing', include: [{ model: Creditor, as: 'creditor', attributes: ['id', 'name', 'document_type', 'document_number'] }] },
-      { model: Account, as: 'account', attributes: ['id', 'bank_name', 'account_type', 'balance'] },
-      { model: Transaction, as: 'transaction' }
-    ]
-  });
-  if (!payment) {
-    throw new NotFoundError('Pagamento não encontrado');
-  }
-  res.json({ payment });
-}
+  /**
+   * Atualiza um pagamento existente.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.params.id - ID do pagamento.
+   * @param {Object} req.body - Dados para atualização.
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Pagamento atualizado.
+   * @example
+   * // PUT /financing-payments/123
+   * // Body: { "payment_method": "boleto", "payment_date": "2024-01-20" }
+   * // Retorno: { "success": true, "data": { payment: {...} }, "message": "Pagamento atualizado com sucesso" }
+   */
+  async updateFinancingPayment(req, res) {
+    try {
+      const result = await FinancingPaymentService.updateFinancingPayment(
+        req.userId, 
+        req.params.id, 
+        req.body
+      );
 
-/**
- * Atualiza um pagamento existente
- * @param {Object} req - Objeto de requisição Express
- * @param {number} req.params.id - ID do pagamento
- * @param {Object} req.body - Dados para atualização
- * @param {Object} res - Objeto de resposta Express
- * @returns {Promise<Object>} Pagamento atualizado
- * @throws {NotFoundError} Se o pagamento não for encontrado
- * @throws {ValidationError} Se os dados forem inválidos
- * @example
- * // PUT /financing-payments/1
- * // Body: { "observations": "Pagamento atualizado" }
- * // Retorno: { "message": "Pagamento atualizado com sucesso", "payment": {...} }
- */
-async function updateFinancingPayment(req, res) {
-  try {
-    const { id } = req.params;
-    const payment = await FinancingPayment.findOne({ where: { id, user_id: req.userId } });
-    if (!payment) {
-      throw new NotFoundError('Pagamento não encontrado');
-    }
-    const validatedData = updateFinancingPaymentSchema.parse(req.body);
-    await payment.update(validatedData);
-    res.json({ message: 'Pagamento atualizado com sucesso', payment });
-  } catch (error) {
-    if (error.name === 'ZodError') {
-      throw new ValidationError('Dados inválidos', error.errors);
-    }
-    throw error;
-  }
-}
+      logger.info('Pagamento de financiamento atualizado com sucesso', {
+        user_id: req.userId,
+        payment_id: req.params.id
+      });
 
-/**
- * Remove um pagamento (apenas se não tiver transação vinculada)
- * @param {Object} req - Objeto de requisição Express
- * @param {number} req.params.id - ID do pagamento
- * @param {Object} res - Objeto de resposta Express
- * @returns {Promise<Object>} Confirmação de remoção
- * @throws {NotFoundError} Se o pagamento não for encontrado
- * @throws {ValidationError} Se o pagamento tiver transação vinculada
- * @example
- * // DELETE /financing-payments/1
- * // Retorno: { "message": "Pagamento excluído com sucesso" }
- */
-async function deleteFinancingPayment(req, res) {
-  const { id } = req.params;
-  const payment = await FinancingPayment.findOne({ where: { id, user_id: req.userId } });
-  if (!payment) {
-    throw new NotFoundError('Pagamento não encontrado');
-  }
-  if (payment.transaction_id) {
-    throw new ValidationError('Não é possível remover um pagamento com transação vinculada');
-  }
-  await payment.destroy();
-  res.json({ message: 'Pagamento excluído com sucesso' });
-}
+      return res.json({
+        success: true,
+        data: result,
+        message: 'Pagamento atualizado com sucesso'
+      });
+    } catch (error) {
+      logger.error('Erro ao atualizar pagamento de financiamento', {
+        error: error.message,
+        user_id: req.userId,
+        payment_id: req.params.id,
+        update_data: req.body
+      });
 
-/**
- * Registra pagamento de uma parcela específica
- * @param {Object} req - Objeto de requisição Express
- * @param {number} req.params.financingId - ID do financiamento
- * @param {number} req.params.installmentNumber - Número da parcela
- * @param {Object} req.body - Dados do pagamento
- * @param {Object} res - Objeto de resposta Express
- * @returns {Promise<Object>} Pagamento registrado
- * @throws {NotFoundError} Se o financiamento não for encontrado
- * @throws {ValidationError} Se os dados forem inválidos
- * @example
- * // POST /financings/1/installments/1/pay
- * // Body: { "account_id": 1, "payment_amount": 1000, "payment_date": "2024-01-15", "payment_method": "pix" }
- * // Retorno: { "message": "Parcela paga com sucesso", "payment": {...} }
- */
-async function payInstallment(req, res) {
-  try {
-    const { financingId, installmentNumber } = req.params;
-    const validatedData = payInstallmentSchema.parse(req.body);
-
-    // Busca o financiamento
-    const financing = await Financing.findOne({
-      where: {
-        id: financingId,
-        user_id: req.userId
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
       }
-    });
 
-    if (!financing) {
-      throw new NotFoundError('Financiamento não encontrado');
-    }
-
-    // Verifica se a parcela já foi paga
-    const existingPayment = await FinancingPayment.findOne({
-      where: {
-        financing_id: financingId,
-        installment_number: parseInt(installmentNumber)
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
       }
-    });
 
-    if (existingPayment) {
-      throw new ValidationError('Esta parcela já foi paga');
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
+  }
 
-    // Gera a tabela de amortização para obter os valores da parcela
-    const amortizationTable = generateAmortizationTable(
-      parseFloat(financing.total_amount),
-      parseFloat(financing.interest_rate),
-      financing.term_months,
-      financing.amortization_method,
-      new Date(financing.start_date)
-    );
+  /**
+   * Remove um pagamento.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.params.id - ID do pagamento.
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resultado da operação.
+   * @example
+   * // DELETE /financing-payments/123
+   * // Retorno: { "success": true, "data": { message: "Pagamento removido com sucesso" } }
+   */
+  async deleteFinancingPayment(req, res) {
+    try {
+      const result = await FinancingPaymentService.deleteFinancingPayment(req.userId, req.params.id);
 
-    const installment = amortizationTable.table.find(row => row.installment === parseInt(installmentNumber));
-    if (!installment) {
-      throw new ValidationError('Parcela não encontrada na tabela de amortização');
+      logger.info('Pagamento de financiamento removido com sucesso', {
+        user_id: req.userId,
+        payment_id: req.params.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao remover pagamento de financiamento', {
+        error: error.message,
+        user_id: req.userId,
+        payment_id: req.params.id
+      });
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
+  }
 
-    // Verifica se o valor pago é suficiente
-    if (validatedData.payment_amount < installment.payment) {
-      throw new ValidationError(`Valor insuficiente. Valor da parcela: R$ ${installment.payment.toFixed(2)}`);
+  /**
+   * Registra pagamento de uma parcela específica.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.params.financingId - ID do financiamento.
+   * @param {Object} req.body - Dados do pagamento.
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Pagamento registrado.
+   * @example
+   * // POST /financings/1/pay-installment
+   * // Body: { "account_id": 1, "installment_number": 1, "payment_date": "2024-01-15", "payment_method": "pix" }
+   * // Retorno: { "success": true, "data": { payment: {...}, transaction: {...} }, "message": "Parcela paga com sucesso" }
+   */
+  async payInstallment(req, res) {
+    try {
+      const result = await FinancingPaymentService.payInstallment(
+        req.userId, 
+        req.params.financingId, 
+        req.body
+      );
+
+      logger.info('Parcela de financiamento paga com sucesso', {
+        user_id: req.userId,
+        financing_id: req.params.financingId,
+        installment_number: req.body.installment_number
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Parcela paga com sucesso'
+      });
+    } catch (error) {
+      logger.error('Erro ao pagar parcela de financiamento', {
+        error: error.message,
+        user_id: req.userId,
+        financing_id: req.params.financingId,
+        payment_data: req.body
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
+  }
 
-    // Cria o pagamento usando a função existente
-    const paymentData = {
-      financing_id: parseInt(financingId),
-      account_id: validatedData.account_id,
-      installment_number: parseInt(installmentNumber),
-      payment_amount: validatedData.payment_amount,
-      principal_amount: installment.amortization,
-      interest_amount: installment.interest,
-      payment_date: validatedData.payment_date,
-      payment_method: validatedData.payment_method,
-      payment_type: validatedData.payment_amount > installment.payment ? 'parcial' : 'parcela',
-      balance_before: installment.remainingBalance + installment.amortization,
-      balance_after: installment.remainingBalance,
-      observations: validatedData.observations
-    };
+  /**
+   * Registra pagamento antecipado de financiamento.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {string} req.params.financingId - ID do financiamento.
+   * @param {Object} req.body - Dados do pagamento antecipado.
+   * @param {number} req.userId - ID do usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Pagamento registrado.
+   * @example
+   * // POST /financings/1/early-payment
+   * // Body: { "account_id": 1, "payment_amount": 5000, "principal_amount": 4800, "discount_amount": 200, "payment_date": "2024-01-15" }
+   * // Retorno: { "success": true, "data": { payment: {...}, transaction: {...} }, "message": "Pagamento antecipado registrado com sucesso" }
+   */
+  async registerEarlyPayment(req, res) {
+    try {
+      const result = await FinancingPaymentService.registerEarlyPayment(
+        req.userId, 
+        req.params.financingId, 
+        req.body
+      );
 
-    // Chama a função de criação de pagamento
-    await createFinancingPayment({ body: paymentData, userId: req.userId }, res);
-  } catch (error) {
-    if (error.name === 'ZodError') {
-      throw new ValidationError('Dados inválidos', error.errors);
+      logger.info('Pagamento antecipado de financiamento registrado com sucesso', {
+        user_id: req.userId,
+        financing_id: req.params.financingId,
+        amount: req.body.payment_amount
+      });
+
+      return res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Pagamento antecipado registrado com sucesso'
+      });
+    } catch (error) {
+      logger.error('Erro ao registrar pagamento antecipado', {
+        error: error.message,
+        user_id: req.userId,
+        financing_id: req.params.financingId,
+        payment_data: req.body
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
-    throw error;
   }
 }
 
-/**
- * Registra pagamento antecipado
- * @param {Object} req - Objeto de requisição Express
- * @param {number} req.params.financingId - ID do financiamento
- * @param {Object} req.body - Dados do pagamento antecipado
- * @param {Object} res - Objeto de resposta Express
- * @returns {Promise<Object>} Pagamento antecipado registrado
- * @throws {NotFoundError} Se o financiamento não for encontrado
- * @throws {ValidationError} Se os dados forem inválidos
- * @example
- * // POST /financings/1/early-payment
- * // Body: { "account_id": 1, "payment_amount": 10000, "payment_date": "2024-01-15", "payment_method": "pix", "preference": "reducao_prazo" }
- * // Retorno: { "message": "Pagamento antecipado registrado", "payment": {...}, "simulation": {...} }
- */
-async function registerEarlyPayment(req, res) {
-  try {
-    const { financingId } = req.params;
-    const validatedData = earlyPaymentSchema.parse(req.body);
-
-    // Busca o financiamento
-    const financing = await Financing.findOne({
-      where: {
-        id: financingId,
-        user_id: req.userId
-      },
-      include: [
-        {
-          model: FinancingPayment,
-          as: 'payments',
-          required: false
-        }
-      ]
-    });
-
-    if (!financing) {
-      throw new NotFoundError('Financiamento não encontrado');
-    }
-
-    // Calcula o saldo atual
-    const payments = financing.payments || [];
-    const currentBalance = calculateUpdatedBalance(
-      parseFloat(financing.total_amount),
-      parseFloat(financing.interest_rate),
-      financing.term_months,
-      financing.amortization_method,
-      new Date(financing.start_date),
-      payments
-    );
-
-    // Verifica se o valor do pagamento é válido
-    if (validatedData.payment_amount >= currentBalance.currentBalance) {
-      throw new ValidationError('Valor do pagamento antecipado deve ser menor que o saldo devedor');
-    }
-
-    // Calcula a próxima parcela para usar como referência
-    const nextInstallment = payments.length + 1;
-    const amortizationTable = generateAmortizationTable(
-      parseFloat(financing.total_amount),
-      parseFloat(financing.interest_rate),
-      financing.term_months,
-      financing.amortization_method,
-      new Date(financing.start_date)
-    );
-
-    const installment = amortizationTable.table.find(row => row.installment === nextInstallment);
-    if (!installment) {
-      throw new ValidationError('Não há mais parcelas para pagar');
-    }
-
-    // Cria o pagamento antecipado
-    const paymentData = {
-      financing_id: parseInt(financingId),
-      account_id: validatedData.account_id,
-      installment_number: nextInstallment,
-      payment_amount: validatedData.payment_amount,
-      principal_amount: validatedData.payment_amount, // Todo o valor vai para amortização
-      interest_amount: 0, // Pagamento antecipado não tem juros
-      payment_date: validatedData.payment_date,
-      payment_method: validatedData.payment_method,
-      payment_type: 'antecipado',
-      balance_before: currentBalance.currentBalance,
-      balance_after: currentBalance.currentBalance - validatedData.payment_amount,
-      observations: `Pagamento antecipado - ${validatedData.observations || ''}`
-    };
-
-    // Chama a função de criação de pagamento
-    await createFinancingPayment({ body: paymentData, userId: req.userId }, res);
-  } catch (error) {
-    if (error.name === 'ZodError') {
-      throw new ValidationError('Dados inválidos', error.errors);
-    }
-    throw error;
-  }
-}
-
-module.exports = {
-  createFinancingPayment,
-  listFinancingPayments,
-  getFinancingPayment,
-  updateFinancingPayment,
-  deleteFinancingPayment,
-  payInstallment,
-  registerEarlyPayment
-}; 
+module.exports = new FinancingPaymentController(); 

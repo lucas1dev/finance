@@ -1,18 +1,14 @@
-const { InvestmentContribution, Investment, Account, Transaction } = require('../models');
-const { 
-  createContributionSchema, 
-  updateContributionSchema, 
-  contributionIdSchema,
-  investmentIdSchema,
-  contributionFiltersSchema 
-} = require('../utils/investmentContributionValidators');
-const { ValidationError, NotFoundError } = require('../utils/errors');
-const { sendErrorResponse } = require('../utils/response');
-
 /**
  * Controller para gerenciar aportes de investimentos.
  * Permite criar, listar, atualizar e excluir aportes,
  * além de calcular totais e estatísticas.
+ */
+const InvestmentContributionService = require('../services/investmentContributionService');
+const { logger } = require('../utils/logger');
+
+/**
+ * Controlador responsável por gerenciar aportes de investimentos.
+ * Delega toda a lógica de negócio para o InvestmentContributionService.
  */
 class InvestmentContributionController {
   /**
@@ -29,96 +25,51 @@ class InvestmentContributionController {
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com o aporte criado.
-   * @throws {ValidationError} Se os dados forem inválidos.
-   * @throws {NotFoundError} Se o investimento não for encontrado.
    * @example
    * // POST /investment-contributions
    * // Body: { "investment_id": 1, "contribution_date": "2024-01-15", "amount": 1000, "quantity": 100, "unit_price": 10 }
-   * // Retorno: { "message": "Aporte criado com sucesso", "contribution": {...} }
+   * // Retorno: { "success": true, "data": { contribution: {...}, transactions: [...] }, "message": "Aporte criado com sucesso" }
    */
   async createContribution(req, res) {
     try {
-      // Validar dados de entrada
-      const validatedData = createContributionSchema.parse(req.body);
+      const result = await InvestmentContributionService.createContribution(req.userId, req.body);
 
-      // Verificar se o investimento existe e pertence ao usuário
-      const investment = await Investment.findOne({
-        where: { id: validatedData.investment_id, user_id: req.userId }
-      });
-      if (!investment) {
-        throw new NotFoundError('Investimento não encontrado');
-      }
-
-      // Verificar se a conta de origem existe e pertence ao usuário
-      const sourceAccount = await Account.findOne({
-        where: { id: validatedData.source_account_id, user_id: req.userId }
-      });
-      if (!sourceAccount) {
-        throw new NotFoundError('Conta de origem não encontrada');
-      }
-
-      // Verificar se a conta de destino existe e pertence ao usuário
-      const destinationAccount = await Account.findOne({
-        where: { id: validatedData.destination_account_id, user_id: req.userId }
-      });
-      if (!destinationAccount) {
-        throw new NotFoundError('Conta de destino não encontrada');
-      }
-
-      // Verificar se há saldo suficiente na conta de origem
-      if (parseFloat(sourceAccount.balance) < validatedData.amount) {
-        throw new ValidationError('Saldo insuficiente na conta de origem para realizar o aporte');
-      }
-
-      // Inicia transação do banco de dados
-      const { sequelize } = require('../config/database');
-      const result = await sequelize.transaction(async (t) => {
-        // Criar o aporte
-        const contribution = await InvestmentContribution.create({
-          ...validatedData,
-          user_id: req.userId
-        }, { transaction: t });
-
-        // Atualizar o saldo da conta de origem (débito)
-        await sourceAccount.update({
-          balance: parseFloat(sourceAccount.balance) - validatedData.amount
-        }, { transaction: t });
-
-        // Atualizar o saldo da conta de destino (crédito)
-        await destinationAccount.update({
-          balance: parseFloat(destinationAccount.balance) + validatedData.amount
-        }, { transaction: t });
-
-        // Criar duas transações usando o TransactionService
-        const TransactionService = require('../services/transactionService');
-        const contributionWithInvestment = {
-          ...contribution.toJSON(),
-          investment: investment
-        };
-        const transactions = await TransactionService.createFromInvestmentContribution(
-          contributionWithInvestment, 
-          { transaction: t }
-        );
-
-        return { contribution, transactions };
-      });
-
-      // Buscar o aporte criado com dados do investimento
-      const createdContribution = await InvestmentContribution.findByPk(result.contribution.id, {
-        include: [
-          { model: Investment, as: 'investment' },
-          { model: Account, as: 'sourceAccount' },
-          { model: Account, as: 'destinationAccount' }
-        ]
+      logger.info('Aporte de investimento criado com sucesso', {
+        user_id: req.userId,
+        contribution_id: result.contribution.id,
+        investment_id: req.body.investment_id
       });
 
       return res.status(201).json({
-        message: 'Aporte criado com sucesso',
-        contribution: createdContribution,
-        transactions: result.transactions
+        success: true,
+        data: result,
+        message: 'Aporte criado com sucesso'
       });
     } catch (error) {
-      return sendErrorResponse(res, error);
+      logger.error('Erro ao criar aporte de investimento', {
+        error: error.message,
+        user_id: req.userId,
+        contribution_data: req.body
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
   }
 
@@ -137,247 +88,276 @@ class InvestmentContributionController {
    * @returns {Promise<Object>} Lista de aportes com paginação e estatísticas.
    * @example
    * // GET /investment-contributions?page=1&limit=10&investment_id=1
-   * // Retorno: { "contributions": [...], "pagination": {...}, "statistics": {...} }
+   * // Retorno: { "success": true, "data": { contributions: [...], pagination: {...}, statistics: {...} } }
    */
   async getContributions(req, res) {
     try {
-      const validatedFilters = contributionFiltersSchema.parse(req.query);
-      const where = { user_id: req.userId };
-      if (validatedFilters.investment_id) {
-        where.investment_id = validatedFilters.investment_id;
-      }
-      if (validatedFilters.broker) {
-        where.broker = validatedFilters.broker;
-      }
-      if (validatedFilters.start_date || validatedFilters.end_date) {
-        where.contribution_date = {};
-        if (validatedFilters.start_date) {
-          where.contribution_date.$gte = validatedFilters.start_date;
-        }
-        if (validatedFilters.end_date) {
-          where.contribution_date.$lte = validatedFilters.end_date;
-        }
-      }
-      const page = validatedFilters.page || 1;
-      const limit = validatedFilters.limit || 10;
-      const offset = (page - 1) * limit;
-      const result = await InvestmentContribution.findAndCountAll({
-        where,
-        include: [
-          { 
-            model: Investment, 
-            as: 'investment',
-            attributes: ['id', 'asset_name', 'ticker', 'investment_type']
-          }
-        ],
-        order: [['contribution_date', 'DESC']],
-        limit,
-        offset
+      const result = await InvestmentContributionService.getContributions(req.userId, req.query);
+
+      logger.info('Aportes de investimento listados com sucesso', {
+        user_id: req.userId,
+        total_contributions: result.pagination.total
       });
-      const totalAmount = await InvestmentContribution.sum('amount', { where });
-      const totalQuantity = await InvestmentContribution.sum('quantity', { where });
-      const averageUnitPrice = totalAmount / totalQuantity || 0;
-      const totalPages = Math.ceil(result.count / limit);
-      return res.status(200).json({
-        message: 'Aportes listados com sucesso',
-        contributions: result.rows,
-        pagination: {
-          total: result.count,
-          page,
-          limit,
-          totalPages
-        },
-        statistics: {
-          totalAmount: totalAmount || 0,
-          totalQuantity: totalQuantity || 0,
-          averageUnitPrice: parseFloat(averageUnitPrice.toFixed(4)),
-          totalContributions: result.count
-        }
+
+      return res.json({
+        success: true,
+        data: result
       });
     } catch (error) {
-      return sendErrorResponse(res, error);
+      logger.error('Erro ao listar aportes de investimento', {
+        error: error.message,
+        user_id: req.userId,
+        query: req.query
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
   }
 
   /**
-   * Busca um aporte específico por ID.
+   * Obtém um aporte específico por ID.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
-   * @param {number} req.params.id - ID do aporte.
+   * @param {string} req.params.id - ID do aporte.
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Dados do aporte.
-   * @throws {NotFoundError} Se o aporte não for encontrado.
+   * @returns {Promise<Object>} Aporte com dados relacionados.
    * @example
-   * // GET /investment-contributions/1
-   * // Retorno: { "id": 1, "amount": 1000, "quantity": 100, ... }
+   * // GET /investment-contributions/123
+   * // Retorno: { "success": true, "data": { contribution: {...} } }
    */
   async getContribution(req, res) {
     try {
-      const { id } = req.params;
-      const contribution = await InvestmentContribution.findOne({
-        where: { id, user_id: req.userId },
-        include: [
-          { model: Investment, as: 'investment' }
-        ]
+      const result = await InvestmentContributionService.getContribution(req.userId, req.params.id);
+
+      logger.info('Aporte de investimento obtido com sucesso', {
+        user_id: req.userId,
+        contribution_id: req.params.id
       });
-      if (!contribution) {
-        throw new NotFoundError('Aporte não encontrado');
-      }
-      return res.status(200).json({
-        message: 'Aporte encontrado com sucesso',
-        contribution
+
+      return res.json({
+        success: true,
+        data: result
       });
     } catch (error) {
-      return sendErrorResponse(res, error);
+      logger.error('Erro ao obter aporte de investimento', {
+        error: error.message,
+        user_id: req.userId,
+        contribution_id: req.params.id
+      });
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
   }
 
   /**
-   * Lista todos os aportes de um investimento específico.
+   * Lista aportes de um investimento específico.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
-   * @param {number} req.params.investment_id - ID do investimento.
+   * @param {string} req.params.investmentId - ID do investimento.
+   * @param {Object} req.query - Parâmetros de consulta.
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Lista de aportes do investimento.
-   * @throws {NotFoundError} Se o investimento não for encontrado.
    * @example
-   * // GET /investment-contributions/investment/1
-   * // Retorno: { "contributions": [...], "summary": {...} }
+   * // GET /investments/1/contributions?page=1&limit=10
+   * // Retorno: { "success": true, "data": { investment: {...}, contributions: [...], pagination: {...}, statistics: {...} } }
    */
   async getContributionsByInvestment(req, res) {
     try {
-      const { investmentId } = req.params;
-      console.log('INÍCIO getContributionsByInvestment investmentId:', investmentId);
-      let investment;
-      try {
-        investment = await Investment.findOne({
-          where: { id: investmentId, user_id: req.userId }
-        });
-        console.log('Investment encontrado:', investment ? investment.id : 'não encontrado');
-      } catch (err) {
-        console.error('Erro ao buscar investimento:', err);
-        throw err;
-      }
-      if (!investment) {
-        throw new NotFoundError('Investimento não encontrado');
-      }
-      const contributions = await InvestmentContribution.findAll({
-        where: { investment_id: investmentId, user_id: req.userId },
-        order: [['contribution_date', 'ASC']]
+      const result = await InvestmentContributionService.getContributionsByInvestment(
+        req.userId, 
+        req.params.investmentId, 
+        req.query
+      );
+
+      logger.info('Aportes do investimento listados com sucesso', {
+        user_id: req.userId,
+        investment_id: req.params.investmentId,
+        total_contributions: result.pagination.total
       });
-      const totalAmount = await InvestmentContribution.sum('amount', { where: { investment_id: investmentId, user_id: req.userId } });
-      const totalQuantity = await InvestmentContribution.sum('quantity', { where: { investment_id: investmentId, user_id: req.userId } });
-      const averageUnitPrice = totalAmount / totalQuantity || 0;
-      return res.status(200).json({
-        message: 'Aportes do investimento listados com sucesso',
-        contributions,
-        summary: {
-          totalAmount: totalAmount || 0,
-          totalQuantity: totalQuantity || 0,
-          averageUnitPrice: parseFloat(averageUnitPrice.toFixed(4))
-        }
+
+      return res.json({
+        success: true,
+        data: result
       });
     } catch (error) {
-      return sendErrorResponse(res, error);
+      logger.error('Erro ao listar aportes do investimento', {
+        error: error.message,
+        user_id: req.userId,
+        investment_id: req.params.investmentId
+      });
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
   }
 
   /**
    * Atualiza um aporte existente.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
-   * @param {number} req.params.id - ID do aporte.
+   * @param {string} req.params.id - ID do aporte.
    * @param {Object} req.body - Dados para atualização.
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Aporte atualizado.
-   * @throws {NotFoundError} Se o aporte não for encontrado.
    * @example
-   * // PUT /investment-contributions/1
-   * // Body: { "amount": 1200, "observations": "Aporte atualizado" }
-   * // Retorno: { "message": "Aporte atualizado com sucesso", "contribution": {...} }
+   * // PUT /investment-contributions/123
+   * // Body: { "amount": 1500, "quantity": 150 }
+   * // Retorno: { "success": true, "data": { contribution: {...} }, "message": "Aporte atualizado com sucesso" }
    */
   async updateContribution(req, res) {
     try {
-      const { id } = req.params;
-      const validatedData = updateContributionSchema.parse(req.body);
-      const contribution = await InvestmentContribution.findOne({
-        where: { id, user_id: req.userId }
+      const result = await InvestmentContributionService.updateContribution(
+        req.userId, 
+        req.params.id, 
+        req.body
+      );
+
+      logger.info('Aporte de investimento atualizado com sucesso', {
+        user_id: req.userId,
+        contribution_id: req.params.id
       });
-      if (!contribution) {
-        throw new NotFoundError('Aporte não encontrado');
-      }
-      await contribution.update(validatedData);
-      return res.status(200).json({
-        message: 'Aporte atualizado com sucesso',
-        contribution
+
+      return res.json({
+        success: true,
+        data: result,
+        message: 'Aporte atualizado com sucesso'
       });
     } catch (error) {
-      return sendErrorResponse(res, error);
+      logger.error('Erro ao atualizar aporte de investimento', {
+        error: error.message,
+        user_id: req.userId,
+        contribution_id: req.params.id,
+        update_data: req.body
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
   }
 
   /**
-   * Exclui um aporte.
+   * Remove um aporte.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
-   * @param {number} req.params.id - ID do aporte.
+   * @param {string} req.params.id - ID do aporte.
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Confirmação de exclusão.
-   * @throws {NotFoundError} Se o aporte não for encontrado.
+   * @returns {Promise<Object>} Resultado da operação.
    * @example
-   * // DELETE /investment-contributions/1
-   * // Retorno: { "message": "Aporte excluído com sucesso" }
+   * // DELETE /investment-contributions/123
+   * // Retorno: { "success": true, "data": { message: "Aporte removido com sucesso" } }
    */
   async deleteContribution(req, res) {
     try {
-      const { id } = req.params;
-      const contribution = await InvestmentContribution.findOne({
-        where: { id, user_id: req.userId }
+      const result = await InvestmentContributionService.deleteContribution(req.userId, req.params.id);
+
+      logger.info('Aporte de investimento removido com sucesso', {
+        user_id: req.userId,
+        contribution_id: req.params.id
       });
-      if (!contribution) {
-        throw new NotFoundError('Aporte não encontrado');
-      }
-      await contribution.destroy();
-      return res.status(200).json({
-        message: 'Aporte excluído com sucesso'
+
+      return res.json({
+        success: true,
+        data: result
       });
     } catch (error) {
-      return sendErrorResponse(res, error);
+      logger.error('Erro ao remover aporte de investimento', {
+        error: error.message,
+        user_id: req.userId,
+        contribution_id: req.params.id
+      });
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
   }
 
   /**
-   * Calcula estatísticas dos aportes do usuário.
+   * Obtém estatísticas de aportes do usuário.
    * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.query - Filtros de consulta.
    * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Estatísticas dos aportes.
+   * @returns {Promise<Object>} Estatísticas de aportes.
    * @example
-   * // GET /investment-contributions/statistics
-   * // Retorno: { "general": {...}, "byInvestment": [...], "byBroker": [...] }
+   * // GET /investment-contributions/statistics?investment_id=1
+   * // Retorno: { "success": true, "data": { totalContributions: 50, totalAmount: 50000, ... } }
    */
   async getContributionStatistics(req, res) {
     try {
-      const where = { user_id: req.userId };
-      const totalAmount = await InvestmentContribution.sum('amount', { where });
-      const totalQuantity = await InvestmentContribution.sum('quantity', { where });
-      const totalContributions = await InvestmentContribution.count({ where });
-      const averageAmount = totalAmount / totalContributions || 0;
-      return res.status(200).json({
-        message: 'Estatísticas dos aportes',
-        general: {
-          totalAmount: totalAmount || 0,
-          totalQuantity: totalQuantity || 0,
-          totalContributions: totalContributions || 0,
-          averageAmount: parseFloat(averageAmount.toFixed(2))
-        }
+      const result = await InvestmentContributionService.getContributionStatistics(req.userId, req.query);
+
+      logger.info('Estatísticas de aportes obtidas com sucesso', {
+        user_id: req.userId
+      });
+
+      return res.json({
+        success: true,
+        data: result
       });
     } catch (error) {
-      return sendErrorResponse(res, error);
+      logger.error('Erro ao obter estatísticas de aportes', {
+        error: error.message,
+        user_id: req.userId
+      });
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     }
   }
 }
