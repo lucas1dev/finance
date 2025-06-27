@@ -29,7 +29,7 @@
   - **Testes Atualizados**: Formato de resposta padronizado ✅
   - **Separação de Responsabilidades**: Lógica de negócio nos services ✅
 
-- **Refatoração de Controllers para Classes com Injeção de Dependência**: 2/28 implementado ✅
+- **Refatoração de Controllers para Classes com Injeção de Dependência**: 3/28 implementado ✅
   - **investmentContributionController** → Classe com injeção de dependência ✅
     - Transformado de objeto literal para classe
     - Service injetado via construtor
@@ -45,6 +45,48 @@
     - Estrutura de resposta padronizada
     - Método helper para tratamento de erro
     - Documentação completa das melhorias
+  - **categoryController** → Classe com injeção de dependência ✅
+    - Transformado de objeto literal para classe
+    - Service injetado via construtor
+    - 23 testes unitários (100% passando)
+    - 16/16 testes de integração passando (100%)
+    - Tratamento de erro melhorado (AppError com statusCode específico)
+    - Estrutura de resposta padronizada
+    - Método helper para tratamento de erro
+    - Nova funcionalidade: GET /api/categories/:id implementada
+    - Isolamento de categorias entre usuários garantido
+    - Suporte a categorias padrão do sistema
+- **creditorController** → `creditorService` ✅
+  - **transactionController** → Classe com injeção de dependência ✅
+    - Transformado de objeto literal para classe
+    - Service injetado via construtor
+    - 20 testes unitários (100% passando)
+    - 18/20 testes de integração passando (90%)
+    - Tratamento de erro melhorado (AppError 404 → 404)
+    - Estrutura de resposta padronizada
+    - Método helper para tratamento de erro
+    - Documentação completa das melhorias
+- **customerController** → `customerService` ✅
+  - **investmentController** → `investmentService` ✅
+  - **investmentGoalController** → `investmentGoalService` ✅
+  - **payableController** → `payableService` ✅
+  - **supplierController** → `supplierService` ✅
+  - **receivableController** → `receivableService` ✅
+  - **paymentController** → `paymentService` ✅
+  - **financingController** → `financingService` ✅
+  - **dashboardController** → `dashboardService` ✅
+  - **userController** → `userService` ✅
+  - **authController** → `authService` ✅
+  - **settingsController** → `settingsService` ✅
+  - **notificationController** → `notificationService` ✅
+  - **investmentContributionController** → `investmentContributionService` ✅
+  - **financingPaymentController** → `financingPaymentService` ✅
+  - **Padrão de Resposta Padronizado**: `{ success: true, data: ... }` ✅
+  - **Tratamento de Erros com AppError**: Status HTTP apropriados ✅
+  - **Validação Centralizada**: Zod nos services ✅
+  - **Testes Atualizados**: Formato de resposta padronizado ✅
+  - **Separação de Responsabilidades**: Lógica de negócio nos services ✅
+
 - **Refatoração de Funcionalidades de Contas Fixas**: 100% implementado e testado ✅
   - **Nova Estrutura de Dados**: Tabela `fixed_account_transactions` criada
   - **Modelo FixedAccountTransaction**: Lançamentos individuais com controle de vencimento
@@ -117,7 +159,7 @@
 - **Documentação**: 100% atualizada
 - **Alertas automáticos**: ✅ Implementados
 - **Cobertura de Testes**: ~75%+ statements, ~65%+ branches, ~75%+ functions, ~75%+ lines
-- **Controllers Refatorados**: 19/28 (68%) - transaction, account, category, creditor, customer, investment, investmentGoal, payable, supplier, receivable, payment, financing, dashboard, user, auth, settings, notification, investmentContribution, financingPayment
+- **Controllers Refatorados**: 20/28 (71%) - transaction, account, category, creditor, customer, investment, investmentGoal, payable, supplier, receivable, payment, financing, dashboard, user, auth, settings, notification, investmentContribution, financingPayment
 - **Jobs de Contas Fixas**: 23/23 testes (100%) ✅
 - **Dashboard Principal**: 10/10 testes (100%) ✅
 - **Transações Críticas**: 29/29 testes (100%) ✅
@@ -125,17 +167,17 @@
 
 ### 🔄 Tarefas de Refatoração Pendentes
 - **Modelos**: 20/20 pendentes (100%)
-- **Controllers**: 8/28 pendentes (29%) - 19 refatorados ✅
-  - **Controllers Restantes**: investmentContribution, fixedAccount, fixedAccountJob, jobAdmin, jobScheduler, jobTimeout, notificationJob, dataIntegrity
+- **Controllers**: 7/28 pendentes (25%) - 20 refatorados ✅
+  - **Controllers Restantes**: fixedAccount, fixedAccountJob, jobAdmin, jobScheduler, jobTimeout, notificationJob, dataIntegrity
 - **Middlewares**: 6/6 pendentes (100%)
 - **Rotas**: 28/28 pendentes (100%)
-- **Total de Tarefas de Refatoração**: 59/76 pendentes (78%)
+- **Total de Tarefas de Refatoração**: 58/76 pendentes (76%)
 
 ### 📈 Status Geral do Projeto
 - **Funcionalidades Implementadas**: 100% ✅
 - **Testes Passando**: 100% ✅
 - **Documentação**: 100% ✅
-- **Refatoração Pendente**: 78% ⏳
+- **Refatoração Pendente**: 76% ⏳
 - **Pronto para Produção**: ✅ (com refatoração planejada)
 
 ---
@@ -1514,3 +1556,39 @@ describe('ControllerName', () => {
 - **Testes Unitários**: 100% cobertura nos refatorados
 - **Testes Integração**: 90%+ passando nos refatorados
 - **Documentação**: 100% atualizada para refatorados
+
+---
+
+## 2. Nova Funcionalidade - GET /api/categories/:id ✅
+
+### ✅ Implementado (27/06/2025)
+- **Endpoint GET /api/categories/:id**: Busca uma categoria específica pelo ID ✅
+  - Método `getCategoryById` no CategoryController
+  - Método `getCategoryById` no CategoryService
+  - Rota `GET /api/categories/:id` adicionada
+  - Isolamento de categorias entre usuários garantido
+  - Suporte a categorias padrão do sistema
+  - Retorna 404 se não encontrar ou não pertencer ao usuário
+  - Retorna categoria no formato padronizado
+
+- **Testes Completos**: Cobertura completa da nova funcionalidade ✅
+  - 3 testes unitários para o controller (100% passando)
+  - 3 testes de integração (100% passando)
+  - Teste de acesso de outro usuário (404 esperado)
+  - Teste de categoria inexistente (404 esperado)
+  - Teste de categoria válida (200 esperado)
+
+- **Segurança e Isolamento**: Garantias implementadas ✅
+  - Apenas o dono da categoria pode acessar
+  - Categorias padrão do sistema acessíveis por todos
+  - Validação de propriedade no service
+  - Tratamento de erro consistente
+
+### 🎯 Benefícios Implementados
+- **API Completa**: Agora suporta CRUD completo para categorias
+- **Isolamento de Dados**: Usuários não podem acessar categorias de outros
+- **Consistência**: Mesmo padrão de resposta dos outros endpoints
+- **Segurança**: Validação adequada de propriedade
+- **Testabilidade**: Cobertura completa de testes
+
+---

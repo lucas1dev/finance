@@ -1,12 +1,16 @@
+const { ValidationError, NotFoundError, AppError } = require('../utils/errors');
 const categoryService = require('../services/categoryService');
 const { createCategorySchema, updateCategorySchema } = require('../utils/validators');
 
 /**
- * Controlador responsável por gerenciar categorias de transações.
- * Permite criar, listar, atualizar e excluir categorias para organizar transações financeiras.
- * Inclui suporte a categorias padrão do sistema que não podem ser editadas ou excluídas.
+ * Controller responsável por gerenciar categorias de transações.
+ * Delega toda a lógica ao service e padroniza respostas.
  */
-const categoryController = {
+class CategoryController {
+  constructor(categoryService) {
+    this.categoryService = categoryService;
+  }
+
   /**
    * Lista todas as categorias do usuário autenticado, incluindo categorias padrão do sistema.
    * @param {Object} req - Objeto de requisição Express.
@@ -20,14 +24,14 @@ const categoryController = {
    * // Headers: { Authorization: "Bearer <token>" }
    * // Retorno: [{ "id": 1, "name": "Alimentação", "type": "expense", "is_default": false }, ...]
    */
-  async getCategories(req, res, next) {
+  async getCategories(req, res) {
     try {
-      const categories = await categoryService.getCategories(req.user.id);
+      const categories = await this.categoryService.getCategories(req.user.id);
       res.json({ success: true, data: categories });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Cria uma nova categoria para o usuário autenticado.
@@ -46,15 +50,17 @@ const categoryController = {
    * // Body: { "name": "Alimentação", "type": "expense", "color": "#FF5722" }
    * // Retorno: { "message": "Categoria criada com sucesso", "categoryId": 1 }
    */
-  async createCategory(req, res, next) {
+  async createCategory(req, res) {
     try {
-      const validatedData = createCategorySchema.parse(req.body);
-      const category = await categoryService.createCategory(req.user.id, validatedData);
-      res.status(201).json({ success: true, data: { categoryId: category.id } });
-    } catch (err) {
-      next(err);
+      const category = await this.categoryService.createCategory(req.user.id, req.body);
+      res.status(201).json({ 
+        success: true, 
+        data: { categoryId: category.id } 
+      });
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Atualiza uma categoria existente do usuário autenticado.
@@ -76,15 +82,17 @@ const categoryController = {
    * // Body: { "name": "Alimentação e Bebidas", "type": "expense", "color": "#FF5722" }
    * // Retorno: { "message": "Categoria atualizada com sucesso" }
    */
-  async updateCategory(req, res, next) {
+  async updateCategory(req, res) {
     try {
-      const validatedData = updateCategorySchema.parse(req.body);
-      await categoryService.updateCategory(req.user.id, req.params.id, validatedData);
-      res.json({ success: true, data: { message: 'Categoria atualizada com sucesso' } });
-    } catch (err) {
-      next(err);
+      await this.categoryService.updateCategory(req.user.id, req.params.id, req.body);
+      res.json({ 
+        success: true, 
+        data: { message: 'Categoria atualizada com sucesso' } 
+      });
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Exclui uma categoria do usuário autenticado.
@@ -101,14 +109,17 @@ const categoryController = {
    * // DELETE /categories/1
    * // Retorno: { "message": "Categoria excluída com sucesso" }
    */
-  async deleteCategory(req, res, next) {
+  async deleteCategory(req, res) {
     try {
-      await categoryService.deleteCategory(req.user.id, req.params.id);
-      res.json({ success: true, data: { message: 'Categoria excluída com sucesso' } });
-    } catch (err) {
-      next(err);
+      await this.categoryService.deleteCategory(req.user.id, req.params.id);
+      res.json({ 
+        success: true, 
+        data: { message: 'Categoria excluída com sucesso' } 
+      });
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém estatísticas detalhadas das categorias.
@@ -121,14 +132,14 @@ const categoryController = {
    * // GET /api/categories/stats
    * // Retorno: { categoryStats: [...], usageStats: [...], performanceStats: [...] }
    */
-  async getStats(req, res, next) {
+  async getStats(req, res) {
     try {
-      const stats = await categoryService.getStats(req.user.id, req.query.period);
+      const stats = await this.categoryService.getStats(req.user.id, req.query.period);
       res.json({ success: true, data: stats });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém dados para gráficos de categorias.
@@ -141,14 +152,62 @@ const categoryController = {
    * // GET /api/categories/charts
    * // Retorno: { usageChart: [...], valueChart: [...], typeChart: [...] }
    */
-  async getCharts(req, res, next) {
+  async getCharts(req, res) {
     try {
-      const data = await categoryService.getCharts(req.user.id, req.query.type, req.query.period);
+      const data = await this.categoryService.getCharts(req.user.id, req.query.type, req.query.period);
       res.json({ success: true, data });
-    } catch (err) {
-      next(err);
+    } catch (error) {
+      this.handleError(error, res);
     }
   }
-};
 
-module.exports = categoryController; 
+  /**
+   * Busca uma categoria específica pelo ID, garantindo que só o dono ou categorias padrão possam acessar.
+   */
+  async getCategoryById(req, res) {
+    try {
+      const category = await this.categoryService.getCategoryById(req.user.id, req.params.id);
+      if (!category) {
+        return res.status(404).json({ success: false, error: 'Categoria não encontrada' });
+      }
+      res.json({ success: true, data: category });
+    } catch (error) {
+      this.handleError(error, res);
+    }
+  }
+
+  /**
+   * Método helper para tratamento consistente de erros.
+   */
+  handleError(error, res) {
+    // Verificar se é erro de validação Zod
+    if (error.name === 'ZodError' || error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: error.message || 'Dados inválidos'
+      });
+    }
+
+    // Tratar AppError com statusCode específico
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    if (error instanceof NotFoundError) {
+      return res.status(404).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+}
+
+module.exports = CategoryController; 

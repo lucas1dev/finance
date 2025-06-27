@@ -154,6 +154,63 @@ describe('Category Integration Tests', () => {
     });
   });
 
+  describe('GET /api/categories/:id', () => {
+    let category;
+    beforeEach(async () => {
+      category = await Category.create({
+        name: 'Categoria Unica',
+        type: 'expense',
+        user_id: testUser.id
+      });
+    });
+
+    it('deve retornar uma categoria específica do usuário', async () => {
+      const response = await request(app)
+        .get(`/api/categories/${category.id}`)
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('success', true);
+      expect(response.body).toHaveProperty('data');
+      expect(response.body.data).toHaveProperty('id', category.id);
+      expect(response.body.data).toHaveProperty('name', 'Categoria Unica');
+    });
+
+    it('deve retornar 404 se a categoria não existir', async () => {
+      const response = await request(app)
+        .get('/api/categories/99999')
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error', 'Categoria não encontrada');
+    });
+
+    it('não deve permitir acesso de outro usuário', async () => {
+      // Criar outro usuário
+      const otherUser = await User.create({
+        name: 'Outro Usuário',
+        email: 'outro@exemplo.com',
+        password: 'senha123',
+        two_factor_secret: 'secret'
+      });
+      const otherLogin = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'outro@exemplo.com', password: 'senha123' });
+      const otherToken = otherLogin.body.data.token;
+
+      const response = await request(app)
+        .get(`/api/categories/${category.id}`)
+        .set('Authorization', `Bearer ${otherToken}`);
+
+      expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error', 'Categoria não encontrada');
+
+      await User.destroy({ where: { id: otherUser.id } });
+    });
+  });
+
   describe('PUT /api/categories/:id', () => {
     beforeEach(async () => {
       testCategory = await Category.create({
@@ -271,6 +328,13 @@ describe('Category Integration Tests', () => {
     });
 
     it('should not allow access to other users categories', async () => {
+      // Criar uma categoria para o primeiro usuário
+      const firstUserCategory = await Category.create({
+        name: 'First User Category',
+        type: 'expense',
+        user_id: testUser.id
+      });
+
       // Criar outro usuário
       const otherUser = await User.create({
         name: 'Other User Category',
@@ -287,19 +351,29 @@ describe('Category Integration Tests', () => {
           password: 'password123'
         });
 
-      const otherAuthToken = otherLoginResponse.body.token;
+      expect(otherLoginResponse.status).toBe(200);
+      expect(otherLoginResponse.body).toHaveProperty('data');
+      expect(otherLoginResponse.body.data).toHaveProperty('token');
+      
+      const otherAuthToken = otherLoginResponse.body.data.token;
 
-      // Tentar acessar categoria do primeiro usuário
+      // Tentar acessar categoria do primeiro usuário via PUT (rota que existe)
       const response = await request(app)
-        .get(`/api/categories/${testCategory.id}`)
-        .set('Authorization', `Bearer ${otherAuthToken}`);
+        .put(`/api/categories/${firstUserCategory.id}`)
+        .set('Authorization', `Bearer ${otherAuthToken}`)
+        .send({
+          name: 'Tentativa de Acesso',
+          type: 'expense'
+        });
 
-      // Como não há rota GET /categories/:id, isso deve retornar 404
-      // Mas o importante é que não retorne dados de outro usuário
+      // Deve retornar 404 porque a categoria não pertence ao outro usuário
       expect(response.status).toBe(404);
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error', 'Categoria não encontrada');
 
       // Limpar
       await User.destroy({ where: { id: otherUser.id } });
+      await Category.destroy({ where: { id: firstUserCategory.id } });
     });
   });
 }); 

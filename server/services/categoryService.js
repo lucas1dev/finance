@@ -441,6 +441,28 @@ const categoryService = {
       typeChart,
       totalValue: Math.round(totalValue * 100) / 100
     };
+  },
+
+  /**
+   * Busca uma categoria específica pelo ID, permitindo acesso apenas ao dono ou se for padrão
+   */
+  async getCategoryById(userId, categoryId) {
+    try {
+      const category = await Category.findOne({
+        where: {
+          id: categoryId,
+          [Op.or]: [
+            { user_id: userId },
+            { is_default: true }
+          ]
+        },
+        attributes: ['id', 'name', 'type', 'color', 'is_default', 'created_at', 'updated_at']
+      });
+      return category;
+    } catch (error) {
+      console.error('Erro ao buscar categoria por ID:', error);
+      throw new AppError('Erro ao buscar categoria', 500);
+    }
   }
 };
 
