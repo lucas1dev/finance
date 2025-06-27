@@ -447,6 +447,41 @@ const validateFixedAccountTransactionPayment = (paymentData) => {
   };
 };
 
+/**
+ * Esquema de validação para verificação de código 2FA.
+ */
+const verifyTwoFactorSchema = z.object({
+  code: z.string().length(6, 'Código 2FA deve ter exatamente 6 dígitos').regex(/^\d{6}$/, 'Código 2FA deve conter apenas números')
+});
+
+/**
+ * Esquema de validação para desativação de 2FA.
+ */
+const disableTwoFactorSchema = z.object({
+  password: z.string().min(1, 'Senha é obrigatória')
+});
+
+/**
+ * Esquema de validação para geração de códigos de backup.
+ */
+const generateBackupCodesSchema = z.object({
+  password: z.string().min(1, 'Senha é obrigatória')
+});
+
+/**
+ * Esquema de validação para verificação de código de backup.
+ */
+const verifyBackupCodeSchema = z.object({
+  backup_code: z.string().length(8, 'Código de backup deve ter exatamente 8 dígitos').regex(/^\d{8}$/, 'Código de backup deve conter apenas números')
+});
+
+/**
+ * Esquema de validação para verificação de token.
+ */
+const verifyTokenSchema = z.object({
+  token: z.string().min(1, 'Token é obrigatório')
+});
+
 module.exports = {
   isValidEmail,
   isValidPassword,
@@ -479,5 +514,10 @@ module.exports = {
   createPayableSchema,
   updatePayableSchema,
   addPaymentSchema,
-  validateFixedAccountTransactionPayment
+  validateFixedAccountTransactionPayment,
+  verifyTwoFactorSchema,
+  disableTwoFactorSchema,
+  generateBackupCodesSchema,
+  verifyBackupCodeSchema,
+  verifyTokenSchema
 }; 

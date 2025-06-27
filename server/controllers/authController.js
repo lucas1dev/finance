@@ -11,7 +11,12 @@ const {
   updateProfileSchema, 
   updatePasswordSchema, 
   forgotPasswordSchema, 
-  resetPasswordSchema 
+  resetPasswordSchema,
+  verifyTwoFactorSchema,
+  disableTwoFactorSchema,
+  generateBackupCodesSchema,
+  verifyBackupCodeSchema,
+  verifyTokenSchema
 } = require('../utils/validators');
 const AuthService = require('../services/authService');
 const { logger } = require('../utils/logger');
@@ -452,32 +457,392 @@ class AuthController {
   }
 
   /**
-   * Verifica se um token é válido.
+   * Configura autenticação de dois fatores para o usuário.
    * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.user - Usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
-   * @returns {Promise<Object>} Resposta JSON com dados do usuário se o token for válido.
+   * @returns {Promise<Object>} Resposta JSON com dados de configuração 2FA.
    * @example
-   * // GET /auth/verify
+   * // POST /auth/2fa/setup
    * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { "success": true, "data": { "id": 1, "name": "João", "email": "joao@example.com", "role": "user" } }
+   * // Retorno: { "success": true, "data": { "qr_code": "...", "secret": "...", "backup_codes": [...] } }
    */
-  async verifyToken(req, res) {
+  async setupTwoFactor(req, res) {
     try {
-      const token = req.headers.authorization?.replace('Bearer ', '');
-      if (!token) {
-        return res.status(401).json({
-          success: false,
-          error: 'Token não fornecido'
-        });
-      }
+      const result = await AuthService.setupTwoFactor(req.user.id);
 
-      const result = await AuthService.verifyToken(token);
+      logger.info('2FA configurado com sucesso', {
+        user_id: req.user.id
+      });
 
       return res.json({
         success: true,
         data: result
       });
     } catch (error) {
+      logger.error('Erro ao configurar 2FA', {
+        error: error.message,
+        user_id: req.user.id
+      });
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao configurar 2FA'
+      });
+    }
+  }
+
+  /**
+   * Verifica código 2FA e ativa a autenticação de dois fatores.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.user - Usuário autenticado.
+   * @param {Object} req.body - Dados da verificação.
+   * @param {string} req.body.code - Código TOTP de 6 dígitos.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com resultado da verificação.
+   * @example
+   * // POST /auth/2fa/verify
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Body: { "code": "123456" }
+   * // Retorno: { "success": true, "data": { "message": "2FA ativado com sucesso", "token": "..." } }
+   */
+  async verifyTwoFactor(req, res) {
+    try {
+      // Validar dados de entrada
+      const validatedData = verifyTwoFactorSchema.parse(req.body);
+      const { code } = validatedData;
+
+      const result = await AuthService.verifyTwoFactor(req.user.id, code);
+
+      logger.info('2FA verificado e ativado com sucesso', {
+        user_id: req.user.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao verificar 2FA', {
+        error: error.message,
+        user_id: req.user.id
+      });
+
+      if (error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.errors[0].message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao verificar 2FA'
+      });
+    }
+  }
+
+  /**
+   * Desativa autenticação de dois fatores.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.user - Usuário autenticado.
+   * @param {Object} req.body - Dados da desativação.
+   * @param {string} req.body.password - Senha atual do usuário.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com resultado da desativação.
+   * @example
+   * // POST /auth/2fa/disable
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Body: { "password": "senha123" }
+   * // Retorno: { "success": true, "data": { "message": "2FA desativado com sucesso" } }
+   */
+  async disableTwoFactor(req, res) {
+    try {
+      // Validar dados de entrada
+      const validatedData = disableTwoFactorSchema.parse(req.body);
+      const { password } = validatedData;
+
+      const result = await AuthService.disableTwoFactor(req.user.id, password);
+
+      logger.info('2FA desativado com sucesso', {
+        user_id: req.user.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao desativar 2FA', {
+        error: error.message,
+        user_id: req.user.id
+      });
+
+      if (error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.errors[0].message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'UnauthorizedError') {
+        return res.status(401).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao desativar 2FA'
+      });
+    }
+  }
+
+  /**
+   * Gera novos códigos de backup para 2FA.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.user - Usuário autenticado.
+   * @param {Object} req.body - Dados para geração.
+   * @param {string} req.body.password - Senha atual do usuário.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com novos códigos de backup.
+   * @example
+   * // POST /auth/2fa/backup-codes
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Body: { "password": "senha123" }
+   * // Retorno: { "success": true, "data": { "backup_codes": [...], "message": "..." } }
+   */
+  async generateBackupCodes(req, res) {
+    try {
+      // Validar dados de entrada
+      const validatedData = generateBackupCodesSchema.parse(req.body);
+      const { password } = validatedData;
+
+      const result = await AuthService.generateBackupCodes(req.user.id, password);
+
+      logger.info('Novos códigos de backup gerados', {
+        user_id: req.user.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao gerar códigos de backup', {
+        error: error.message,
+        user_id: req.user.id
+      });
+
+      if (error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.errors[0].message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'UnauthorizedError') {
+        return res.status(401).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao gerar códigos de backup'
+      });
+    }
+  }
+
+  /**
+   * Obtém configurações de 2FA do usuário.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.user - Usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com configurações de 2FA.
+   * @example
+   * // GET /auth/2fa/settings
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Retorno: { "success": true, "data": { "two_factor_enabled": true, "has_backup_codes": true, ... } }
+   */
+  async get2FASettings(req, res) {
+    try {
+      const result = await AuthService.get2FASettings(req.user.id);
+
+      logger.info('Configurações de 2FA obtidas com sucesso', {
+        user_id: req.user.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao buscar configurações de 2FA', {
+        error: error.message,
+        user_id: req.user.id
+      });
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar configurações de 2FA'
+      });
+    }
+  }
+
+  /**
+   * Verifica código de backup para recuperação de acesso.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.user - Usuário autenticado.
+   * @param {Object} req.body - Dados da verificação.
+   * @param {string} req.body.backup_code - Código de backup.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com resultado da verificação.
+   * @example
+   * // POST /auth/2fa/backup-verify
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Body: { "backup_code": "12345678" }
+   * // Retorno: { "success": true, "data": { "message": "Código verificado", "token": "...", "remaining_backup_codes": 9 } }
+   */
+  async verifyBackupCode(req, res) {
+    try {
+      // Validar dados de entrada
+      const validatedData = verifyBackupCodeSchema.parse(req.body);
+      const { backup_code } = validatedData;
+
+      const result = await AuthService.verifyBackupCode(req.user.id, backup_code);
+
+      logger.info('Código de backup verificado com sucesso', {
+        user_id: req.user.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao verificar código de backup', {
+        error: error.message,
+        user_id: req.user.id
+      });
+
+      if (error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.errors[0].message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao verificar código de backup'
+      });
+    }
+  }
+
+  /**
+   * Verifica se um token JWT é válido.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.body - Dados do token.
+   * @param {string} req.body.token - Token JWT.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com dados do usuário.
+   * @example
+   * // POST /auth/verify-token
+   * // Body: { "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+   * // Retorno: { "success": true, "data": { "id": 1, "name": "User", "email": "user@example.com" } }
+   */
+  async verifyToken(req, res) {
+    try {
+      // Validar dados de entrada
+      const validatedData = verifyTokenSchema.parse(req.body);
+      const { token } = validatedData;
+
+      const result = await AuthService.verifyToken(token);
+
+      logger.info('Token verificado com sucesso');
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao verificar token', {
+        error: error.message
+      });
+
+      if (error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.errors[0].message
+        });
+      }
+
       if (error.name === 'UnauthorizedError') {
         return res.status(401).json({
           success: false,

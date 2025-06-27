@@ -539,6 +539,348 @@ class AuthService {
       throw new Error('Erro ao verificar token');
     }
   }
+
+  /**
+   * Configura autenticação de dois fatores para o usuário.
+   * @param {number} userId - ID do usuário.
+   * @returns {Promise<Object>} Dados de configuração 2FA.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   * @throws {Error} Se houver erro na configuração.
+   */
+  async setupTwoFactor(userId) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Gerar secret para TOTP
+      const secret = speakeasy.generateSecret({
+        name: `${process.env.TWO_FACTOR_ISSUER || 'FinanceApp'}:${user.email}`,
+        issuer: process.env.TWO_FACTOR_ISSUER || 'FinanceApp'
+      });
+
+      // Gerar QR Code
+      const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url);
+
+      // Gerar códigos de backup
+      const backupCodes = this.generateBackupCodes();
+
+      // Atualizar usuário com secret temporário (ainda não ativado)
+      await user.update({
+        two_factor_secret: secret.base32,
+        two_factor_enabled: false,
+        backup_codes: JSON.stringify(backupCodes)
+      });
+
+      logger.info('2FA configurado com sucesso', {
+        user_id: userId
+      });
+
+      return {
+        secret: secret.base32,
+        qr_code: qrCodeUrl,
+        backup_codes: backupCodes,
+        message: '2FA configurado. Use o QR Code para configurar seu app autenticador.'
+      };
+    } catch (error) {
+      logger.error('Erro ao configurar 2FA', {
+        error: error.message,
+        user_id: userId
+      });
+
+      if (error.name === 'NotFoundError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao configurar 2FA');
+    }
+  }
+
+  /**
+   * Verifica código 2FA e ativa a autenticação de dois fatores.
+   * @param {number} userId - ID do usuário.
+   * @param {string} code - Código TOTP de 6 dígitos.
+   * @returns {Promise<Object>} Resultado da verificação.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   * @throws {ValidationError} Se o código for inválido.
+   * @throws {Error} Se houver erro na verificação.
+   */
+  async verifyTwoFactor(userId, code) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      if (!user.two_factor_secret) {
+        throw new ValidationError('2FA não foi configurado. Configure primeiro.');
+      }
+
+      // Verificar código TOTP
+      const verified = speakeasy.totp.verify({
+        secret: user.two_factor_secret,
+        encoding: 'base32',
+        token: code,
+        window: 2 // Permitir 2 períodos de tolerância (60 segundos)
+      });
+
+      if (!verified) {
+        throw new ValidationError('Código 2FA inválido');
+      }
+
+      // Ativar 2FA
+      await user.update({
+        two_factor_enabled: true
+      });
+
+      // Gerar novo token JWT
+      const token = generateToken(user.id);
+
+      logger.info('2FA verificado e ativado com sucesso', {
+        user_id: userId
+      });
+
+      return {
+        message: '2FA ativado com sucesso',
+        token
+      };
+    } catch (error) {
+      logger.error('Erro ao verificar 2FA', {
+        error: error.message,
+        user_id: userId
+      });
+
+      if (error.name === 'NotFoundError' || error.name === 'ValidationError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao verificar 2FA');
+    }
+  }
+
+  /**
+   * Desativa autenticação de dois fatores.
+   * @param {number} userId - ID do usuário.
+   * @param {string} password - Senha atual do usuário.
+   * @returns {Promise<Object>} Resultado da desativação.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   * @throws {UnauthorizedError} Se a senha for incorreta.
+   * @throws {Error} Se houver erro na desativação.
+   */
+  async disableTwoFactor(userId, password) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Verificar senha atual
+      const validPassword = await user.validatePassword(password);
+      if (!validPassword) {
+        throw new UnauthorizedError('Senha incorreta');
+      }
+
+      // Desativar 2FA
+      await user.update({
+        two_factor_secret: null,
+        two_factor_enabled: false,
+        backup_codes: null
+      });
+
+      logger.info('2FA desativado com sucesso', {
+        user_id: userId
+      });
+
+      return {
+        message: '2FA desativado com sucesso'
+      };
+    } catch (error) {
+      logger.error('Erro ao desativar 2FA', {
+        error: error.message,
+        user_id: userId
+      });
+
+      if (error.name === 'NotFoundError' || error.name === 'UnauthorizedError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao desativar 2FA');
+    }
+  }
+
+  /**
+   * Gera novos códigos de backup para 2FA.
+   * @param {number} userId - ID do usuário.
+   * @param {string} password - Senha atual do usuário.
+   * @returns {Promise<Object>} Novos códigos de backup.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   * @throws {UnauthorizedError} Se a senha for incorreta.
+   * @throws {Error} Se houver erro na geração.
+   */
+  async generateBackupCodes(userId, password) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Verificar senha atual
+      const validPassword = await user.validatePassword(password);
+      if (!validPassword) {
+        throw new UnauthorizedError('Senha incorreta');
+      }
+
+      if (!user.two_factor_enabled) {
+        throw new ValidationError('2FA não está ativado');
+      }
+
+      // Gerar novos códigos de backup
+      const backupCodes = this.generateBackupCodes();
+
+      // Atualizar usuário
+      await user.update({
+        backup_codes: JSON.stringify(backupCodes)
+      });
+
+      logger.info('Novos códigos de backup gerados', {
+        user_id: userId
+      });
+
+      return {
+        backup_codes: backupCodes,
+        message: 'Novos códigos de backup gerados com sucesso'
+      };
+    } catch (error) {
+      logger.error('Erro ao gerar códigos de backup', {
+        error: error.message,
+        user_id: userId
+      });
+
+      if (error.name === 'NotFoundError' || error.name === 'UnauthorizedError' || error.name === 'ValidationError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao gerar códigos de backup');
+    }
+  }
+
+  /**
+   * Obtém configurações de 2FA do usuário.
+   * @param {number} userId - ID do usuário.
+   * @returns {Promise<Object>} Configurações de 2FA.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   */
+  async get2FASettings(userId) {
+    try {
+      const user = await User.findByPk(userId, {
+        attributes: [
+          'id',
+          'two_factor_enabled',
+          'two_factor_secret',
+          'backup_codes',
+          'created_at'
+        ]
+      });
+
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      const backupCodes = user.backup_codes ? JSON.parse(user.backup_codes) : [];
+
+      return {
+        two_factor_enabled: user.two_factor_enabled,
+        has_backup_codes: backupCodes.length > 0,
+        backup_codes_count: backupCodes.length,
+        account_age_days: Math.floor((new Date() - new Date(user.created_at)) / (1000 * 60 * 60 * 24))
+      };
+    } catch (error) {
+      logger.error('Erro ao buscar configurações de 2FA', {
+        error: error.message,
+        user_id: userId
+      });
+
+      if (error.name === 'NotFoundError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao buscar configurações de 2FA');
+    }
+  }
+
+  /**
+   * Verifica código de backup para recuperação de acesso.
+   * @param {number} userId - ID do usuário.
+   * @param {string} backupCode - Código de backup.
+   * @returns {Promise<Object>} Resultado da verificação.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   * @throws {ValidationError} Se o código for inválido.
+   */
+  async verifyBackupCode(userId, backupCode) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      if (!user.two_factor_enabled) {
+        throw new ValidationError('2FA não está ativado');
+      }
+
+      const backupCodes = user.backup_codes ? JSON.parse(user.backup_codes) : [];
+      
+      // Verificar se o código existe
+      const codeIndex = backupCodes.indexOf(backupCode);
+      if (codeIndex === -1) {
+        throw new ValidationError('Código de backup inválido');
+      }
+
+      // Remover código usado
+      backupCodes.splice(codeIndex, 1);
+      await user.update({
+        backup_codes: JSON.stringify(backupCodes)
+      });
+
+      // Gerar novo token JWT
+      const token = generateToken(user.id);
+
+      logger.info('Código de backup verificado com sucesso', {
+        user_id: userId
+      });
+
+      return {
+        message: 'Código de backup verificado com sucesso',
+        token,
+        remaining_backup_codes: backupCodes.length
+      };
+    } catch (error) {
+      logger.error('Erro ao verificar código de backup', {
+        error: error.message,
+        user_id: userId
+      });
+
+      if (error.name === 'NotFoundError' || error.name === 'ValidationError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao verificar código de backup');
+    }
+  }
+
+  /**
+   * Gera códigos de backup únicos.
+   * @returns {Array<string>} Array com 10 códigos de backup.
+   */
+  generateBackupCodes() {
+    const codes = [];
+    for (let i = 0; i < 10; i++) {
+      // Gerar código de 8 dígitos
+      const code = crypto.randomInt(10000000, 99999999).toString();
+      codes.push(code);
+    }
+    return codes;
+  }
 }
 
 module.exports = new AuthService(); 

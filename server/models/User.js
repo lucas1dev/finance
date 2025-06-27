@@ -43,6 +43,11 @@ module.exports = (sequelize) => {
         type: DataTypes.BOOLEAN,
         defaultValue: false
       },
+      backup_codes: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: 'JSON string com códigos de backup para 2FA'
+      },
       role: {
         type: DataTypes.ENUM('admin', 'user'),
         allowNull: false,
