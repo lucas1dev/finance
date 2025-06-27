@@ -3,51 +3,26 @@
  * Testa operações administrativas de gerenciamento de usuários
  */
 
-let User, Transaction, Account, Notification;
-let createUserSchema, updateUserSchema;
-let successResponse, AppError;
+let UserService;
 let userController;
 
-// Mock dos models Sequelize
-jest.mock('../../models', () => ({
-  User: {
-    findAndCountAll: jest.fn(),
-    findByPk: jest.fn(),
-    count: jest.fn(),
-    update: jest.fn(),
-    destroy: jest.fn()
-  },
-  Transaction: {
-    count: jest.fn(),
-    findOne: jest.fn()
-  },
-  Account: {
-    count: jest.fn(),
-    findAll: jest.fn()
-  },
-  Notification: {
-    count: jest.fn()
+// Mock do UserService
+jest.mock('../../services/userService', () => ({
+  getUsers: jest.fn(),
+  getUsersStats: jest.fn(),
+  getUserById: jest.fn(),
+  updateUserStatus: jest.fn(),
+  updateUserRole: jest.fn(),
+  deleteUser: jest.fn(),
+  getUserStats: jest.fn()
+}));
+
+// Mock do logger
+jest.mock('../../utils/logger', () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn()
   }
-}));
-
-// Mock dos validadores
-jest.mock('../../utils/validators', () => ({
-  createUserSchema: {
-    parse: jest.fn()
-  },
-  updateUserSchema: {
-    parse: jest.fn()
-  }
-}));
-
-// Mock dos utilitários
-jest.mock('../../utils/response', () => ({
-  successResponse: jest.fn()
-}));
-
-// Mock dos erros
-jest.mock('../../utils/errors', () => ({
-  AppError: jest.fn()
 }));
 
 describe('UserController', () => {
@@ -56,10 +31,7 @@ describe('UserController', () => {
   beforeEach(() => {
     // Importar após os mocks
     userController = require('../../controllers/userController');
-    ({ User, Transaction, Account, Notification } = require('../../models'));
-    ({ createUserSchema, updateUserSchema } = require('../../utils/validators'));
-    ({ successResponse } = require('../../utils/response'));
-    ({ AppError } = require('../../utils/errors'));
+    UserService = require('../../services/userService');
     
     // Limpar todos os mocks
     jest.clearAllMocks();
@@ -69,7 +41,7 @@ describe('UserController', () => {
       query: {},
       params: {},
       body: {},
-      user: { id: 1, role: 'admin' }
+      userId: 1
     };
 
     // Mock do objeto de resposta
@@ -82,93 +54,112 @@ describe('UserController', () => {
   describe('getUsers', () => {
     it('should return users list with pagination successfully', async () => {
       // Arrange
-      const mockUsers = [
-        {
-          id: 1,
-          name: 'João Silva',
-          email: 'joao@example.com',
-          role: 'user',
-          active: true,
-          created_at: '2024-01-01T00:00:00.000Z',
-          last_login: '2024-01-15T10:30:00.000Z',
-          toJSON: () => ({
+      const mockResult = {
+        users: [
+          {
             id: 1,
             name: 'João Silva',
             email: 'joao@example.com',
             role: 'user',
             active: true,
+            status: 'active',
             created_at: '2024-01-01T00:00:00.000Z',
             last_login: '2024-01-15T10:30:00.000Z'
-          })
-        }
-      ];
-
-      mockReq.query = { page: 1, limit: 10 };
-      
-      User.findAndCountAll.mockResolvedValue({
-        count: 1,
-        rows: mockUsers
-      });
-
-      // Act
-      await userController.getUsers(mockReq, mockRes);
-
-      // Assert
-      expect(User.findAndCountAll).toHaveBeenCalledWith({
-        where: {},
-        attributes: ['id', 'name', 'email', 'role', 'active', 'created_at', 'last_login'],
-        order: [['created_at', 'DESC']],
-        limit: 10,
-        offset: 0
-      });
-      expect(mockRes.json).toHaveBeenCalledWith({
-        users: expect.arrayContaining([
-          expect.objectContaining({
-            id: 1,
-            name: 'João Silva',
-            email: 'joao@example.com',
-            status: 'active'
-          })
-        ]),
+          }
+        ],
         pagination: {
           page: 1,
           limit: 10,
           total: 1,
           pages: 1
         }
-      });
-    });
+      };
 
-    it('should apply search filter correctly', async () => {
-      // Arrange
-      mockReq.query = { search: 'joao', page: 1, limit: 10 };
-      
-      User.findAndCountAll.mockResolvedValue({
-        count: 1,
-        rows: []
-      });
+      mockReq.query = { page: 1, limit: 10 };
+      UserService.getUsers.mockResolvedValue(mockResult);
 
       // Act
       await userController.getUsers(mockReq, mockRes);
 
       // Assert
-      expect(User.findAndCountAll).toHaveBeenCalledWith({
-        where: {
-          [require('sequelize').Op.or]: [
-            { name: { [require('sequelize').Op.like]: '%joao%' } },
-            { email: { [require('sequelize').Op.like]: '%joao%' } }
-          ]
-        },
-        attributes: ['id', 'name', 'email', 'role', 'active', 'created_at', 'last_login'],
-        order: [['created_at', 'DESC']],
-        limit: 10,
-        offset: 0
+      expect(UserService.getUsers).toHaveBeenCalledWith(mockReq.query);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockResult
+      });
+    });
+
+    it('should apply search filter correctly', async () => {
+      // Arrange
+      const mockResult = {
+        users: [],
+        pagination: { page: 1, limit: 10, total: 0, pages: 0 }
+      };
+
+      mockReq.query = { search: 'joao', page: 1, limit: 10 };
+      UserService.getUsers.mockResolvedValue(mockResult);
+
+      // Act
+      await userController.getUsers(mockReq, mockRes);
+
+      // Assert
+      expect(UserService.getUsers).toHaveBeenCalledWith(mockReq.query);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockResult
+      });
+    });
+
+    it('should handle service errors', async () => {
+      // Arrange
+      const error = new Error('Database error');
+      UserService.getUsers.mockRejectedValue(error);
+
+      // Act
+      await userController.getUsers(mockReq, mockRes);
+
+      // Assert
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro ao buscar usuários'
       });
     });
   });
 
-  describe('getUserStats', () => {
-    it('should return user statistics successfully', async () => {
+  describe('getUsersStats', () => {
+    it('should return users statistics successfully', async () => {
+      // Arrange
+      const mockStats = {
+        total: 100,
+        active: 85,
+        inactive: 15,
+        newUsers: 10,
+        adminUsers: 5,
+        regularUsers: 95,
+        recentActivityUsers: 70,
+        growthRate: 15.5,
+        period: 'month',
+        periodStart: '2024-01-01T00:00:00.000Z'
+      };
+
+      mockReq.query = { period: 'month' };
+      UserService.getUsersStats.mockResolvedValue(mockStats);
+
+      // Act
+      await userController.getUsersStats(mockReq, mockRes);
+
+      // Assert
+      expect(UserService.getUsersStats).toHaveBeenCalledWith(mockReq.query);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockStats
+      });
+    });
+  });
+
+  describe('getUser', () => {
+    it('should return user details successfully', async () => {
       // Arrange
       const mockUser = {
         id: 1,
@@ -181,113 +172,71 @@ describe('UserController', () => {
       };
 
       mockReq.params = { id: 1 };
-      
-      User.findByPk.mockResolvedValue(mockUser);
-      Transaction.count.mockResolvedValue(50);
-      Account.count.mockResolvedValue(3);
-      Notification.count.mockResolvedValue(10);
-      Transaction.findOne.mockResolvedValue({ created_at: '2024-01-15T10:30:00.000Z' });
-      Account.findAll.mockResolvedValue([
-        { balance: '1000.00' },
-        { balance: '500.00' }
-      ]);
+      UserService.getUserById.mockResolvedValue(mockUser);
 
       // Act
-      await userController.getUserStats(mockReq, mockRes);
+      await userController.getUser(mockReq, mockRes);
 
       // Assert
-      expect(User.findByPk).toHaveBeenCalledWith(1, {
-        attributes: ['id', 'name', 'email', 'role', 'active', 'created_at', 'last_login']
+      expect(UserService.getUserById).toHaveBeenCalledWith(1);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockUser
       });
-      expect(mockRes.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          success: true,
-          data: expect.objectContaining({
-            user: expect.objectContaining({
-              id: 1,
-              name: 'João Silva'
-            }),
-            stats: expect.objectContaining({
-              transactions: expect.any(Object),
-              accounts: expect.any(Object),
-              notifications: expect.any(Object)
-            })
-          })
-        })
-      );
+    });
+
+    it('should handle user not found', async () => {
+      // Arrange
+      const error = new Error('Usuário não encontrado');
+      error.statusCode = 404;
+      
+      mockReq.params = { id: 999 };
+      UserService.getUserById.mockRejectedValue(error);
+
+      // Act
+      await userController.getUser(mockReq, mockRes);
+
+      // Assert
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
     });
   });
 
   describe('updateUserStatus', () => {
-    it('should return success for activate user', async () => {
+    it('should update user status successfully', async () => {
       // Arrange
-      const mockUser = {
+      const mockUpdatedUser = {
         id: 2,
         name: 'Maria Silva',
         email: 'maria@example.com',
-        active: false,
-        update: jest.fn().mockResolvedValue()
-      };
-
-      mockReq.params = { id: 2 };
-      mockReq.body = { status: 'active' };
-      
-      User.findByPk.mockResolvedValue(mockUser);
-
-      // Act
-      await userController.updateUserStatus(mockReq, mockRes);
-
-      // Assert
-      expect(User.findByPk).toHaveBeenCalledWith(2);
-      expect(mockUser.update).toHaveBeenCalledWith({ active: true });
-      expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Status do usuário atualizado com sucesso',
-        userId: 2,
-        newStatus: 'active'
-      });
-    });
-
-    it('should return success for deactivate user', async () => {
-      // Arrange
-      const mockUser = {
-        id: 2,
-        name: 'Maria Silva',
-        email: 'maria@example.com',
+        role: 'user',
         active: true,
-        update: jest.fn().mockResolvedValue()
+        status: 'active'
       };
 
       mockReq.params = { id: 2 };
-      mockReq.body = { status: 'inactive' };
-      
-      User.findByPk.mockResolvedValue(mockUser);
+      mockReq.body = { active: true };
+      UserService.updateUserStatus.mockResolvedValue(mockUpdatedUser);
 
       // Act
       await userController.updateUserStatus(mockReq, mockRes);
 
       // Assert
-      expect(mockUser.update).toHaveBeenCalledWith({ active: false });
+      expect(UserService.updateUserStatus).toHaveBeenCalledWith(2, true);
       expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Status do usuário atualizado com sucesso',
-        userId: 2,
-        newStatus: 'inactive'
+        success: true,
+        data: mockUpdatedUser,
+        message: 'Usuário ativado com sucesso'
       });
     });
 
-    it('should return error when trying to deactivate own account', async () => {
+    it('should handle invalid active value', async () => {
       // Arrange
-      const mockUser = {
-        id: 1,
-        name: 'Admin User',
-        email: 'admin@example.com',
-        active: true
-      };
-
-      mockReq.params = { id: 1 };
-      mockReq.body = { status: 'inactive' };
-      mockReq.user = { id: 1 };
-      
-      User.findByPk.mockResolvedValue(mockUser);
+      mockReq.params = { id: 2 };
+      mockReq.body = { active: 'invalid' };
 
       // Act
       await userController.updateUserStatus(mockReq, mockRes);
@@ -295,7 +244,28 @@ describe('UserController', () => {
       // Assert
       expect(mockRes.status).toHaveBeenCalledWith(400);
       expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Não é possível desativar sua própria conta'
+        success: false,
+        error: 'Campo "active" deve ser um valor booleano'
+      });
+    });
+
+    it('should handle service errors', async () => {
+      // Arrange
+      const error = new Error('Usuário não encontrado');
+      error.statusCode = 404;
+      
+      mockReq.params = { id: 999 };
+      mockReq.body = { active: true };
+      UserService.updateUserStatus.mockRejectedValue(error);
+
+      // Act
+      await userController.updateUserStatus(mockReq, mockRes);
+
+      // Assert
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Usuário não encontrado'
       });
     });
   });
@@ -303,46 +273,35 @@ describe('UserController', () => {
   describe('updateUserRole', () => {
     it('should update user role successfully', async () => {
       // Arrange
-      const mockUser = {
+      const mockUpdatedUser = {
         id: 2,
         name: 'Maria Silva',
         email: 'maria@example.com',
-        role: 'user',
-        update: jest.fn().mockResolvedValue()
+        role: 'admin',
+        active: true,
+        status: 'active'
       };
 
       mockReq.params = { id: 2 };
       mockReq.body = { role: 'admin' };
-      
-      User.findByPk.mockResolvedValue(mockUser);
+      UserService.updateUserRole.mockResolvedValue(mockUpdatedUser);
 
       // Act
       await userController.updateUserRole(mockReq, mockRes);
 
       // Assert
-      expect(User.findByPk).toHaveBeenCalledWith(2);
-      expect(mockUser.update).toHaveBeenCalledWith({ role: 'admin' });
+      expect(UserService.updateUserRole).toHaveBeenCalledWith(2, 'admin');
       expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Role do usuário atualizado com sucesso',
-        userId: 2,
-        newRole: 'admin'
+        success: true,
+        data: mockUpdatedUser,
+        message: 'Role do usuário atualizado para "admin" com sucesso'
       });
     });
 
-    it('should return error when trying to change own role', async () => {
+    it('should handle missing role field', async () => {
       // Arrange
-      const mockUser = {
-        id: 1,
-        name: 'Admin User',
-        email: 'admin@example.com',
-        role: 'admin'
-      };
-
-      mockReq.params = { id: 1 };
-      mockReq.body = { role: 'user' };
-      mockReq.user = { id: 1 };
-      
-      User.findByPk.mockResolvedValue(mockUser);
+      mockReq.params = { id: 2 };
+      mockReq.body = {};
 
       // Act
       await userController.updateUserRole(mockReq, mockRes);
@@ -350,56 +309,56 @@ describe('UserController', () => {
       // Assert
       expect(mockRes.status).toHaveBeenCalledWith(400);
       expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Não é possível alterar seu próprio role'
+        success: false,
+        error: 'Campo "role" é obrigatório'
+      });
+    });
+
+    it('should handle service errors', async () => {
+      // Arrange
+      const error = new Error('Role inválido. Deve ser "admin" ou "user"');
+      error.statusCode = 400;
+      
+      mockReq.params = { id: 2 };
+      mockReq.body = { role: 'invalid' };
+      UserService.updateUserRole.mockRejectedValue(error);
+
+      // Act
+      await userController.updateUserRole(mockReq, mockRes);
+
+      // Assert
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Role inválido. Deve ser "admin" ou "user"'
       });
     });
   });
 
   describe('deleteUser', () => {
-    it('should delete user successfully when no associated data', async () => {
+    it('should delete user successfully', async () => {
       // Arrange
-      const mockUser = {
-        id: 2,
-        name: 'Maria Silva',
-        email: 'maria@example.com',
-        destroy: jest.fn().mockResolvedValue()
-      };
-
       mockReq.params = { id: 2 };
-      mockReq.user = { id: 1 };
-      
-      User.findByPk.mockResolvedValue(mockUser);
-      Transaction.count.mockResolvedValue(0);
-      Account.count.mockResolvedValue(0);
+      UserService.deleteUser.mockResolvedValue();
 
       // Act
       await userController.deleteUser(mockReq, mockRes);
 
       // Assert
-      expect(User.findByPk).toHaveBeenCalledWith(2);
-      expect(Transaction.count).toHaveBeenCalledWith({ where: { user_id: 2 } });
-      expect(Account.count).toHaveBeenCalledWith({ where: { user_id: 2 } });
-      expect(mockUser.destroy).toHaveBeenCalled();
+      expect(UserService.deleteUser).toHaveBeenCalledWith(2);
       expect(mockRes.json).toHaveBeenCalledWith({
-        message: 'Usuário excluído com sucesso',
-        userId: 2
+        success: true,
+        message: 'Usuário excluído com sucesso'
       });
     });
 
-    it('should return error when user has associated data', async () => {
+    it('should handle service errors', async () => {
       // Arrange
-      const mockUser = {
-        id: 2,
-        name: 'Maria Silva',
-        email: 'maria@example.com'
-      };
-
-      mockReq.params = { id: 2 };
-      mockReq.user = { id: 1 };
+      const error = new Error('Não é possível excluir um usuário que possui dados associados');
+      error.statusCode = 400;
       
-      User.findByPk.mockResolvedValue(mockUser);
-      Transaction.count.mockResolvedValue(5);
-      Account.count.mockResolvedValue(2);
+      mockReq.params = { id: 2 };
+      UserService.deleteUser.mockRejectedValue(error);
 
       // Act
       await userController.deleteUser(mockReq, mockRes);
@@ -407,35 +366,67 @@ describe('UserController', () => {
       // Assert
       expect(mockRes.status).toHaveBeenCalledWith(400);
       expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Não é possível excluir usuário com dados associados',
-        details: {
-          transactions: 5,
-          accounts: 2
-        }
-      });
-    });
-
-    it('should return error when trying to delete own account', async () => {
-      // Arrange
-      const mockUser = {
-        id: 1,
-        name: 'Admin User',
-        email: 'admin@example.com'
-      };
-
-      mockReq.params = { id: 1 };
-      mockReq.user = { id: 1 };
-      
-      User.findByPk.mockResolvedValue(mockUser);
-
-      // Act
-      await userController.deleteUser(mockReq, mockRes);
-
-      // Assert
-      expect(mockRes.status).toHaveBeenCalledWith(400);
-      expect(mockRes.json).toHaveBeenCalledWith({
-        error: 'Não é possível excluir sua própria conta'
+        success: false,
+        error: 'Não é possível excluir um usuário que possui dados associados'
       });
     });
   });
-}); 
+
+  describe('getUserStats', () => {
+    it('should return user statistics successfully', async () => {
+      // Arrange
+      const mockStats = {
+        success: true,
+        data: {
+          user: {
+            id: 1,
+            name: 'João Silva',
+            email: 'joao@example.com',
+            role: 'user',
+            active: true
+          },
+          stats: {
+            totalTransactions: 50,
+            monthlyTransactions: 10,
+            totalAccounts: 3,
+            totalBalance: 1500.00,
+            unreadNotifications: 5,
+            monthlyIncome: 3000.00,
+            monthlyExpenses: 1500.00,
+            monthlyNet: 1500.00
+          }
+        },
+        message: 'Estatísticas do usuário obtidas com sucesso'
+      };
+
+      mockReq.params = { id: 1 };
+      UserService.getUserStats.mockResolvedValue(mockStats);
+
+      // Act
+      await userController.getUserStats(mockReq, mockRes);
+
+      // Assert
+      expect(UserService.getUserStats).toHaveBeenCalledWith(1);
+      expect(mockRes.json).toHaveBeenCalledWith(mockStats);
+    });
+
+    it('should handle service errors', async () => {
+      // Arrange
+      const error = new Error('Usuário não encontrado');
+      error.statusCode = 404;
+      
+      mockReq.params = { id: 999 };
+      UserService.getUserStats.mockRejectedValue(error);
+
+      // Act
+      await userController.getUserStats(mockReq, mockRes);
+
+      // Assert
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
+    });
+  });
+});

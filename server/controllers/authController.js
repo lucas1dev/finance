@@ -13,6 +13,8 @@ const {
   forgotPasswordSchema, 
   resetPasswordSchema 
 } = require('../utils/validators');
+const AuthService = require('../services/authService');
+const { logger } = require('../utils/logger');
 
 /**
  * Gera um token JWT para o usuário especificado.
@@ -40,7 +42,11 @@ const generateResetToken = (userId) => {
   );
 };
 
-const authController = {
+/**
+ * Controller para gerenciamento de autenticação e autorização
+ * Implementa registro, login, recuperação de senha e gerenciamento de perfil
+ */
+class AuthController {
   /**
    * Registra um novo usuário no sistema.
    * @param {Object} req - Objeto de requisição Express.
@@ -50,46 +56,44 @@ const authController = {
    * @param {string} req.body.password - Senha do usuário.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com token e dados do usuário criado.
-   * @throws {Error} Se o email já estiver cadastrado ou houver erro no banco.
    * @example
    * // POST /auth/register
    * // Body: { "name": "João", "email": "joao@example.com", "password": "123456" }
-   * // Retorno: { "message": "Usuário registrado com sucesso", "token": "...", "user": {...} }
+   * // Retorno: { "success": true, "data": { "user": {...}, "token": "..." }, "message": "Usuário registrado com sucesso" }
    */
-  register: async (req, res) => {
+  async register(req, res) {
     try {
-      // Validar dados de entrada
-      const validatedData = registerUserSchema.parse(req.body);
-      const { name, email, password } = validatedData;
+      const result = await AuthService.registerUser(req.body);
 
-      const existingUser = await User.findOne({ where: { email } });
-      if (existingUser) {
-        return res.status(400).json({ error: 'Email já cadastrado' });
-      }
-
-      const user = await User.create({
-        name,
-        email,
-        password
+      logger.info('Usuário registrado com sucesso', {
+        user_id: result.user.id,
+        email: result.user.email
       });
 
-      const token = generateToken(user.id);
-
-      res.status(201).json({
-        message: 'Usuário registrado com sucesso',
-        token,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        }
+      return res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Usuário registrado com sucesso'
       });
     } catch (error) {
-      console.error('Erro ao registrar usuário:', error);
-      res.status(500).json({ error: 'Erro ao registrar usuário' });
+      logger.error('Erro ao registrar usuário', {
+        error: error.message,
+        email: req.body.email
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao registrar usuário'
+      });
     }
-  },
+  }
 
   /**
    * Realiza login do usuário no sistema.
@@ -99,50 +103,50 @@ const authController = {
    * @param {string} req.body.password - Senha do usuário.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com token e dados do usuário.
-   * @throws {Error} Se as credenciais forem inválidas ou houver erro no banco.
    * @example
    * // POST /auth/login
    * // Body: { "email": "joao@example.com", "password": "123456" }
-   * // Retorno: { "token": "...", "user": {...} }
+   * // Retorno: { "success": true, "data": { "user": {...}, "token": "..." } }
    */
-  login: async (req, res) => {
+  async login(req, res) {
     try {
-      // Validar dados de entrada
-      const validatedData = loginUserSchema.parse(req.body);
-      const { email, password } = validatedData;
-      
-      console.log('[LOGIN] Tentando login para:', email);
+      const result = await AuthService.loginUser(req.body);
 
-      const user = await User.findOne({ where: { email } });
-      if (!user) {
-        console.log('[LOGIN] Usuário não encontrado:', email);
-        return res.status(401).json({ error: 'Credenciais inválidas' });
-      }
-      console.log('[LOGIN] Usuário encontrado:', user.email);
+      logger.info('Login realizado com sucesso', {
+        user_id: result.user.id,
+        email: result.user.email
+      });
 
-      const validPassword = await user.validatePassword(password);
-      if (!validPassword) {
-        console.log('[LOGIN] Senha inválida para:', email);
-        return res.status(401).json({ error: 'Credenciais inválidas' });
-      }
-      console.log('[LOGIN] Senha válida para:', email);
-
-      const token = generateToken(user.id);
-      console.log('[LOGIN] Token gerado para:', email);
-      res.json({
-        token,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        }
+      return res.json({
+        success: true,
+        data: result
       });
     } catch (error) {
-      console.error('[LOGIN] Erro no login:', error);
-      res.status(500).json({ error: 'Erro ao fazer login' });
+      logger.error('Erro no login', {
+        error: error.message,
+        email: req.body.email
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'UnauthorizedError') {
+        return res.status(401).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao fazer login'
+      });
     }
-  },
+  }
 
   /**
    * Retorna o perfil do usuário autenticado.
@@ -150,29 +154,42 @@ const authController = {
    * @param {Object} req.user - Usuário autenticado (via JWT).
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com dados do perfil do usuário.
-   * @throws {Error} Se o usuário não for encontrado ou houver erro no banco.
    * @example
    * // GET /auth/profile
    * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { "id": 1, "name": "João", "email": "joao@example.com", "role": "user" }
+   * // Retorno: { "success": true, "data": { "id": 1, "name": "João", "email": "joao@example.com", "role": "user" } }
    */
-  getProfile: async (req, res) => {
+  async getProfile(req, res) {
     try {
-      const user = await User.findByPk(req.user.id);
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
-      }
+      const result = await AuthService.getUserProfile(req.user.id);
 
-      res.json({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
+      logger.info('Perfil do usuário obtido com sucesso', {
+        user_id: req.user.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
       });
     } catch (error) {
-      res.status(500).json({ error: 'Erro ao buscar perfil' });
+      logger.error('Erro ao buscar perfil do usuário', {
+        error: error.message,
+        user_id: req.user.id
+      });
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar perfil'
+      });
     }
-  },
+  }
 
   /**
    * Atualiza o perfil do usuário autenticado.
@@ -182,241 +199,298 @@ const authController = {
    * @param {string} req.body.email - Email do usuário (opcional).
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
-   * @throws {Error} Se o usuário não for encontrado ou houver erro no banco.
    * @example
    * // PUT /auth/profile
    * // Headers: { Authorization: "Bearer <token>" }
    * // Body: { "name": "João Silva", "email": "joao.silva@example.com" }
-   * // Retorno: { "message": "Perfil atualizado com sucesso" }
+   * // Retorno: { "success": true, "data": {...}, "message": "Perfil atualizado com sucesso" }
    */
-  updateProfile: async (req, res) => {
+  async updateProfile(req, res) {
     try {
-      // Validar dados de entrada
-      const validatedData = updateProfileSchema.parse(req.body);
-      const { name, email } = validatedData;
-      
-      const user = await User.findByPk(req.user.id);
-      
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
+      const result = await AuthService.updateUserProfile(req.user.id, req.body);
+
+      logger.info('Perfil do usuário atualizado com sucesso', {
+        user_id: req.user.id,
+        updated_fields: Object.keys(req.body)
+      });
+
+      return res.json({
+        success: true,
+        data: result,
+        message: 'Perfil atualizado com sucesso'
+      });
+    } catch (error) {
+      logger.error('Erro ao atualizar perfil do usuário', {
+        error: error.message,
+        user_id: req.user.id,
+        profile_data: req.body
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
       }
 
-      await user.update({ name, email });
-      res.json({ message: 'Perfil atualizado com sucesso' });
-    } catch (error) {
-      res.status(500).json({ error: 'Erro ao atualizar perfil' });
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao atualizar perfil'
+      });
     }
-  },
+  }
 
   /**
    * Atualiza a senha do usuário autenticado.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.body - Dados para atualização de senha.
+   * @param {Object} req.body - Dados da senha.
    * @param {string} req.body.currentPassword - Senha atual.
    * @param {string} req.body.newPassword - Nova senha.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
-   * @throws {Error} Se a senha atual for incorreta ou houver erro no banco.
    * @example
    * // PUT /auth/password
    * // Headers: { Authorization: "Bearer <token>" }
    * // Body: { "currentPassword": "123456", "newPassword": "654321" }
-   * // Retorno: { "message": "Senha atualizada com sucesso" }
+   * // Retorno: { "success": true, "data": { "message": "Senha atualizada com sucesso" } }
    */
-  updatePassword: async (req, res) => {
+  async updatePassword(req, res) {
     try {
-      // Validar dados de entrada
-      const validatedData = updatePasswordSchema.parse(req.body);
-      const { currentPassword, newPassword } = validatedData;
-      
-      const user = await User.findByPk(req.user.id);
+      const result = await AuthService.updateUserPassword(req.user.id, req.body);
 
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
-      }
-
-      const validPassword = await user.validatePassword(currentPassword);
-      if (!validPassword) {
-        return res.status(401).json({ error: 'Senha atual incorreta' });
-      }
-
-      await user.update({ password: newPassword });
-      res.json({ message: 'Senha atualizada com sucesso' });
-    } catch (error) {
-      res.status(500).json({ error: 'Erro ao atualizar senha' });
-    }
-  },
-
-  setupTwoFactor: async (req, res) => {
-    try {
-      const secret = speakeasy.generateSecret({
-        name: `FinanceApp:${req.user.email}`
+      logger.info('Senha do usuário atualizada com sucesso', {
+        user_id: req.user.id
       });
 
-      const user = await User.findByPk(req.user.id);
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
-      }
-
-      await user.update({
-        two_factor_secret: secret.base32,
-        two_factor_enabled: true
+      return res.json({
+        success: true,
+        data: result
       });
-      
-      const qrCodeUrl = await qrcode.toDataURL(secret.otpauth_url);
-      res.json({ secret: secret.base32, qrCode: qrCodeUrl });
     } catch (error) {
-      res.status(500).json({ error: 'Erro ao configurar 2FA.' });
-    }
-  },
-
-  verifyTwoFactor: async (req, res) => {
-    try {
-      const { token } = req.body;
-      const user = await User.findByPk(req.user.id);
-
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
-      }
-
-      const verified = speakeasy.totp.verify({
-        secret: user.two_factor_secret,
-        encoding: 'base32',
-        token
+      logger.error('Erro ao atualizar senha do usuário', {
+        error: error.message,
+        user_id: req.user.id
       });
 
-      if (!verified) {
-        return res.status(400).json({ error: 'Token 2FA inválido.' });
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
       }
 
-      const newToken = generateToken(user.id);
-      res.json({ token: newToken });
-    } catch (error) {
-      res.status(500).json({ error: 'Erro ao verificar 2FA.' });
-    }
-  },
-
-  disableTwoFactor: async (req, res) => {
-    try {
-      const user = await User.findByPk(req.user.id);
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
+      if (error.name === 'UnauthorizedError') {
+        return res.status(401).json({
+          success: false,
+          error: error.message
+        });
       }
 
-      await user.update({
-        two_factor_secret: null,
-        two_factor_enabled: false
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao atualizar senha'
       });
-      
-      res.json({ message: '2FA desativado com sucesso.' });
-    } catch (error) {
-      res.status(500).json({ error: 'Erro ao desativar 2FA.' });
     }
-  },
+  }
 
   /**
-   * Processa solicitação de recuperação de senha.
-   * Gera um token de recuperação e envia email com link para reset.
+   * Inicia o processo de recuperação de senha.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.body - Dados da requisição.
+   * @param {Object} req.body - Dados para recuperação.
    * @param {string} req.body.email - Email do usuário.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
-   * @throws {Error} Se o usuário não for encontrado ou houver erro no envio de email.
    * @example
    * // POST /auth/forgot-password
    * // Body: { "email": "joao@example.com" }
-   * // Retorno: { "message": "Instruções de recuperação enviadas para seu email." }
+   * // Retorno: { "success": true, "data": { "message": "Email de recuperação enviado com sucesso" } }
    */
-  forgotPassword: async (req, res) => {
+  async forgotPassword(req, res) {
     try {
-      // Validar dados de entrada (sem validar formato de email para manter compatibilidade)
-      const { email } = req.body;
-      
-      if (!email) {
-        return res.status(400).json({ error: 'Email é obrigatório' });
-      }
-      
-      const user = await User.findOne({ where: { email } });
+      const result = await AuthService.forgotPassword(req.body);
 
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado.' });
-      }
+      logger.info('Email de recuperação de senha enviado', {
+        email: req.body.email
+      });
 
-      // Gerar token de recuperação
-      const resetToken = generateResetToken(user.id);
-      
-      // URL base da aplicação frontend
-      const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
-
-      try {
-        // Enviar email de recuperação
-        const emailSent = await sendPasswordResetEmail(user.email, user.name, resetUrl);
-
-        if (!emailSent) {
-          // Se o email não foi enviado, ainda retorna sucesso para não expor informações
-          console.warn('Email de recuperação não foi enviado, mas retornando sucesso para segurança');
-        }
-      } catch (emailError) {
-        // Se houver erro no envio de email, ainda retorna sucesso para não expor informações
-        console.warn('Erro ao enviar email de recuperação:', emailError.message);
-      }
-
-      res.json({ message: 'Instruções de recuperação enviadas para seu email.' });
+      return res.json({
+        success: true,
+        data: result
+      });
     } catch (error) {
-      console.error('Erro ao processar recuperação de senha:', error);
-      res.status(500).json({ error: 'Erro ao processar recuperação de senha.' });
+      logger.error('Erro ao processar recuperação de senha', {
+        error: error.message,
+        email: req.body.email
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao processar recuperação de senha'
+      });
     }
-  },
+  }
 
   /**
-   * Redefine a senha do usuário usando token de recuperação.
+   * Redefine a senha usando token de recuperação.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.body - Dados da requisição.
+   * @param {Object} req.body - Dados para redefinição.
    * @param {string} req.body.token - Token de recuperação.
    * @param {string} req.body.newPassword - Nova senha.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
-   * @throws {Error} Se o token for inválido ou houver erro ao atualizar senha.
    * @example
    * // POST /auth/reset-password
-   * // Body: { "token": "jwt_token", "newPassword": "nova_senha123" }
-   * // Retorno: { "message": "Senha atualizada com sucesso." }
+   * // Body: { "token": "...", "newPassword": "654321" }
+   * // Retorno: { "success": true, "data": { "message": "Senha redefinida com sucesso" } }
    */
-  resetPassword: async (req, res) => {
+  async resetPassword(req, res) {
     try {
-      // Validar dados de entrada
-      const validatedData = resetPasswordSchema.parse(req.body);
-      const { token, newPassword } = validatedData;
-      
-      // Verificar e decodificar o token
-      let decoded;
-      try {
-        decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        // Verificar se é um token de recuperação de senha
-        if (decoded.type !== 'password_reset') {
-          return res.status(400).json({ error: 'Token inválido para recuperação de senha.' });
-        }
-      } catch (error) {
-        return res.status(400).json({ error: 'Token inválido ou expirado.' });
-      }
+      const result = await AuthService.resetPassword(req.body);
 
-      const user = await User.findByPk(decoded.id);
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado' });
-      }
+      logger.info('Senha redefinida com sucesso');
 
-      // Atualizar a senha
-      await user.update({ password: newPassword });
-      
-      res.json({ message: 'Senha atualizada com sucesso.' });
+      return res.json({
+        success: true,
+        data: result
+      });
     } catch (error) {
-      console.error('Erro ao redefinir senha:', error);
-      res.status(500).json({ error: 'Erro ao redefinir senha.' });
+      logger.error('Erro ao redefinir senha', {
+        error: error.message
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'UnauthorizedError') {
+        return res.status(401).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      if (error.name === 'NotFoundError') {
+        return res.status(404).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao redefinir senha'
+      });
     }
   }
-};
 
-module.exports = authController; 
+  /**
+   * Realiza logout do usuário.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} req.user - Usuário autenticado.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
+   * @example
+   * // POST /auth/logout
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Retorno: { "success": true, "data": { "message": "Logout realizado com sucesso" } }
+   */
+  async logout(req, res) {
+    try {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      const result = await AuthService.logoutUser(req.user.id, token);
+
+      logger.info('Logout realizado com sucesso', {
+        user_id: req.user.id
+      });
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      logger.error('Erro ao realizar logout', {
+        error: error.message,
+        user_id: req.user.id
+      });
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao realizar logout'
+      });
+    }
+  }
+
+  /**
+   * Verifica se um token é válido.
+   * @param {Object} req - Objeto de requisição Express.
+   * @param {Object} res - Objeto de resposta Express.
+   * @returns {Promise<Object>} Resposta JSON com dados do usuário se o token for válido.
+   * @example
+   * // GET /auth/verify
+   * // Headers: { Authorization: "Bearer <token>" }
+   * // Retorno: { "success": true, "data": { "id": 1, "name": "João", "email": "joao@example.com", "role": "user" } }
+   */
+  async verifyToken(req, res) {
+    try {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      if (!token) {
+        return res.status(401).json({
+          success: false,
+          error: 'Token não fornecido'
+        });
+      }
+
+      const result = await AuthService.verifyToken(token);
+
+      return res.json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      if (error.name === 'UnauthorizedError') {
+        return res.status(401).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao verificar token'
+      });
+    }
+  }
+}
+
+module.exports = new AuthController(); 

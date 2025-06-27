@@ -1,45 +1,43 @@
-const dashboardController = require('../../controllers/dashboardController');
-const { User, Transaction, Account, Category, FixedAccount, Notification, InvestmentGoal } = require('../../models');
+/**
+ * Testes unitários para DashboardController
+ * Testa operações de dashboard e métricas
+ */
 
-// Mock dos modelos
-jest.mock('../../models', () => ({
-  User: {
-    findByPk: jest.fn(),
-    findOne: jest.fn()
-  },
-  Transaction: {
-    findAll: jest.fn()
-  },
-  Account: {
-    findAll: jest.fn()
-  },
-  Category: {
-    findAll: jest.fn()
-  },
-  FixedAccount: {
-    findAll: jest.fn()
-  },
-  Notification: {
-    findAll: jest.fn()
-  },
-  InvestmentGoal: {
-    findAll: jest.fn()
+let DashboardService;
+let dashboardController;
+
+// Mock do DashboardService
+jest.mock('../../services/dashboardService', () => ({
+  getMetrics: jest.fn(),
+  getCharts: jest.fn(),
+  getAlerts: jest.fn()
+}));
+
+// Mock do logger
+jest.mock('../../utils/logger', () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn()
   }
 }));
 
 describe('DashboardController', () => {
-  let mockReq;
-  let mockRes;
+  let mockReq, mockRes;
 
   beforeEach(() => {
+    // Importar após os mocks
+    dashboardController = require('../../controllers/dashboardController');
+    DashboardService = require('../../services/dashboardService');
+    
+    // Limpar todos os mocks
     jest.clearAllMocks();
     
-    // Setup do request mock
+    // Mock do objeto de requisição
     mockReq = {
       userId: 'test-user-id'
     };
 
-    // Setup do response mock
+    // Mock do objeto de resposta
     mockRes = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis()
@@ -48,193 +46,207 @@ describe('DashboardController', () => {
 
   describe('getMetrics', () => {
     it('should return dashboard metrics successfully', async () => {
-      // Mock dos dados
-      const mockAccounts = [
-        { id: 1, description: 'Conta Principal', balance: '10000' },
-        { id: 2, description: 'Conta Secundária', balance: '5000' }
-      ];
+      // Arrange
+      const mockMetrics = {
+        summary: {
+          totalBalance: 15000.00,
+          monthlyIncome: 5000.00,
+          monthlyExpenses: 3000.00,
+          monthlyNet: 2000.00,
+          totalTransactions: 150,
+          monthlyTransactions: 25
+        },
+        accounts: [
+          {
+            id: 1,
+            name: 'Conta Principal',
+            balance: 10000.00,
+            type: 'checking'
+          }
+        ],
+        recentTransactions: [
+          {
+            id: 1,
+            description: 'Salário',
+            amount: 5000.00,
+            type: 'income',
+            date: '2024-01-15'
+          }
+        ]
+      };
 
-      const mockTransactions = [
-        { id: 1, type: 'income', amount: '5000', date: new Date(), category: { name: 'Salário', type: 'income' } },
-        { id: 2, type: 'expense', amount: '3000', date: new Date(), category: { name: 'Alimentação', type: 'expense' } }
-      ];
+      DashboardService.getMetrics.mockResolvedValue(mockMetrics);
 
-      const mockPreviousTransactions = [
-        { id: 3, type: 'income', amount: '4500', date: new Date() },
-        { id: 4, type: 'expense', amount: '2800', date: new Date() }
-      ];
-
-      const mockOverdueAccounts = [
-        { id: 1, description: 'Conta Vencida', amount: '500', next_due_date: new Date(Date.now() - 86400000) }
-      ];
-
-      // Setup dos mocks
-      Account.findAll.mockResolvedValue(mockAccounts);
-      Transaction.findAll
-        .mockResolvedValueOnce(mockTransactions) // mês atual
-        .mockResolvedValueOnce(mockPreviousTransactions) // mês anterior
-        .mockResolvedValueOnce([]); // 3 meses atrás
-      FixedAccount.findAll.mockResolvedValue(mockOverdueAccounts);
-
+      // Act
       await dashboardController.getMetrics(mockReq, mockRes);
 
-      expect(mockRes.status).toHaveBeenCalledWith(200);
-      expect(mockRes.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          success: true,
-          data: expect.objectContaining({
-            totalBalance: expect.any(Number),
-            monthlyIncome: expect.any(Number),
-            monthlyExpenses: expect.any(Number),
-            monthlyNet: expect.any(Number),
-            incomeVariation: expect.any(Number),
-            expensesVariation: expect.any(Number),
-            topExpenseCategories: expect.any(Array),
-            overdueAccounts: expect.any(Number),
-            overdueAmount: expect.any(Number),
-            projectedBalance: expect.any(Number),
-            accountsCount: expect.any(Number),
-            lastUpdated: expect.any(String)
-          }),
-          message: expect.any(String)
-        })
-      );
+      // Assert
+      expect(DashboardService.getMetrics).toHaveBeenCalledWith('test-user-id');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockMetrics
+      });
+    });
+
+    it('should handle service errors', async () => {
+      // Arrange
+      const error = new Error('Database error');
+      DashboardService.getMetrics.mockRejectedValue(error);
+
+      // Act
+      await dashboardController.getMetrics(mockReq, mockRes);
+
+      // Assert
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro ao obter métricas do dashboard'
+      });
     });
   });
 
   describe('getCharts', () => {
     it('should return chart data successfully', async () => {
-      // Mock dos dados
-      const mockTransactions = [
-        { id: 1, type: 'income', amount: '5000', date: new Date(), category: { name: 'Salário', type: 'income', color: '#00ff00' } },
-        { id: 2, type: 'expense', amount: '3000', date: new Date(), category: { name: 'Alimentação', type: 'expense', color: '#ff0000' } }
-      ];
+      // Arrange
+      const mockCharts = {
+        monthlyBalance: [
+          { month: 'Jan', balance: 10000 },
+          { month: 'Feb', balance: 12000 }
+        ],
+        incomeVsExpenses: [
+          { month: 'Jan', income: 5000, expenses: 3000 },
+          { month: 'Feb', income: 5500, expenses: 3200 }
+        ],
+        categoryBreakdown: [
+          { category: 'Alimentação', amount: 800 },
+          { category: 'Transporte', amount: 500 }
+        ],
+        transactionTrends: [
+          { date: '2024-01-01', count: 5 },
+          { date: '2024-01-02', count: 3 }
+        ]
+      };
 
-      const mockPreviousTransactions = [
-        { id: 3, type: 'income', amount: '4500', date: new Date() },
-        { id: 4, type: 'expense', amount: '2800', date: new Date() }
-      ];
+      DashboardService.getCharts.mockResolvedValue(mockCharts);
 
-      // Setup dos mocks
-      Transaction.findAll
-        .mockResolvedValueOnce(mockTransactions) // mês atual
-        .mockResolvedValueOnce(mockPreviousTransactions) // mês anterior
-        .mockResolvedValueOnce([]); // 12 meses de evolução
-
+      // Act
       await dashboardController.getCharts(mockReq, mockRes);
 
-      expect(mockRes.status).toHaveBeenCalledWith(200);
-      expect(mockRes.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          success: true,
-          data: expect.objectContaining({
-            balanceEvolution: expect.any(Array),
-            categoryDistribution: expect.any(Array),
-            monthlyComparison: expect.objectContaining({
-              current: expect.any(Object),
-              previous: expect.any(Object)
-            }),
-            cashFlowProjection: expect.any(Array),
-            lastUpdated: expect.any(String)
-          }),
-          message: expect.any(String)
-        })
-      );
+      // Assert
+      expect(DashboardService.getCharts).toHaveBeenCalledWith('test-user-id');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockCharts
+      });
+    });
+
+    it('should handle service errors', async () => {
+      // Arrange
+      const error = new Error('Chart data error');
+      DashboardService.getCharts.mockRejectedValue(error);
+
+      // Act
+      await dashboardController.getCharts(mockReq, mockRes);
+
+      // Assert
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro ao obter dados dos gráficos'
+      });
     });
   });
 
   describe('getAlerts', () => {
     it('should return alerts successfully', async () => {
-      // Mock dos dados
-      const mockAccounts = [
-        { id: 1, description: 'Conta Principal', balance: '1000' },
-        { id: 2, description: 'Conta Secundária', balance: '5000' }
-      ];
+      // Arrange
+      const mockAlerts = {
+        lowBalance: [
+          {
+            account_id: 1,
+            account_name: 'Conta Principal',
+            current_balance: 500.00,
+            threshold: 1000.00
+          }
+        ],
+        overduePayables: [
+          {
+            id: 1,
+            description: 'Conta de luz',
+            due_date: '2024-01-10',
+            amount: 150.00,
+            days_overdue: 5
+          }
+        ],
+        upcomingReceivables: [
+          {
+            id: 1,
+            description: 'Pagamento cliente',
+            due_date: '2024-01-20',
+            amount: 2000.00,
+            days_until_due: 3
+          }
+        ],
+        investmentAlerts: [
+          {
+            investment_id: 1,
+            investment_name: 'CDB',
+            maturity_date: '2024-01-25',
+            amount: 5000.00,
+            days_until_maturity: 8
+          }
+        ]
+      };
 
-      const mockOverdueAccounts = [
-        { id: 1, description: 'Conta Vencida', amount: '500', next_due_date: new Date(Date.now() - 86400000) }
-      ];
+      DashboardService.getAlerts.mockResolvedValue(mockAlerts);
 
-      const mockUpcomingPayments = [
-        { id: 2, description: 'Conta Próxima', amount: '300', next_due_date: new Date(Date.now() + 86400000) }
-      ];
-
-      const mockNotifications = [
-        { id: 1, title: 'Alerta', message: 'Conta vencida', type: 'payment_overdue', createdAt: new Date() }
-      ];
-
-      const mockInvestmentGoals = [
-        {
-          id: 1,
-          title: 'Meta de Investimento',
-          target_amount: 10000,
-          current_amount: 3000
-        }
-      ];
-
-      // Setup dos mocks
-      Account.findAll.mockResolvedValue(mockAccounts);
-      FixedAccount.findAll
-        .mockResolvedValueOnce(mockOverdueAccounts) // contas vencidas
-        .mockResolvedValueOnce(mockUpcomingPayments); // pagamentos próximos
-      Notification.findAll.mockResolvedValue(mockNotifications);
-      InvestmentGoal.findAll.mockResolvedValue(mockInvestmentGoals);
-
+      // Act
       await dashboardController.getAlerts(mockReq, mockRes);
 
-      expect(mockRes.status).toHaveBeenCalledWith(200);
-      expect(mockRes.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          success: true,
-          data: expect.objectContaining({
-            overdueAccounts: expect.any(Array),
-            lowBalance: expect.any(Array),
-            upcomingPayments: expect.any(Array),
-            unreadNotifications: expect.any(Array),
-            unmetGoals: expect.any(Array),
-            summary: expect.objectContaining({
-              totalOverdue: expect.any(Number),
-              totalLowBalance: expect.any(Number),
-              totalUpcoming: expect.any(Number),
-              totalUnread: expect.any(Number),
-              totalUnmetGoals: expect.any(Number)
-            }),
-            lastUpdated: expect.any(String)
-          }),
-          message: expect.any(String)
-        })
-      );
+      // Assert
+      expect(DashboardService.getAlerts).toHaveBeenCalledWith('test-user-id');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockAlerts
+      });
     });
 
     it('should return empty arrays when no data exists', async () => {
-      // Setup dos mocks para retornar arrays vazios
-      Account.findAll.mockResolvedValue([]);
-      FixedAccount.findAll.mockResolvedValue([]);
-      Notification.findAll.mockResolvedValue([]);
-      InvestmentGoal.findAll.mockResolvedValue([]);
+      // Arrange
+      const mockAlerts = {
+        lowBalance: [],
+        overduePayables: [],
+        upcomingReceivables: [],
+        investmentAlerts: []
+      };
 
+      DashboardService.getAlerts.mockResolvedValue(mockAlerts);
+
+      // Act
       await dashboardController.getAlerts(mockReq, mockRes);
 
-      expect(mockRes.status).toHaveBeenCalledWith(200);
-      expect(mockRes.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          success: true,
-          data: expect.objectContaining({
-            overdueAccounts: [],
-            lowBalance: [],
-            upcomingPayments: [],
-            unreadNotifications: [],
-            unmetGoals: [],
-            summary: expect.objectContaining({
-              totalOverdue: 0,
-              totalLowBalance: 0,
-              totalUpcoming: 0,
-              totalUnread: 0,
-              totalUnmetGoals: 0
-            })
-          })
-        })
-      );
+      // Assert
+      expect(DashboardService.getAlerts).toHaveBeenCalledWith('test-user-id');
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: true,
+        data: mockAlerts
+      });
+    });
+
+    it('should handle service errors', async () => {
+      // Arrange
+      const error = new Error('Alerts error');
+      DashboardService.getAlerts.mockRejectedValue(error);
+
+      // Act
+      await dashboardController.getAlerts(mockReq, mockRes);
+
+      // Assert
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro ao obter alertas do dashboard'
+      });
     });
   });
 }); 

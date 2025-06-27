@@ -1,0 +1,544 @@
+/**
+ * Service para gerenciamento de autenticação e autorização
+ * Implementa registro, login, recuperação de senha e gerenciamento de perfil
+ */
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const speakeasy = require('speakeasy');
+const qrcode = require('qrcode');
+const crypto = require('crypto');
+const { User, UserSession } = require('../models');
+const { sendPasswordResetEmail } = require('./emailService');
+const { 
+  registerUserSchema, 
+  loginUserSchema, 
+  updateProfileSchema, 
+  updatePasswordSchema, 
+  forgotPasswordSchema, 
+  resetPasswordSchema 
+} = require('../utils/validators');
+const { ValidationError, NotFoundError, UnauthorizedError } = require('../utils/errors');
+const { logger } = require('../utils/logger');
+
+/**
+ * Gera um token JWT para o usuário especificado.
+ * @param {number} userId - ID do usuário.
+ * @returns {string} Token JWT assinado.
+ */
+const generateToken = (userId) => {
+  return jwt.sign(
+    { id: userId },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
+  );
+};
+
+/**
+ * Gera um token de recuperação de senha.
+ * @param {number} userId - ID do usuário.
+ * @returns {string} Token de recuperação.
+ */
+const generateResetToken = (userId) => {
+  return jwt.sign(
+    { id: userId, type: 'password_reset' },
+    process.env.JWT_SECRET,
+    { expiresIn: '1h' } // Token expira em 1 hora
+  );
+};
+
+/**
+ * Service responsável por gerenciar autenticação e autorização.
+ */
+class AuthService {
+  /**
+   * Registra um novo usuário no sistema.
+   * @param {Object} userData - Dados do usuário.
+   * @param {string} userData.name - Nome do usuário.
+   * @param {string} userData.email - Email do usuário.
+   * @param {string} userData.password - Senha do usuário.
+   * @returns {Promise<Object>} Dados do usuário criado e token.
+   * @throws {ValidationError} Se os dados forem inválidos.
+   * @throws {Error} Se o email já estiver cadastrado.
+   */
+  async registerUser(userData) {
+    try {
+      // Validar dados de entrada
+      const validatedData = registerUserSchema.parse(userData);
+      const { name, email, password } = validatedData;
+
+      // Verificar se o email já está cadastrado
+      const existingUser = await User.findOne({ where: { email } });
+      if (existingUser) {
+        throw new ValidationError('Email já cadastrado');
+      }
+
+      // Criar o usuário
+      const user = await User.create({
+        name,
+        email,
+        password
+      });
+
+      // Gerar token
+      const token = generateToken(user.id);
+
+      // Registrar sessão
+      await UserSession.create({
+        user_id: user.id,
+        token,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 horas
+      });
+
+      logger.info('Usuário registrado com sucesso', {
+        user_id: user.id,
+        email: user.email
+      });
+
+      return {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role
+        },
+        token
+      };
+    } catch (error) {
+      logger.error('Erro ao registrar usuário', {
+        error: error.message,
+        email: userData.email
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'ZodError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao registrar usuário');
+    }
+  }
+
+  /**
+   * Realiza login do usuário no sistema.
+   * @param {Object} credentials - Credenciais do usuário.
+   * @param {string} credentials.email - Email do usuário.
+   * @param {string} credentials.password - Senha do usuário.
+   * @returns {Promise<Object>} Dados do usuário e token.
+   * @throws {ValidationError} Se as credenciais forem inválidas.
+   * @throws {UnauthorizedError} Se o usuário não for encontrado ou a senha for incorreta.
+   */
+  async loginUser(credentials) {
+    try {
+      // Validar dados de entrada
+      const validatedData = loginUserSchema.parse(credentials);
+      const { email, password } = validatedData;
+
+      logger.info('Tentativa de login', { email });
+
+      // Buscar usuário
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        logger.warn('Tentativa de login com usuário inexistente', { email });
+        throw new UnauthorizedError('Credenciais inválidas');
+      }
+
+      // Validar senha
+      const validPassword = await user.validatePassword(password);
+      if (!validPassword) {
+        logger.warn('Tentativa de login com senha incorreta', { email });
+        throw new UnauthorizedError('Credenciais inválidas');
+      }
+
+      // Verificar se o usuário está ativo
+      if (!user.active) {
+        logger.warn('Tentativa de login com usuário inativo', { email });
+        throw new UnauthorizedError('Conta desativada');
+      }
+
+      // Gerar token
+      const token = generateToken(user.id);
+
+      // Registrar sessão
+      await UserSession.create({
+        user_id: user.id,
+        token,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 horas
+      });
+
+      // Atualizar último login
+      await user.update({ last_login: new Date() });
+
+      logger.info('Login realizado com sucesso', {
+        user_id: user.id,
+        email: user.email
+      });
+
+      return {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role
+        },
+        token
+      };
+    } catch (error) {
+      logger.error('Erro no login', {
+        error: error.message,
+        email: credentials.email
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'UnauthorizedError' || error.name === 'ZodError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao fazer login');
+    }
+  }
+
+  /**
+   * Obtém o perfil do usuário.
+   * @param {number} userId - ID do usuário.
+   * @returns {Promise<Object>} Dados do perfil do usuário.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   */
+  async getUserProfile(userId) {
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      logger.info('Perfil do usuário obtido com sucesso', {
+        user_id: userId
+      });
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        active: user.active,
+        created_at: user.created_at,
+        last_login: user.last_login
+      };
+    } catch (error) {
+      logger.error('Erro ao buscar perfil do usuário', {
+        error: error.message,
+        user_id: userId
+      });
+
+      if (error.name === 'NotFoundError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao buscar perfil');
+    }
+  }
+
+  /**
+   * Atualiza o perfil do usuário.
+   * @param {number} userId - ID do usuário.
+   * @param {Object} profileData - Dados para atualização.
+   * @param {string} profileData.name - Nome do usuário (opcional).
+   * @param {string} profileData.email - Email do usuário (opcional).
+   * @returns {Promise<Object>} Dados do perfil atualizado.
+   * @throws {ValidationError} Se os dados forem inválidos.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   */
+  async updateUserProfile(userId, profileData) {
+    try {
+      // Validar dados de entrada
+      const validatedData = updateProfileSchema.parse(profileData);
+      const { name, email } = validatedData;
+
+      // Buscar usuário
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Verificar se o email já está em uso por outro usuário
+      if (email && email !== user.email) {
+        const existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+          throw new ValidationError('Email já está em uso');
+        }
+      }
+
+      // Atualizar dados
+      const updateData = {};
+      if (name) updateData.name = name;
+      if (email) updateData.email = email;
+
+      await user.update(updateData);
+
+      logger.info('Perfil do usuário atualizado com sucesso', {
+        user_id: userId,
+        updated_fields: Object.keys(updateData)
+      });
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      };
+    } catch (error) {
+      logger.error('Erro ao atualizar perfil do usuário', {
+        error: error.message,
+        user_id: userId,
+        profile_data: profileData
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'NotFoundError' || error.name === 'ZodError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao atualizar perfil');
+    }
+  }
+
+  /**
+   * Atualiza a senha do usuário.
+   * @param {number} userId - ID do usuário.
+   * @param {Object} passwordData - Dados da senha.
+   * @param {string} passwordData.currentPassword - Senha atual.
+   * @param {string} passwordData.newPassword - Nova senha.
+   * @returns {Promise<Object>} Mensagem de sucesso.
+   * @throws {ValidationError} Se os dados forem inválidos.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   * @throws {UnauthorizedError} Se a senha atual for incorreta.
+   */
+  async updateUserPassword(userId, passwordData) {
+    try {
+      // Validar dados de entrada
+      const validatedData = updatePasswordSchema.parse(passwordData);
+      const { currentPassword, newPassword } = validatedData;
+
+      // Buscar usuário
+      const user = await User.findByPk(userId);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Validar senha atual
+      const validPassword = await user.validatePassword(currentPassword);
+      if (!validPassword) {
+        throw new UnauthorizedError('Senha atual incorreta');
+      }
+
+      // Atualizar senha
+      await user.update({ password: newPassword });
+
+      // Invalidar todas as sessões do usuário
+      await UserSession.destroy({ where: { user_id: userId } });
+
+      logger.info('Senha do usuário atualizada com sucesso', {
+        user_id: userId
+      });
+
+      return { message: 'Senha atualizada com sucesso' };
+    } catch (error) {
+      logger.error('Erro ao atualizar senha do usuário', {
+        error: error.message,
+        user_id: userId
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'NotFoundError' || error.name === 'UnauthorizedError' || error.name === 'ZodError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao atualizar senha');
+    }
+  }
+
+  /**
+   * Inicia o processo de recuperação de senha.
+   * @param {Object} resetData - Dados para recuperação.
+   * @param {string} resetData.email - Email do usuário.
+   * @returns {Promise<Object>} Mensagem de sucesso.
+   * @throws {ValidationError} Se os dados forem inválidos.
+   * @throws {NotFoundError} Se o usuário não for encontrado.
+   */
+  async forgotPassword(resetData) {
+    try {
+      // Validar dados de entrada
+      const validatedData = forgotPasswordSchema.parse(resetData);
+      const { email } = validatedData;
+
+      // Buscar usuário
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Gerar token de recuperação
+      const resetToken = generateResetToken(user.id);
+
+      // Enviar email de recuperação
+      await sendPasswordResetEmail(user.email, resetToken);
+
+      logger.info('Email de recuperação de senha enviado', {
+        user_id: user.id,
+        email: user.email
+      });
+
+      return { message: 'Email de recuperação enviado com sucesso' };
+    } catch (error) {
+      logger.error('Erro ao processar recuperação de senha', {
+        error: error.message,
+        email: resetData.email
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'NotFoundError' || error.name === 'ZodError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao processar recuperação de senha');
+    }
+  }
+
+  /**
+   * Redefine a senha usando token de recuperação.
+   * @param {Object} resetData - Dados para redefinição.
+   * @param {string} resetData.token - Token de recuperação.
+   * @param {string} resetData.newPassword - Nova senha.
+   * @returns {Promise<Object>} Mensagem de sucesso.
+   * @throws {ValidationError} Se os dados forem inválidos.
+   * @throws {UnauthorizedError} Se o token for inválido ou expirado.
+   */
+  async resetPassword(resetData) {
+    try {
+      // Validar dados de entrada
+      const validatedData = resetPasswordSchema.parse(resetData);
+      const { token, newPassword } = validatedData;
+
+      // Verificar token
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET);
+      } catch (error) {
+        throw new UnauthorizedError('Token inválido ou expirado');
+      }
+
+      if (decoded.type !== 'password_reset') {
+        throw new UnauthorizedError('Token inválido');
+      }
+
+      // Buscar usuário
+      const user = await User.findByPk(decoded.id);
+      if (!user) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Atualizar senha
+      await user.update({ password: newPassword });
+
+      // Invalidar todas as sessões do usuário
+      await UserSession.destroy({ where: { user_id: user.id } });
+
+      logger.info('Senha redefinida com sucesso', {
+        user_id: user.id
+      });
+
+      return { message: 'Senha redefinida com sucesso' };
+    } catch (error) {
+      logger.error('Erro ao redefinir senha', {
+        error: error.message
+      });
+
+      if (error.name === 'ValidationError' || error.name === 'UnauthorizedError' || error.name === 'NotFoundError' || error.name === 'ZodError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao redefinir senha');
+    }
+  }
+
+  /**
+   * Realiza logout do usuário.
+   * @param {number} userId - ID do usuário.
+   * @param {string} token - Token da sessão.
+   * @returns {Promise<Object>} Mensagem de sucesso.
+   */
+  async logoutUser(userId, token) {
+    try {
+      // Remover sessão específica
+      await UserSession.destroy({
+        where: {
+          user_id: userId,
+          token
+        }
+      });
+
+      logger.info('Logout realizado com sucesso', {
+        user_id: userId
+      });
+
+      return { message: 'Logout realizado com sucesso' };
+    } catch (error) {
+      logger.error('Erro ao realizar logout', {
+        error: error.message,
+        user_id: userId
+      });
+
+      throw new Error('Erro ao realizar logout');
+    }
+  }
+
+  /**
+   * Verifica se um token é válido.
+   * @param {string} token - Token JWT.
+   * @returns {Promise<Object>} Dados do usuário se o token for válido.
+   * @throws {UnauthorizedError} Se o token for inválido ou expirado.
+   */
+  async verifyToken(token) {
+    try {
+      // Verificar token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Buscar usuário
+      const user = await User.findByPk(decoded.id);
+      if (!user) {
+        throw new UnauthorizedError('Usuário não encontrado');
+      }
+
+      // Verificar se o usuário está ativo
+      if (!user.active) {
+        throw new UnauthorizedError('Usuário inativo');
+      }
+
+      // Verificar se a sessão existe
+      const session = await UserSession.findOne({
+        where: {
+          user_id: user.id,
+          token,
+          expires_at: { [require('sequelize').Op.gt]: new Date() }
+        }
+      });
+
+      if (!session) {
+        throw new UnauthorizedError('Sessão expirada');
+      }
+
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      };
+    } catch (error) {
+      if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+        throw new UnauthorizedError('Token inválido ou expirado');
+      }
+
+      if (error.name === 'UnauthorizedError') {
+        throw error;
+      }
+
+      throw new Error('Erro ao verificar token');
+    }
+  }
+}
+
+module.exports = new AuthService(); 

@@ -5,16 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const { auth } = require('../middlewares/auth');
-const {
-  createFinancing,
-  listFinancings,
-  getFinancing,
-  updateFinancing,
-  deleteFinancing,
-  getAmortizationTable,
-  simulateEarlyPayment,
-  getFinancingStatistics
-} = require('../controllers/financingController');
+const financingController = require('../controllers/financingController');
 
 /**
  * @swagger
@@ -89,7 +80,7 @@ const {
  *       404:
  *         description: Credor não encontrado
  */
-router.post('/', auth, createFinancing);
+router.post('/', auth, financingController.create.bind(financingController));
 
 /**
  * @swagger
@@ -153,23 +144,7 @@ router.post('/', auth, createFinancing);
  *       401:
  *         description: Não autorizado
  */
-router.get('/', auth, listFinancings);
-
-/**
- * @swagger
- * /financings/statistics:
- *   get:
- *     summary: Obtém estatísticas dos financiamentos
- *     tags: [Financings]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Estatísticas dos financiamentos
- *       401:
- *         description: Não autorizado
- */
-router.get('/statistics', auth, getFinancingStatistics);
+router.get('/', auth, financingController.list.bind(financingController));
 
 /**
  * @swagger
@@ -194,7 +169,7 @@ router.get('/statistics', auth, getFinancingStatistics);
  *       401:
  *         description: Não autorizado
  */
-router.get('/:id', auth, getFinancing);
+router.get('/:id', auth, financingController.getById.bind(financingController));
 
 /**
  * @swagger
@@ -261,7 +236,7 @@ router.get('/:id', auth, getFinancing);
  *       401:
  *         description: Não autorizado
  */
-router.put('/:id', auth, updateFinancing);
+router.put('/:id', auth, financingController.update.bind(financingController));
 
 /**
  * @swagger
@@ -288,13 +263,13 @@ router.put('/:id', auth, updateFinancing);
  *       401:
  *         description: Não autorizado
  */
-router.delete('/:id', auth, deleteFinancing);
+router.delete('/:id', auth, financingController.delete.bind(financingController));
 
 /**
  * @swagger
- * /financings/{id}/amortization-table:
+ * /financings/{id}/amortization:
  *   get:
- *     summary: Gera a tabela de amortização do financiamento
+ *     summary: Obtém a tabela de amortização de um financiamento
  *     tags: [Financings]
  *     security:
  *       - bearerAuth: []
@@ -305,12 +280,6 @@ router.delete('/:id', auth, deleteFinancing);
  *         schema:
  *           type: integer
  *         description: ID do financiamento
- *       - in: query
- *         name: include_payments
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Incluir informações dos pagamentos realizados
  *     responses:
  *       200:
  *         description: Tabela de amortização
@@ -319,13 +288,13 @@ router.delete('/:id', auth, deleteFinancing);
  *       401:
  *         description: Não autorizado
  */
-router.get('/:id/amortization-table', auth, getAmortizationTable);
+router.get('/:id/amortization', auth, financingController.getAmortizationTable.bind(financingController));
 
 /**
  * @swagger
  * /financings/{id}/simulate-early-payment:
  *   post:
- *     summary: Simula o impacto de um pagamento antecipado
+ *     summary: Simula o pagamento antecipado de um financiamento
  *     tags: [Financings]
  *     security:
  *       - bearerAuth: []
@@ -343,20 +312,20 @@ router.get('/:id/amortization-table', auth, getAmortizationTable);
  *           schema:
  *             type: object
  *             required:
- *               - payment_amount
- *               - preference
+ *               - early_payment_amount
+ *               - payment_date
  *             properties:
- *               payment_amount:
+ *               early_payment_amount:
  *                 type: number
  *                 minimum: 0.01
  *                 description: Valor do pagamento antecipado
- *               preference:
+ *               payment_date:
  *                 type: string
- *                 enum: [reducao_prazo, reducao_parcela]
- *                 description: Preferência de aplicação do pagamento
+ *                 format: date
+ *                 description: Data do pagamento antecipado
  *     responses:
  *       200:
- *         description: Simulação do pagamento antecipado
+ *         description: Simulação realizada com sucesso
  *       400:
  *         description: Dados inválidos
  *       404:
@@ -364,6 +333,22 @@ router.get('/:id/amortization-table', auth, getAmortizationTable);
  *       401:
  *         description: Não autorizado
  */
-router.post('/:id/simulate-early-payment', auth, simulateEarlyPayment);
+router.post('/:id/simulate-early-payment', auth, financingController.simulateEarlyPayment.bind(financingController));
+
+/**
+ * @swagger
+ * /financings/statistics:
+ *   get:
+ *     summary: Obtém estatísticas dos financiamentos
+ *     tags: [Financings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Estatísticas dos financiamentos
+ *       401:
+ *         description: Não autorizado
+ */
+router.get('/statistics', auth, financingController.getStatistics.bind(financingController));
 
 module.exports = router; 
