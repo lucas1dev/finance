@@ -4,78 +4,94 @@
  * @author Lucas Santos
  */
 
-const transactionService = require('../services/transactionService');
-const { createTransactionSchema, updateTransactionSchema } = require('../utils/validators');
 const { logger } = require('../utils/logger');
-const { AppError } = require('../utils/errors');
+const { ValidationError, NotFoundError, AppError } = require('../utils/errors');
 
-const transactionController = {
+/**
+ * Controlador responsável por gerenciar transações.
+ * Delega toda a lógica de negócio para o TransactionService.
+ */
+class TransactionController {
+  /**
+   * Construtor do controller.
+   * @param {Object} transactionService - Service para gerenciar transações.
+   */
+  constructor(transactionService) {
+    this.transactionService = transactionService;
+  }
+
+  /**
+   * Método helper para tratar erros de forma consistente
+   * @param {Error} error - Erro capturado
+   * @param {Object} res - Objeto de resposta Express
+   * @returns {Object} Resposta JSON com erro apropriado
+   */
+  handleError(error, res) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    if (error instanceof NotFoundError || (error instanceof AppError && error.statusCode === 404)) {
+      return res.status(404).json({
+        success: false,
+        error: error.message
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+
   /**
    * Cria uma nova transação.
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.body - Dados da transação.
-   * @param {number} req.body.account_id - ID da conta.
-   * @param {number} req.body.category_id - ID da categoria (opcional).
-   * @param {string} req.body.type - Tipo da transação (income/expense).
-   * @param {number} req.body.amount - Valor da transação.
-   * @param {string} req.body.description - Descrição da transação.
-   * @param {string} req.body.date - Data da transação (opcional).
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com dados da transação criada.
-   * @throws {Error} Se a conta não for encontrada ou houver erro no banco.
-   * @example
-   * // POST /transactions
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Body: { "account_id": 1, "type": "income", "amount": 100, "description": "Salário" }
-   * // Retorno: { "message": "Transação criada com sucesso", "transactionId": 1, "newBalance": 100 }
    */
-  createTransaction: async (req, res, next) => {
+  async createTransaction(req, res) {
     try {
-      // Validar dados de entrada
-      const validatedData = createTransactionSchema.parse(req.body);
-      const userId = req.user.id;
+      const result = await this.transactionService.createTransaction(req.userId, req.body);
 
-      // Delegar lógica para o service
-      const { transaction, newBalance } = await transactionService.createTransaction(userId, validatedData);
+      logger.info('Transação criada com sucesso', {
+        user_id: req.userId,
+        transaction_id: result.transaction.id
+      });
 
-      res.status(201).json({
-        message: 'Transação criada com sucesso',
-        transactionId: transaction.id,
-        newBalance,
-        transaction: {
-          id: transaction.id,
-          type: transaction.type,
-          amount: transaction.amount,
-          description: transaction.description,
-          date: transaction.date
-        }
+      return res.status(201).json({
+        success: true,
+        data: {
+          transaction: result.transaction,
+          newBalance: result.newBalance
+        },
+        message: 'Transação criada com sucesso'
       });
     } catch (error) {
-      logger.error(`Erro ao criar transação: ${error.message}`, { userId: req.user.id, error });
-      next(error);
+      logger.error('Erro ao criar transação', {
+        error: error.message,
+        user_id: req.userId
+      });
+
+      return this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém a lista de transações do usuário.
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.query - Parâmetros de consulta.
-   * @param {string} req.query.startDate - Data de início (opcional).
-   * @param {string} req.query.endDate - Data de fim (opcional).
-   * @param {string} req.query.type - Tipo da transação (opcional).
-   * @param {number} req.query.category_id - ID da categoria (opcional).
-   * @param {number} req.query.account_id - ID da conta (opcional).
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Lista de transações em formato JSON.
-   * @throws {Error} Se houver erro no banco de dados.
-   * @example
-   * // GET /transactions?startDate=2024-01-01&endDate=2024-12-31&type=income
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: [{ id: 1, amount: 100, type: "income", description: "Salário" }, ...]
    */
-  getTransactions: async (req, res, next) => {
+  async getTransactions(req, res) {
     try {
-      const userId = req.user.id;
       const filters = {
         startDate: req.query.startDate,
         endDate: req.query.endDate,
@@ -89,201 +105,210 @@ const transactionController = {
         if (filters[key] === undefined) delete filters[key];
       });
 
-      const transactions = await transactionService.getTransactions(userId, filters);
+      const transactions = await this.transactionService.getTransactions(req.userId, filters);
 
-      res.json({
+      logger.info('Transações listadas com sucesso', {
+        user_id: req.userId,
+        total_transactions: transactions.length
+      });
+
+      return res.json({
         success: true,
-        data: transactions,
-        count: transactions.length
+        data: {
+          transactions,
+          count: transactions.length
+        }
       });
     } catch (error) {
-      logger.error(`Erro ao buscar transações: ${error.message}`, { userId: req.user.id, error });
-      next(error);
+      logger.error('Erro ao listar transações', {
+        error: error.message,
+        user_id: req.userId
+      });
+
+      return this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém uma transação específica.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
    * @param {string} req.params.id - ID da transação.
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Transação em formato JSON.
-   * @throws {Error} Se a transação não for encontrada ou houver erro no banco.
-   * @example
-   * // GET /transactions/1
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { id: 1, amount: 100, type: "income", description: "Salário" }
    */
-  getTransaction: async (req, res, next) => {
+  async getTransaction(req, res) {
     try {
-      const { id } = req.params;
-      const userId = req.user.id;
+      const transaction = await this.transactionService.getTransaction(req.userId, req.params.id);
 
-      const transaction = await transactionService.getTransaction(userId, id);
+      logger.info('Transação obtida com sucesso', {
+        user_id: req.userId,
+        transaction_id: req.params.id
+      });
 
-      if (!transaction) {
-        throw new AppError('Transação não encontrada', 404);
-      }
-
-      res.json({
+      return res.json({
         success: true,
-        data: transaction
+        data: { transaction }
       });
     } catch (error) {
-      logger.error(`Erro ao buscar transação: ${error.message}`, { userId: req.user.id, transactionId: req.params.id, error });
-      next(error);
+      logger.error('Erro ao obter transação', {
+        error: error.message,
+        user_id: req.userId,
+        transaction_id: req.params.id
+      });
+
+      return this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Atualiza uma transação existente.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
    * @param {string} req.params.id - ID da transação.
    * @param {Object} req.body - Dados para atualização.
-   * @param {string} req.body.type - Tipo da transação (opcional).
-   * @param {number} req.body.amount - Valor da transação (opcional).
-   * @param {number} req.body.category_id - ID da categoria (opcional).
-   * @param {string} req.body.description - Descrição da transação (opcional).
-   * @param {string} req.body.date - Data da transação (opcional).
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
-   * @throws {Error} Se a transação não for encontrada ou houver erro no banco.
-   * @example
-   * // PUT /transactions/1
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Body: { "amount": 150, "description": "Salário atualizado" }
-   * // Retorno: { "message": "Transação atualizada com sucesso", "newBalance": 150 }
    */
-  updateTransaction: async (req, res, next) => {
+  async updateTransaction(req, res) {
     try {
-      const { id } = req.params;
-      const userId = req.user.id;
-      
-      // Validar dados de entrada
-      const validatedData = updateTransactionSchema.parse(req.body);
+      const result = await this.transactionService.updateTransaction(req.userId, req.params.id, req.body);
 
-      // Delegar lógica para o service
-      const { transaction, newBalance } = await transactionService.updateTransaction(userId, id, validatedData);
+      logger.info('Transação atualizada com sucesso', {
+        user_id: req.userId,
+        transaction_id: req.params.id
+      });
 
-      res.json({
-        message: 'Transação atualizada com sucesso',
-        newBalance,
-        transaction: {
-          id: transaction.id,
-          type: transaction.type,
-          amount: transaction.amount,
-          description: transaction.description,
-          date: transaction.date
-        }
+      return res.json({
+        success: true,
+        data: {
+          transaction: result.transaction,
+          newBalance: result.newBalance
+        },
+        message: 'Transação atualizada com sucesso'
       });
     } catch (error) {
-      logger.error(`Erro ao atualizar transação: ${error.message}`, { userId: req.user.id, transactionId: req.params.id, error });
-      next(error);
+      logger.error('Erro ao atualizar transação', {
+        error: error.message,
+        user_id: req.userId,
+        transaction_id: req.params.id
+      });
+
+      return this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Remove uma transação.
    * @param {Object} req - Objeto de requisição Express.
-   * @param {Object} req.params - Parâmetros da URL.
    * @param {string} req.params.id - ID da transação.
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Resposta JSON com mensagem de sucesso.
-   * @throws {Error} Se a transação não for encontrada ou houver erro no banco.
-   * @example
-   * // DELETE /transactions/1
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { "message": "Transação removida com sucesso", "newBalance": 50 }
    */
-  deleteTransaction: async (req, res, next) => {
+  async deleteTransaction(req, res) {
     try {
-      const { id } = req.params;
-      const userId = req.user.id;
+      const result = await this.transactionService.deleteTransaction(req.userId, req.params.id);
 
-      const { newBalance } = await transactionService.deleteTransaction(userId, id);
+      logger.info('Transação removida com sucesso', {
+        user_id: req.userId,
+        transaction_id: req.params.id
+      });
 
-      res.json({
-        message: 'Transação removida com sucesso',
-        newBalance
+      return res.json({
+        success: true,
+        data: {
+          newBalance: result.newBalance
+        },
+        message: 'Transação removida com sucesso'
       });
     } catch (error) {
-      logger.error(`Erro ao remover transação: ${error.message}`, { userId: req.user.id, transactionId: req.params.id, error });
-      next(error);
+      logger.error('Erro ao remover transação', {
+        error: error.message,
+        user_id: req.userId,
+        transaction_id: req.params.id
+      });
+
+      return this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém estatísticas de transações.
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.query - Parâmetros de consulta.
-   * @param {string} req.query.period - Período (week/month/quarter/year).
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Estatísticas em formato JSON.
-   * @throws {Error} Se houver erro no banco de dados.
-   * @example
-   * // GET /transactions/stats?period=month
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { "totalIncome": 5000, "totalExpenses": 3000, "netAmount": 2000 }
    */
-  getStats: async (req, res, next) => {
+  async getStats(req, res) {
     try {
-      const userId = req.user.id;
       const period = req.query.period || 'month';
+      const stats = await this.transactionService.getTransactionStats(req.userId, period);
 
-      const stats = await transactionService.getTransactionStats(userId, period);
+      logger.info('Estatísticas de transações obtidas com sucesso', {
+        user_id: req.userId,
+        period
+      });
 
-      res.json({
+      return res.json({
         success: true,
         data: stats
       });
     } catch (error) {
-      logger.error(`Erro ao buscar estatísticas: ${error.message}`, { userId: req.user.id, error });
-      next(error);
+      logger.error('Erro ao obter estatísticas de transações', {
+        error: error.message,
+        user_id: req.userId
+      });
+
+      return this.handleError(error, res);
     }
-  },
+  }
 
   /**
    * Obtém dados para gráficos de transações.
    * @param {Object} req - Objeto de requisição Express.
    * @param {Object} req.query - Parâmetros de consulta.
-   * @param {string} req.query.chart - Tipo de gráfico (timeline/categories/trend).
-   * @param {string} req.query.period - Período (week/month/quarter/year).
+   * @param {number} req.userId - ID do usuário autenticado.
    * @param {Object} res - Objeto de resposta Express.
    * @returns {Promise<Object>} Dados do gráfico em formato JSON.
-   * @throws {Error} Se houver erro no banco de dados.
-   * @example
-   * // GET /transactions/charts?chart=timeline&period=month
-   * // Headers: { Authorization: "Bearer <token>" }
-   * // Retorno: { "timeline": [{ "label": "01/01", "income": 100, "expenses": 50 }] }
    */
-  getCharts: async (req, res, next) => {
+  async getCharts(req, res) {
     try {
-      const userId = req.user.id;
       const { chart, period = 'month' } = req.query;
 
       let chartData;
       switch (chart) {
         case 'timeline':
-          chartData = await transactionService.getTimelineData(userId, period);
+          chartData = await this.transactionService.getTimelineData(req.userId, period);
           break;
         case 'categories':
-          chartData = await transactionService.getCategoryChartData(userId, period);
+          chartData = await this.transactionService.getCategoryChartData(req.userId, period);
           break;
         default:
-          throw new AppError('Tipo de gráfico não suportado', 400);
+          throw new ValidationError('Tipo de gráfico não suportado');
       }
 
-      res.json({
+      logger.info('Dados de gráfico obtidos com sucesso', {
+        user_id: req.userId,
+        chart_type: chart,
+        period
+      });
+
+      return res.json({
         success: true,
         data: chartData
       });
     } catch (error) {
-      logger.error(`Erro ao buscar dados de gráfico: ${error.message}`, { userId: req.user.id, error });
-      next(error);
+      logger.error('Erro ao obter dados de gráfico', {
+        error: error.message,
+        user_id: req.userId,
+        chart: req.query.chart
+      });
+
+      return this.handleError(error, res);
     }
   }
-};
+}
 
-module.exports = transactionController; 
+module.exports = TransactionController; 

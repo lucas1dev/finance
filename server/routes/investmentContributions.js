@@ -32,7 +32,7 @@ router.use(authMiddleware.auth);
  * @body {string} observations - Observações (opcional)
  * @returns {Object} Aporte criado
  */
-router.post('/', asyncHandler(investmentContributionController.createContribution));
+router.post('/', asyncHandler(investmentContributionController.createContribution.bind(investmentContributionController)));
 
 /**
  * GET /investment-contributions
@@ -45,14 +45,14 @@ router.post('/', asyncHandler(investmentContributionController.createContributio
  * @query {number} limit - Limite por página (padrão: 10)
  * @returns {Object} Lista de aportes com paginação e estatísticas
  */
-router.get('/', asyncHandler(investmentContributionController.getContributions));
+router.get('/', asyncHandler(investmentContributionController.getContributions.bind(investmentContributionController)));
 
 /**
  * GET /investment-contributions/statistics
  * Calcula estatísticas dos aportes do usuário.
  * @returns {Object} Estatísticas gerais, por investimento e por corretora
  */
-router.get('/statistics', asyncHandler(investmentContributionController.getContributionStatistics));
+router.get('/statistics', asyncHandler(investmentContributionController.getContributionStatistics.bind(investmentContributionController)));
 
 /**
  * GET /investment-contributions/investment/:investmentId
@@ -61,7 +61,7 @@ router.get('/statistics', asyncHandler(investmentContributionController.getContr
  * @param {number} investmentId - ID do investimento
  * @returns {Object} Lista de aportes do investimento com resumo
  */
-router.get('/investment/:investmentId', asyncHandler(investmentContributionController.getContributionsByInvestment));
+router.get('/investment/:investmentId', asyncHandler(investmentContributionController.getContributionsByInvestment.bind(investmentContributionController)));
 
 /**
  * GET /investment-contributions/:id
@@ -69,7 +69,7 @@ router.get('/investment/:investmentId', asyncHandler(investmentContributionContr
  * @param {number} id - ID do aporte
  * @returns {Object} Dados do aporte
  */
-router.get('/:id', asyncHandler(investmentContributionController.getContribution));
+router.get('/:id', asyncHandler(investmentContributionController.getContribution.bind(investmentContributionController)));
 
 /**
  * PUT /investment-contributions/:id
@@ -83,7 +83,7 @@ router.get('/:id', asyncHandler(investmentContributionController.getContribution
  * @body {string} observations - Observações (opcional)
  * @returns {Object} Aporte atualizado
  */
-router.put('/:id', asyncHandler(investmentContributionController.updateContribution));
+router.put('/:id', asyncHandler(investmentContributionController.updateContribution.bind(investmentContributionController)));
 
 /**
  * DELETE /investment-contributions/:id
@@ -91,6 +91,6 @@ router.put('/:id', asyncHandler(investmentContributionController.updateContribut
  * @param {number} id - ID do aporte
  * @returns {Object} Confirmação de exclusão
  */
-router.delete('/:id', asyncHandler(investmentContributionController.deleteContribution));
+router.delete('/:id', asyncHandler(investmentContributionController.deleteContribution.bind(investmentContributionController)));
 
 module.exports = router; 

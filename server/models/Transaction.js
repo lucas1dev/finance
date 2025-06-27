@@ -1,6 +1,4 @@
 const { Model, DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-const Account = require('./Account');
 
 module.exports = (sequelize) => {
   class Transaction extends Model {}

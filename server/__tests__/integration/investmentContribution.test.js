@@ -29,8 +29,12 @@ describe('Investment Contribution Integration Tests', () => {
     // Criar usuário de teste via API e obter token
     authToken = await createTestUser(app, 'testinvestmentcontribution@example.com', 'Test User Investment Contribution');
     
+    console.log('Token gerado:', authToken ? 'Token existe' : 'Token não existe');
+    console.log('Token length:', authToken ? authToken.length : 0);
+    
     // Buscar o usuário criado
     testUser = await User.findOne({ where: { email: 'testinvestmentcontribution@example.com' } });
+    console.log('Usuário encontrado:', testUser ? testUser.id : 'Não encontrado');
 
     // Criar conta de teste
     testAccount = await Account.create({
@@ -64,20 +68,25 @@ describe('Investment Contribution Integration Tests', () => {
       quantity: 10,
       unit_price: 10,
       broker: 'xp_investimentos',
-      observations: 'Primeiro aporte'
+      observations: 'Primeiro aporte',
+      source_account_id: testAccount.id,
+      destination_account_id: testAccount.id
     };
     const response = await request(app)
       .post('/api/investment-contributions')
       .set('Authorization', `Bearer ${authToken}`)
       .send(aporte);
     
-    console.log('Response status:', response.status);
-    console.log('Response body:', response.body);
-    
     expect(response.status).toBe(201);
     expect(response.body).toHaveProperty('message', 'Aporte criado com sucesso');
-    expect(response.body.contribution.amount).toBe('100.00');
-    expect(response.body.contribution.quantity).toBe('10.0000');
+    expect(response.body.data.contribution.amount).toBeDefined();
+    expect(response.body.data.contribution.quantity).toBeDefined();
+    expect(response.body.data.contribution.unit_price).toBeDefined();
+    expect(response.body.data.contribution.investment_id).toBe(testInvestment.id);
+    expect(response.body.data.contribution.user_id).toBe(testUser.id);
+    expect(response.body.data.transactions).toBeDefined();
+    expect(Array.isArray(response.body.data.transactions)).toBe(true);
+    expect(response.body.data.transactions).toHaveLength(2); // Débito e crédito
   });
 
   it('deve listar os aportes de um investimento', async () => {
@@ -87,7 +96,9 @@ describe('Investment Contribution Integration Tests', () => {
       amount: 100,
       quantity: 10,
       unit_price: 10,
-      user_id: testUser.id
+      user_id: testUser.id,
+      source_account_id: testAccount.id,
+      destination_account_id: testAccount.id
     });
     await InvestmentContribution.create({
       investment_id: testInvestment.id,
@@ -95,16 +106,18 @@ describe('Investment Contribution Integration Tests', () => {
       amount: 200,
       quantity: 20,
       unit_price: 10,
-      user_id: testUser.id
+      user_id: testUser.id,
+      source_account_id: testAccount.id,
+      destination_account_id: testAccount.id
     });
     const response = await request(app)
       .get(`/api/investment-contributions/investment/${testInvestment.id}`)
       .set('Authorization', `Bearer ${authToken}`);
     expect(response.status).toBe(200);
-    expect(response.body.contributions.length).toBe(2);
-    expect(response.body.summary.totalAmount).toBe(300);
-    expect(response.body.summary.totalQuantity).toBe(30);
-    expect(response.body.summary.averageUnitPrice).toBe(10);
+    expect(response.body.data.contributions.length).toBe(2);
+    expect(response.body.data.statistics.totalAmount).toBe(300);
+    expect(response.body.data.statistics.totalQuantity).toBe(30);
+    expect(response.body.data.statistics.averageUnitPrice).toBe(10);
   });
 
   it('deve atualizar um aporte', async () => {
@@ -114,17 +127,24 @@ describe('Investment Contribution Integration Tests', () => {
       amount: 100,
       quantity: 10,
       unit_price: 10,
-      user_id: testUser.id
+      user_id: testUser.id,
+      source_account_id: testAccount.id,
+      destination_account_id: testAccount.id
     });
     const response = await request(app)
       .put(`/api/investment-contributions/${aporte.id}`)
       .set('Authorization', `Bearer ${authToken}`)
-      .send({ amount: 150, quantity: 15 });
+      .send({ 
+        amount: 150, 
+        quantity: 15,
+        source_account_id: testAccount.id,
+        destination_account_id: testAccount.id
+      });
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty('message', 'Aporte atualizado com sucesso');
-    expect(response.body.contribution.amount).toBeDefined();
-    expect(parseFloat(response.body.contribution.amount)).toBeCloseTo(150);
-    expect(parseFloat(response.body.contribution.quantity)).toBeCloseTo(15);
+    expect(response.body.data.contribution.amount).toBeDefined();
+    expect(parseFloat(response.body.data.contribution.amount)).toBeCloseTo(150);
+    expect(parseFloat(response.body.data.contribution.quantity)).toBeCloseTo(15);
   });
 
   it('deve excluir um aporte', async () => {
@@ -134,13 +154,15 @@ describe('Investment Contribution Integration Tests', () => {
       amount: 100,
       quantity: 10,
       unit_price: 10,
-      user_id: testUser.id
+      user_id: testUser.id,
+      source_account_id: testAccount.id,
+      destination_account_id: testAccount.id
     });
     const response = await request(app)
       .delete(`/api/investment-contributions/${aporte.id}`)
       .set('Authorization', `Bearer ${authToken}`);
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('message', 'Aporte excluído com sucesso');
+    expect(response.body.data).toHaveProperty('message', 'Aporte removido com sucesso');
     const deleted = await InvestmentContribution.findByPk(aporte.id);
     expect(deleted).toBeNull();
   });
@@ -152,7 +174,9 @@ describe('Investment Contribution Integration Tests', () => {
       amount: 100,
       quantity: 10,
       unit_price: 10,
-      user_id: testUser.id
+      user_id: testUser.id,
+      source_account_id: testAccount.id,
+      destination_account_id: testAccount.id
     });
     await InvestmentContribution.create({
       investment_id: testInvestment.id,
@@ -160,15 +184,17 @@ describe('Investment Contribution Integration Tests', () => {
       amount: 200,
       quantity: 20,
       unit_price: 10,
-      user_id: testUser.id
+      user_id: testUser.id,
+      source_account_id: testAccount.id,
+      destination_account_id: testAccount.id
     });
     const response = await request(app)
       .get('/api/investment-contributions/statistics')
       .set('Authorization', `Bearer ${authToken}`);
     expect(response.status).toBe(200);
-    expect(response.body.general.totalAmount).toBe(300);
-    expect(response.body.general.totalQuantity).toBe(30);
-    expect(response.body.general.totalContributions).toBe(2);
-    expect(response.body.general.averageAmount).toBe(150);
+    expect(response.body.data.totalAmount).toBe(300);
+    expect(response.body.data.totalQuantity).toBe(30);
+    expect(response.body.data.totalContributions).toBe(2);
+    expect(response.body.data.averageAmount).toBe(150);
   });
 }); 

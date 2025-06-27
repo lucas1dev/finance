@@ -2,7 +2,7 @@
  * Service para gerenciamento de aportes de investimentos
  * Implementa CRUD de aportes, cálculos e estatísticas
  */
-const { InvestmentContribution, Investment, Account, Transaction } = require('../models');
+const { InvestmentContribution, Investment, Account, sequelize } = require('../models');
 const { 
   createContributionSchema, 
   updateContributionSchema, 
@@ -28,6 +28,8 @@ class InvestmentContributionService {
    * @param {number} contributionData.unit_price - Preço unitário.
    * @param {string} contributionData.broker - Corretora (opcional).
    * @param {string} contributionData.observations - Observações (opcional).
+   * @param {number} contributionData.source_account_id - ID da conta de origem.
+   * @param {number} contributionData.destination_account_id - ID da conta de destino.
    * @returns {Promise<Object>} Aporte criado com transações.
    * @throws {ValidationError} Se os dados forem inválidos.
    * @throws {NotFoundError} Se o investimento não for encontrado.
@@ -67,7 +69,6 @@ class InvestmentContributionService {
       }
 
       // Inicia transação do banco de dados
-      const { sequelize } = require('../config/database');
       const result = await sequelize.transaction(async (t) => {
         // Criar o aporte
         const contribution = await InvestmentContribution.create({
@@ -75,23 +76,14 @@ class InvestmentContributionService {
           user_id: userId
         }, { transaction: t });
 
-        // Atualizar o saldo da conta de origem (débito)
-        await sourceAccount.update({
-          balance: parseFloat(sourceAccount.balance) - validatedData.amount
-        }, { transaction: t });
-
-        // Atualizar o saldo da conta de destino (crédito)
-        await destinationAccount.update({
-          balance: parseFloat(destinationAccount.balance) + validatedData.amount
-        }, { transaction: t });
-
         // Criar duas transações usando o TransactionService
         const TransactionService = require('./transactionService');
+        const TransactionServiceClass = TransactionService.constructor;
         const contributionWithInvestment = {
           ...contribution.toJSON(),
           investment: investment
         };
-        const transactions = await TransactionService.createFromInvestmentContribution(
+        const transactions = await TransactionServiceClass.createFromInvestmentContribution(
           contributionWithInvestment, 
           { transaction: t }
         );
@@ -99,7 +91,7 @@ class InvestmentContributionService {
         return { contribution, transactions };
       });
 
-      // Buscar o aporte criado com dados do investimento
+      // Buscar o aporte criado com dados relacionados
       const createdContribution = await InvestmentContribution.findByPk(result.contribution.id, {
         include: [
           { model: Investment, as: 'investment' },
@@ -511,9 +503,9 @@ class InvestmentContributionService {
           where,
           attributes: [
             'investment_id',
-            [require('sequelize').fn('SUM', require('sequelize').col('amount')), 'total_amount'],
-            [require('sequelize').fn('SUM', require('sequelize').col('quantity')), 'total_quantity'],
-            [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
+            [require('sequelize').fn('SUM', require('sequelize').col('InvestmentContribution.amount')), 'total_amount'],
+            [require('sequelize').fn('SUM', require('sequelize').col('InvestmentContribution.quantity')), 'total_quantity'],
+            [require('sequelize').fn('COUNT', require('sequelize').col('InvestmentContribution.id')), 'count']
           ],
           include: [
             {
@@ -523,7 +515,7 @@ class InvestmentContributionService {
             }
           ],
           group: ['investment_id'],
-          order: [[require('sequelize').fn('SUM', require('sequelize').col('amount')), 'DESC']],
+          order: [[require('sequelize').fn('SUM', require('sequelize').col('InvestmentContribution.amount')), 'DESC']],
           limit: 10
         })
       ]);

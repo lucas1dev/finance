@@ -130,7 +130,7 @@ async function createTestUser(app, email = null, name = 'Test User') {
       });
     
     if (response.status === 201) {
-      return response.body.token;
+      return response.body.data && response.body.data.token ? response.body.data.token : null;
     } else if (response.status === 400 && response.body.error === 'Email já cadastrado') {
       // Se o email já existe, tentar fazer login
       const loginResponse = await request(app)
@@ -139,9 +139,8 @@ async function createTestUser(app, email = null, name = 'Test User') {
           email: uniqueEmail,
           password: 'password123'
         });
-      
       if (loginResponse.status === 200) {
-        return loginResponse.body.token;
+        return loginResponse.body.data && loginResponse.body.data.token ? loginResponse.body.data.token : null;
       } else {
         throw new Error(`Erro ao fazer login: ${loginResponse.body.error}`);
       }
