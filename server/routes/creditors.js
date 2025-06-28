@@ -4,15 +4,12 @@
  */
 const express = require('express');
 const router = express.Router();
+const CreditorController = require('../controllers/creditorController');
+const creditorService = require('../services/creditorService');
 const { auth } = require('../middlewares/auth');
-const {
-  createCreditor,
-  listCreditors,
-  getCreditor,
-  updateCreditor,
-  deleteCreditor,
-  searchCreditors
-} = require('../controllers/creditorController');
+
+// Criar instância do controller com injeção de dependência
+const creditorController = new CreditorController(creditorService);
 
 /**
  * @swagger
@@ -62,7 +59,7 @@ const {
  *       401:
  *         description: Não autorizado
  */
-router.post('/', auth, createCreditor);
+router.post('/', auth, creditorController.createCreditor);
 
 /**
  * @swagger
@@ -108,7 +105,7 @@ router.post('/', auth, createCreditor);
  *       401:
  *         description: Não autorizado
  */
-router.get('/', auth, listCreditors);
+router.get('/', auth, creditorController.listCreditors);
 
 /**
  * @swagger
@@ -131,7 +128,7 @@ router.get('/', auth, listCreditors);
  *       401:
  *         description: Não autorizado
  */
-router.get('/search', auth, searchCreditors);
+router.get('/search', auth, creditorController.searchCreditors);
 
 /**
  * @swagger
@@ -156,7 +153,7 @@ router.get('/search', auth, searchCreditors);
  *       401:
  *         description: Não autorizado
  */
-router.get('/:id', auth, getCreditor);
+router.get('/:id', auth, creditorController.getCreditor);
 
 /**
  * @swagger
@@ -214,7 +211,7 @@ router.get('/:id', auth, getCreditor);
  *       401:
  *         description: Não autorizado
  */
-router.put('/:id', auth, updateCreditor);
+router.put('/:id', auth, creditorController.updateCreditor);
 
 /**
  * @swagger
@@ -241,6 +238,6 @@ router.put('/:id', auth, updateCreditor);
  *       401:
  *         description: Não autorizado
  */
-router.delete('/:id', auth, deleteCreditor);
+router.delete('/:id', auth, creditorController.deleteCreditor);
 
 module.exports = router; 

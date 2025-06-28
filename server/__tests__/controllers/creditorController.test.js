@@ -10,15 +10,20 @@
  * // npm test __tests__/controllers/creditorController.test.js
  */
 
+const { ValidationError, NotFoundError, AppError } = require('../../utils/errors');
+
 // Mock do service
-jest.mock('../../services/creditorService', () => ({
+const mockCreditorService = {
   createCreditor: jest.fn(),
   listCreditors: jest.fn(),
   getCreditor: jest.fn(),
   updateCreditor: jest.fn(),
   deleteCreditor: jest.fn(),
   searchCreditors: jest.fn()
-}));
+};
+
+// Mock do módulo creditorService
+jest.mock('../../services/creditorService', () => mockCreditorService);
 
 // Mock dos validadores
 jest.mock('../../utils/creditorValidators', () => ({
@@ -28,25 +33,30 @@ jest.mock('../../utils/creditorValidators', () => ({
 }));
 
 describe('CreditorController', () => {
-  let creditorController;
-  let creditorService;
-  let createCreditorSchema, updateCreditorSchema, listCreditorsSchema;
+  let controller;
+  let mockReq;
+  let mockRes;
 
   beforeEach(() => {
     // Limpar cache do require para garantir mocks limpos
     jest.resetModules();
     delete require.cache[require.resolve('../../controllers/creditorController')];
-    delete require.cache[require.resolve('../../services/creditorService')];
-    delete require.cache[require.resolve('../../utils/creditorValidators')];
     
     // Reimportar módulos com mocks limpos
-    creditorController = require('../../controllers/creditorController');
-    creditorService = require('../../services/creditorService');
-    const validators = require('../../utils/creditorValidators');
-    
-    createCreditorSchema = validators.createCreditorSchema;
-    updateCreditorSchema = validators.updateCreditorSchema;
-    listCreditorsSchema = validators.listCreditorsSchema;
+    const CreditorController = require('../../controllers/creditorController');
+    controller = new CreditorController(mockCreditorService);
+
+    mockReq = {
+      user: { id: 1 },
+      body: {},
+      params: {},
+      query: {}
+    };
+
+    mockRes = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis()
+    };
 
     // Limpar todos os mocks
     jest.clearAllMocks();
@@ -54,236 +64,336 @@ describe('CreditorController', () => {
 
   describe('createCreditor', () => {
     it('deve criar um novo credor com sucesso', async () => {
-      const req = {
-        userId: 1,
-        body: {
-          name: 'Banco XYZ',
-          document_type: 'CNPJ',
-          document_number: '12.345.678/0001-90',
-          address: 'Rua ABC, 123'
-        }
+      const creditorData = {
+        name: 'Banco XYZ',
+        document_type: 'CNPJ',
+        document_number: '12.345.678/0001-90',
+        address: 'Rua ABC, 123'
       };
-      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-      const next = jest.fn();
 
-      const validatedData = { ...req.body };
-      const createdCreditor = { id: 1, ...validatedData, user_id: 1 };
+      const mockCreditor = {
+        id: 1,
+        ...creditorData,
+        user_id: 1
+      };
 
-      createCreditorSchema.parse.mockReturnValue(validatedData);
-      creditorService.createCreditor.mockResolvedValue(createdCreditor);
+      mockReq.body = creditorData;
+      mockCreditorService.createCreditor.mockResolvedValue(mockCreditor);
 
-      await creditorController.createCreditor(req, res, next);
+      await controller.createCreditor(mockReq, mockRes);
 
-      expect(createCreditorSchema.parse).toHaveBeenCalledWith(req.body);
-      expect(creditorService.createCreditor).toHaveBeenCalledWith(1, validatedData);
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith({
+      expect(mockCreditorService.createCreditor).toHaveBeenCalledWith(1, creditorData);
+      expect(mockRes.status).toHaveBeenCalledWith(201);
+      expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
-        data: { creditor: createdCreditor }
+        data: { creditor: mockCreditor }
       });
     });
 
-    it('deve passar erro para o next', async () => {
-      const req = { userId: 1, body: { name: 'Test' } };
-      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-      const next = jest.fn();
+    it('deve retornar erro 400 para dados inválidos', async () => {
+      const creditorData = { name: '' };
+      mockReq.body = creditorData;
+      
+      const zodError = new Error('Nome do credor é obrigatório');
+      zodError.name = 'ZodError';
+      mockCreditorService.createCreditor.mockRejectedValue(zodError);
 
-      const error = new Error('Erro de validação');
-      createCreditorSchema.parse.mockImplementation(() => { throw error; });
+      await controller.createCreditor(mockReq, mockRes);
 
-      await creditorController.createCreditor(req, res, next);
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Nome do credor é obrigatório'
+      });
+    });
 
-      expect(next).toHaveBeenCalledWith(error);
+    it('deve retornar erro 500 para erro interno', async () => {
+      const creditorData = { name: 'Banco Teste' };
+      mockReq.body = creditorData;
+      
+      const internalError = new Error('Erro interno');
+      mockCreditorService.createCreditor.mockRejectedValue(internalError);
+
+      await controller.createCreditor(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     });
   });
 
   describe('listCreditors', () => {
     it('deve listar credores com sucesso', async () => {
-      const req = {
-        userId: 1,
-        query: { page: 1, limit: 10 }
-      };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
-
-      const validatedQuery = { page: 1, limit: 10 };
+      const queryData = { page: 1, limit: 10 };
       const result = {
         creditors: [{ id: 1, name: 'Banco XYZ' }],
         pagination: { total: 1, page: 1, limit: 10 }
       };
 
-      listCreditorsSchema.parse.mockReturnValue(validatedQuery);
-      creditorService.listCreditors.mockResolvedValue(result);
+      mockReq.query = queryData;
+      mockCreditorService.listCreditors.mockResolvedValue(result);
 
-      await creditorController.listCreditors(req, res, next);
+      await controller.listCreditors(mockReq, mockRes);
 
-      expect(listCreditorsSchema.parse).toHaveBeenCalledWith(req.query);
-      expect(creditorService.listCreditors).toHaveBeenCalledWith(1, validatedQuery);
-      expect(res.json).toHaveBeenCalledWith({
+      expect(mockCreditorService.listCreditors).toHaveBeenCalledWith(1, queryData);
+      expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
         data: result
       });
     });
 
-    it('deve passar erro para o next', async () => {
-      const req = { userId: 1, query: {} };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
+    it('deve retornar erro 500 para erro interno', async () => {
+      const queryData = { page: 1 };
+      mockReq.query = queryData;
+      
+      const internalError = new Error('Erro interno');
+      mockCreditorService.listCreditors.mockRejectedValue(internalError);
 
-      const error = new Error('Erro de validação');
-      listCreditorsSchema.parse.mockImplementation(() => { throw error; });
+      await controller.listCreditors(mockReq, mockRes);
 
-      await creditorController.listCreditors(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(error);
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     });
   });
 
   describe('getCreditor', () => {
     it('deve obter credor com sucesso', async () => {
-      const req = { userId: 1, params: { id: '1' } };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
+      const mockCreditor = { id: 1, name: 'Banco XYZ' };
+      mockReq.params = { id: 1 };
+      mockCreditorService.getCreditor.mockResolvedValue(mockCreditor);
 
-      const creditor = { id: 1, name: 'Banco XYZ' };
-      creditorService.getCreditor.mockResolvedValue(creditor);
+      await controller.getCreditor(mockReq, mockRes);
 
-      await creditorController.getCreditor(req, res, next);
-
-      expect(creditorService.getCreditor).toHaveBeenCalledWith(1, '1');
-      expect(res.json).toHaveBeenCalledWith({
+      expect(mockCreditorService.getCreditor).toHaveBeenCalledWith(1, 1);
+      expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
-        data: { creditor }
+        data: { creditor: mockCreditor }
       });
     });
 
-    it('deve passar erro para o next', async () => {
-      const req = { userId: 1, params: { id: '1' } };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
+    it('deve retornar erro 404 se credor não existir', async () => {
+      mockReq.params = { id: 999 };
+      const notFoundError = new NotFoundError('Credor não encontrado');
+      notFoundError.name = 'NotFoundError';
+      mockCreditorService.getCreditor.mockRejectedValue(notFoundError);
 
-      const error = new Error('Credor não encontrado');
-      creditorService.getCreditor.mockRejectedValue(error);
+      await controller.getCreditor(mockReq, mockRes);
 
-      await creditorController.getCreditor(req, res, next);
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Credor não encontrado'
+      });
+    });
 
-      expect(next).toHaveBeenCalledWith(error);
+    it('deve retornar erro 500 para erro interno', async () => {
+      mockReq.params = { id: 1 };
+      const internalError = new Error('Erro interno');
+      mockCreditorService.getCreditor.mockRejectedValue(internalError);
+
+      await controller.getCreditor(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     });
   });
 
   describe('updateCreditor', () => {
     it('deve atualizar credor com sucesso', async () => {
-      const req = {
-        userId: 1,
-        params: { id: '1' },
-        body: { name: 'Novo Nome' }
-      };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
-
-      const validatedData = { name: 'Novo Nome' };
+      const updateData = { name: 'Novo Nome' };
       const updatedCreditor = { id: 1, name: 'Novo Nome' };
 
-      updateCreditorSchema.parse.mockReturnValue(validatedData);
-      creditorService.updateCreditor.mockResolvedValue(updatedCreditor);
+      mockReq.params = { id: 1 };
+      mockReq.body = updateData;
+      mockCreditorService.updateCreditor.mockResolvedValue(updatedCreditor);
 
-      await creditorController.updateCreditor(req, res, next);
+      await controller.updateCreditor(mockReq, mockRes);
 
-      expect(updateCreditorSchema.parse).toHaveBeenCalledWith(req.body);
-      expect(creditorService.updateCreditor).toHaveBeenCalledWith(1, '1', validatedData);
-      expect(res.json).toHaveBeenCalledWith({
+      expect(mockCreditorService.updateCreditor).toHaveBeenCalledWith(1, 1, updateData);
+      expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
         data: { creditor: updatedCreditor }
       });
     });
 
-    it('deve passar erro para o next', async () => {
-      const req = { userId: 1, params: { id: '1' }, body: {} };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
+    it('deve retornar erro 400 para dados inválidos', async () => {
+      const updateData = { name: '' };
+      mockReq.params = { id: 1 };
+      mockReq.body = updateData;
+      
+      const zodError = new Error('Nome do credor é obrigatório');
+      zodError.name = 'ZodError';
+      mockCreditorService.updateCreditor.mockRejectedValue(zodError);
 
-      const error = new Error('Erro de validação');
-      updateCreditorSchema.parse.mockImplementation(() => { throw error; });
+      await controller.updateCreditor(mockReq, mockRes);
 
-      await creditorController.updateCreditor(req, res, next);
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Nome do credor é obrigatório'
+      });
+    });
 
-      expect(next).toHaveBeenCalledWith(error);
+    it('deve retornar erro 404 se credor não existir', async () => {
+      const updateData = { name: 'Novo Nome' };
+      mockReq.params = { id: 999 };
+      mockReq.body = updateData;
+      const notFoundError = new NotFoundError('Credor não encontrado');
+      notFoundError.name = 'NotFoundError';
+      mockCreditorService.updateCreditor.mockRejectedValue(notFoundError);
+
+      await controller.updateCreditor(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Credor não encontrado'
+      });
     });
   });
 
   describe('deleteCreditor', () => {
     it('deve excluir credor com sucesso', async () => {
-      const req = { userId: 1, params: { id: '1' } };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
+      mockReq.params = { id: 1 };
+      mockCreditorService.deleteCreditor.mockResolvedValue();
 
-      creditorService.deleteCreditor.mockResolvedValue(true);
+      await controller.deleteCreditor(mockReq, mockRes);
 
-      await creditorController.deleteCreditor(req, res, next);
-
-      expect(creditorService.deleteCreditor).toHaveBeenCalledWith(1, '1');
-      expect(res.json).toHaveBeenCalledWith({
+      expect(mockCreditorService.deleteCreditor).toHaveBeenCalledWith(1, 1);
+      expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
         data: { message: 'Credor excluído com sucesso' }
       });
     });
 
-    it('deve passar erro para o next', async () => {
-      const req = { userId: 1, params: { id: '1' } };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
+    it('deve retornar erro 404 se credor não existir', async () => {
+      mockReq.params = { id: 999 };
+      const notFoundError = new NotFoundError('Credor não encontrado');
+      notFoundError.name = 'NotFoundError';
+      mockCreditorService.deleteCreditor.mockRejectedValue(notFoundError);
 
-      const error = new Error('Credor não encontrado');
-      creditorService.deleteCreditor.mockRejectedValue(error);
+      await controller.deleteCreditor(mockReq, mockRes);
 
-      await creditorController.deleteCreditor(req, res, next);
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Credor não encontrado'
+      });
+    });
 
-      expect(next).toHaveBeenCalledWith(error);
+    it('deve retornar erro 500 para erro interno', async () => {
+      mockReq.params = { id: 1 };
+      const internalError = new Error('Erro interno');
+      mockCreditorService.deleteCreditor.mockRejectedValue(internalError);
+
+      await controller.deleteCreditor(mockReq, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     });
   });
 
   describe('searchCreditors', () => {
     it('deve buscar credores com sucesso', async () => {
-      const req = { userId: 1, query: { term: 'Banco' } };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
-
+      const searchTerm = 'Banco';
       const creditors = [{ id: 1, name: 'Banco XYZ' }];
-      creditorService.searchCreditors.mockResolvedValue(creditors);
 
-      await creditorController.searchCreditors(req, res, next);
+      mockReq.query = { term: searchTerm };
+      mockCreditorService.searchCreditors.mockResolvedValue(creditors);
 
-      expect(creditorService.searchCreditors).toHaveBeenCalledWith(1, 'Banco');
-      expect(res.json).toHaveBeenCalledWith({
+      await controller.searchCreditors(mockReq, mockRes);
+
+      expect(mockCreditorService.searchCreditors).toHaveBeenCalledWith(1, searchTerm);
+      expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
         data: { creditors }
       });
     });
 
     it('deve retornar lista vazia quando termo não fornecido', async () => {
-      const req = { userId: 1, query: {} };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
+      mockReq.query = {};
 
-      await creditorController.searchCreditors(req, res, next);
+      await controller.searchCreditors(mockReq, mockRes);
 
-      expect(res.json).toHaveBeenCalledWith({
+      expect(mockRes.json).toHaveBeenCalledWith({
         success: true,
         data: { creditors: [] }
       });
     });
 
-    it('deve passar erro para o next', async () => {
-      const req = { userId: 1, query: { term: 'Banco' } };
-      const res = { json: jest.fn() };
-      const next = jest.fn();
+    it('deve retornar erro 500 para erro interno', async () => {
+      mockReq.query = { term: 'Banco' };
+      const internalError = new Error('Erro interno');
+      mockCreditorService.searchCreditors.mockRejectedValue(internalError);
 
-      const error = new Error('Erro de busca');
-      creditorService.searchCreditors.mockRejectedValue(error);
+      await controller.searchCreditors(mockReq, mockRes);
 
-      await creditorController.searchCreditors(req, res, next);
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
+    });
+  });
 
-      expect(next).toHaveBeenCalledWith(error);
+  describe('handleError', () => {
+    it('deve tratar ValidationError corretamente', () => {
+      const error = new ValidationError('Erro de validação');
+      error.name = 'ValidationError';
+      controller.handleError(error, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro de validação'
+      });
+    });
+
+    it('deve tratar NotFoundError corretamente', () => {
+      const error = new NotFoundError('Recurso não encontrado');
+      error.name = 'NotFoundError';
+      controller.handleError(error, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Recurso não encontrado'
+      });
+    });
+
+    it('deve tratar AppError com statusCode específico corretamente', () => {
+      const error = new AppError('Erro específico', 403);
+      error.name = 'AppError';
+      controller.handleError(error, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(403);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro específico'
+      });
+    });
+
+    it('deve tratar erro genérico como 500', () => {
+      const error = new Error('Erro interno');
+      
+      controller.handleError(error, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
     });
   });
 }); 
